@@ -6,7 +6,7 @@ Updated: 2026-07-18, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote state: pending push for the mastery-permission and visual construction checkpoint
+- Remote state: pushed through `016e25a` on `codex/visual-workshop-storage-operating`
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -79,6 +79,20 @@ Updated: 2026-07-18, Asia/Singapore
   commits the player to Grove or Clearing, only the matching capstone completes
   the objective, and one branch cache spends Energy and opens a shortcut. The
   branch, capstone, cache, and shortcut state persist with the expedition run.
+- Whisperwood now has an authored topology layer with Arrival Grove, Old Trail
+  Fork, Fern Grove, Guardian Clearing, Return Footbridge, collision-backed
+  bramble edges, and a measured traversal contract instead of only the generic
+  arena grammar.
+- Return pressure now affects the first forest route as well as later biomes;
+  biome intervals are tuned to create a meaningful return leg, and the Glass
+  Desert has a physical oasis shade volume that pauses heat pressure.
+- Fresh-save blueprint reachability is tested end-to-end at the session layer:
+  Workshop bootstrap, Archive construction, discovery research, and later
+  Livestock Pen permission no longer form a circular deadlock.
+- Keyboard, gamepad buttons, left-stick motion, touch joystick, and contextual
+  actions share the same runtime input-map path; stack-sized construction
+  deliveries keep the physical delivery feedback without requiring one press per
+  raw unit.
 - Saved sanctuary reference image and acceptance notes now distinguish visual
   direction from player-owned building layout
 - Expedition extraction now requires returning to the entry beacon; defeated

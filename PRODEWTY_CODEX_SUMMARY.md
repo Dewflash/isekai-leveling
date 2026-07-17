@@ -12,7 +12,7 @@ Updated: 2026-07-18, Asia/Singapore
 ## Git
 
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote currently has no commits.
+- Remote is pushed through `016e25a` on `codex/visual-workshop-storage-operating`.
 - Current local additions: `.gitignore`, `project.godot`, `main.tscn`,
   `default_bus_layout.tres`, `scripts/`, `PRODEWTY_BUILD_STATUS.md`,
   `PRODEWTY_GODOT_BUILD_CHARTER.md`, and the sourced CC0 asset subset plus
