@@ -43,11 +43,8 @@ func _init() -> void:
 	var current_growth := int(session.farm_plot["growth"])
 	session.advance_day(2)
 	assert(session.farm_plot["growth"] == current_growth)
-	session.construction_job = {"status": "building", "remaining_hours": 12.0}
 	session.advance_day(3)
-	assert(session.construction_job["status"] == "ready")
-	assert(session.claim_construction())
-	assert(bool(session.built["workshop"]))
+	assert(session.day == 3)
 	# Sleeping is the only daily transaction; callers cannot skip days and
 	# accidentally apply one crop/job tick to a multi-day jump.
 	session.advance_day(5)
@@ -457,10 +454,10 @@ func _init() -> void:
 	assert(systems.drink_water())
 	assert(systems.hydration == 100)
 	# Settlement livestock is a day-based loop: build, feed, sleep, collect.
-	systems.inventory["wood"] = 4
-	systems.inventory["fiber"] = 2
+	systems.structures["qa_livestock_pen"] = {"id": "qa_livestock_pen", "kind": "livestock_pen", "cell": [2, 0], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "fiber": 6, "plank": 2}}
+	systems.call("_activate_structure_kind", "livestock_pen")
 	systems.inventory["wheat"] = 1
-	assert(systems.build_livestock_pen())
+	assert(bool(systems.built["livestock_pen"]))
 	assert(systems.feed_livestock("clover"))
 	systems.advance_day(systems.day + 1)
 	assert(bool(systems.livestock["clover"]["production_ready"]))

@@ -403,16 +403,6 @@ func claim_workshop_job() -> Dictionary:
 	award_mastery("Crafting", 10)
 	return {"output_id": output_id, "output": output}
 
-func start_workshop_construction() -> bool:
-	if bool(built.get("workshop", false)) or str(construction_job.get("status", "none")) != "none":
-		return false
-	if not pay_items({"wood": 6, "stone": 4}):
-		return false
-	construction_progress = 0.0
-	construction_job = {"status": "building", "remaining_hours": 12.0, "total_hours": 12.0}
-	state_changed.emit()
-	return true
-
 func drink_water() -> bool:
 	if int(inventory.get("water", 0)) <= 0 or hydration >= max_hydration:
 		return false
@@ -420,26 +410,6 @@ func drink_water() -> bool:
 	hydration = mini(max_hydration, hydration + 34)
 	energy = mini(max_energy, energy + 1)
 	award_mastery("Surviving", 2)
-	state_changed.emit()
-	return true
-
-func build_livestock_pen() -> bool:
-	if bool(built.get("livestock_pen", false)):
-		return false
-	if not pay_items({"wood": 4, "fiber": 2}):
-		return false
-	built["livestock_pen"] = true
-	award_mastery("Livestock", 5)
-	state_changed.emit()
-	return true
-
-func build_library() -> bool:
-	if bool(built.get("library", false)):
-		return false
-	if not pay_items({"wood": 4, "stone": 4}):
-		return false
-	built["library"] = true
-	award_mastery("Research", 5)
 	state_changed.emit()
 	return true
 
@@ -1074,15 +1044,6 @@ func claim_quest() -> bool:
 	quest["claimed"] = true
 	coins += 45
 	award_xp(25)
-	state_changed.emit()
-	return true
-
-func claim_construction() -> bool:
-	if bool(built.get("workshop", false)) or str(construction_job.get("status", "none")) != "ready":
-		return false
-	built["workshop"] = true
-	construction_job = {"status": "none", "remaining_hours": 0.0}
-	construction_progress = 0.0
 	state_changed.emit()
 	return true
 

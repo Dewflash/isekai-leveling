@@ -3600,30 +3600,12 @@ func _guide_interact() -> void:
 func _build_workshop() -> void:
 	if session == null or current_zone != "Sanctuary":
 		return
-	if bool(session.get("built").get("workshop", false)):
+	if _has_operational_player_structure("workshop"):
 		_show_toast("The Workshop is ready. Press C beside it to craft.", 2.2)
 		return
-	if str(session.get("construction_job").get("status", "none")) == "none":
-		placement_structure_id = "workshop"
-		_toggle_structure_placement()
-		_show_toast("Choose a clear place for the Workshop. Deliver 12 Wood and 8 Stone at the blueprint.", 3.2)
-		return
-	var construction_state := str(session.get("construction_job").get("status", "none"))
-	if construction_state == "ready":
-		if session.call("claim_construction"):
-			session.call("award_mastery", "Crafting", 8)
-			_show_toast("Workshop complete. It can now turn supplies into useful planks.", 3.0)
-			session.call("save_game")
-		return
-	if construction_state == "building":
-		_show_toast("The Workshop is taking shape. Sleep once to finish the build.", 2.2)
-		return
-	if not session.has_method("start_workshop_construction") or not session.call("start_workshop_construction"):
-		_show_toast("Workshop shell needs 6 Wood + 4 Stone.", 2.4)
-		return
-	build_progress = float(session.get("construction_progress"))
-	_show_toast("Workshop construction started. Sleep once to finish the build.", 2.6)
-	session.call("save_game")
+	placement_structure_id = "workshop"
+	_toggle_structure_placement()
+	_show_toast("Choose a clear place for the Workshop. Deliver 12 Wood and 8 Stone at the blueprint.", 3.2)
 
 func _refresh_farm_plot() -> void:
 	if farm_plot == null:
@@ -4337,7 +4319,7 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 		for index in scaffold.get_child_count():
 			var post := scaffold.get_child(index) as Node3D
 			if post != null:
-				post.visible = state == "building" and (index == 0 or material_progress >= 0.18 + float(index) * 0.18)
+				post.visible = (state == "building" and (index == 0 or material_progress >= 0.18 + float(index) * 0.18)) or (state == "blueprint" and wood_delivered > 0 and index == 0)
 	var delivered_logs := structure.get_node_or_null("DeliveredLogs") as Node3D
 	if delivered_logs != null:
 		delivered_logs.visible = state != "operational" and wood_delivered > 0
