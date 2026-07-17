@@ -86,6 +86,13 @@ func _run() -> void:
 	world.call("_copy_session_to_runtime")
 	_assert_player_structure_visuals(world, session)
 	assert(world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow") != null)
+	var forest_route := world.get_node_or_null("Whisperwood/WhisperwoodRoute") as Node3D
+	assert(forest_route != null)
+	assert(float(forest_route.get_meta("authored_traversal_length", 0.0)) >= 50.0)
+	assert(int(forest_route.get_meta("authored_beats", 0)) >= 5)
+	assert(forest_route.get_node_or_null("AuthoredTopology/ArrivalGrove") != null)
+	assert(forest_route.get_node_or_null("AuthoredTopology/FernGrove") != null)
+	assert(forest_route.get_node_or_null("AuthoredTopology/GuardianClearing") != null)
 	for route_zone in ["SunlitBeach", "EmberRidge", "GlassDesert", "SunkenDungeon"]:
 		assert(world.get_node_or_null(route_zone + "/MapIdentity") != null)
 		var authored_route := world.get_node_or_null(route_zone + "/ExpeditionRoute") as Node3D

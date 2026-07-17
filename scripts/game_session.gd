@@ -753,6 +753,7 @@ func apply_expedition_stake_tick() -> Dictionary:
 	var energy_loss := 1
 	var message := "The route is demanding a safe return."
 	match biome_id:
+		"Whisperwood": message = "The old trail wakes. Keep the beacon in sight on the way home."
 		"Sunlit Beach": message = "The tide turns. Keep moving toward the beacon."
 		"Ember Ridge": message = "The ridge shudders. Ash and loose stone drain your pace."
 		"Glass Desert": message = "The glass desert takes its toll. Find shade before the next flare."

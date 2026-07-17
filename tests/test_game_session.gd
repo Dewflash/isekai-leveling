@@ -144,6 +144,17 @@ func _init() -> void:
 	assert(guardian_reward["reward_id"] == "slime_gel")
 	assert(pressure.expedition_cargo_used() == 2)
 	assert(pressure.resolve_guardian_defeat("forest_slime").is_empty())
+	var stake := SessionScript.new()
+	stake.save_slot = "qa_stake"
+	root.add_child(stake)
+	assert(stake.start_expedition("Whisperwood"))
+	assert(stake.commit_expedition_branch("clearing"))
+	assert(not stake.resolve_guardian_defeat("forest_slime").is_empty())
+	assert(not stake.open_expedition_cache().is_empty())
+	var stake_energy := stake.energy
+	var stake_tick: Dictionary = stake.apply_expedition_stake_tick()
+	assert(stake_tick["ticks"] == 1)
+	assert(stake.energy == stake_energy - 1)
 	# Farm and workshop mutations are session commands, so the scene cannot
 	# spend an item or energy and then fail to persist the resulting state.
 	var economy := SessionScript.new()

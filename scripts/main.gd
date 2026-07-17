@@ -494,7 +494,10 @@ func _create_expedition_zone(zone_name: String, ground_color: Color, path_color:
 func _create_whisperwood_landmarks(parent: Node3D) -> void:
 	var route := Node3D.new()
 	route.name = "WhisperwoodRoute"
+	route.set_meta("authored_traversal_length", 52.0)
+	route.set_meta("authored_beats", 5)
 	parent.add_child(route)
+	_create_whisperwood_topology(route)
 	# The straight entry path breaks at the old trail marker, then opens onto
 	# two readable approaches: the fern-covered left grove and the guardian's
 	# right-hand clearing. These are visual landmarks, not invisible triggers.
@@ -555,6 +558,79 @@ func _create_whisperwood_landmarks(parent: Node3D) -> void:
 		_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Grass_Common_Tall.gltf", 0.34, position)
 	_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Pine_3.gltf", 0.62, Vector3(-12.0, 0.08, -6.0))
 	_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Pine_3.gltf", 0.54, Vector3(11.5, 0.08, 1.5))
+
+func _create_whisperwood_topology(parent: Node3D) -> void:
+	# The forest route is intentionally authored as a sequence of readable
+	# spaces. These are broad natural lanes rather than a visible grid: the
+	# player enters through a calm clearing, commits at the old marker, then
+	# navigates a distinct grove or guardian clearing before the return bridge.
+	var topology := Node3D.new()
+	topology.name = "AuthoredTopology"
+	parent.add_child(topology)
+	var beats := [
+		{"id": "ArrivalGrove", "label": "ARRIVAL GROVE", "position": Vector3(0.0, 0.04, 5.2), "radius": 3.4, "color": Color("#52785d")},
+		{"id": "OldTrailFork", "label": "OLD TRAIL FORK", "position": Vector3(0.0, 0.04, -1.9), "radius": 2.4, "color": Color("#6d805f")},
+		{"id": "FernGrove", "label": "FERN GROVE", "position": Vector3(-12.5, 0.04, -8.6), "radius": 3.1, "color": Color("#6f9a73")},
+		{"id": "GuardianClearing", "label": "GUARDIAN CLEARING", "position": Vector3(12.5, 0.04, -8.6), "radius": 3.4, "color": Color("#856b68")},
+		{"id": "ReturnFootbridge", "label": "RETURN FOOTBRIDGE", "position": Vector3(0.0, 0.04, 8.7), "radius": 2.6, "color": Color("#7e7058")},
+	]
+	for beat_data in beats:
+		var beat := Node3D.new()
+		beat.name = str(beat_data["id"])
+		beat.set_meta("route_beat", beat.name)
+		beat.position = beat_data["position"]
+		topology.add_child(beat)
+		var clearing := MeshInstance3D.new()
+		clearing.name = "ClearingFloor"
+		var clearing_mesh := CylinderMesh.new()
+		clearing_mesh.top_radius = float(beat_data["radius"])
+		clearing_mesh.bottom_radius = float(beat_data["radius"])
+		clearing_mesh.height = 0.06
+		clearing_mesh.radial_segments = 28
+		clearing.mesh = clearing_mesh
+		clearing.material_override = _material(beat_data["color"], 0.92)
+		beat.add_child(clearing)
+		var beat_label := _label3d(str(beat_data["label"]), 0.14, palette["cream"])
+		beat_label.name = "BeatLabel"
+		beat_label.position.y = 0.36
+		beat.add_child(beat_label)
+	# Uneven lanes make the journey read as a route instead of a single arena.
+	_create_path(topology, Vector3(0.0, 0.08, 2.1), Vector3(2.35, 0.10, 6.4), Color("#80694f"))
+	_create_path(topology, Vector3(-3.8, 0.08, -4.1), Vector3(7.5, 0.10, 1.2), Color("#80694f"))
+	_create_path(topology, Vector3(3.8, 0.08, -4.1), Vector3(7.5, 0.10, 1.2), Color("#80694f"))
+	_create_path(topology, Vector3(-8.8, 0.08, -6.4), Vector3(7.2, 0.10, 1.1), Color("#80694f"))
+	_create_path(topology, Vector3(8.8, 0.08, -6.4), Vector3(7.2, 0.10, 1.1), Color("#80694f"))
+	_create_path(topology, Vector3(0.0, 0.08, 7.0), Vector3(2.0, 0.10, 3.5), Color("#a58b62"))
+	# The edges are collision-backed so the player reads the lanes by movement,
+	# not only by labels. Gaps remain wide enough for a natural dodge and return.
+	_create_forest_bramble(topology, Vector3(-4.2, 0.0, -6.0), Vector3(3.4, 1.2, 0.55), Color("#345b4c"))
+	_create_forest_bramble(topology, Vector3(4.2, 0.0, -6.0), Vector3(3.4, 1.2, 0.55), Color("#345b4c"))
+	_create_forest_bramble(topology, Vector3(-15.2, 0.0, -7.2), Vector3(0.65, 1.3, 4.4), Color("#41634e"))
+	_create_forest_bramble(topology, Vector3(15.2, 0.0, -7.2), Vector3(0.65, 1.3, 4.4), Color("#604e50"))
+	for position in [Vector3(-2.7, 0.08, 3.8), Vector3(2.8, 0.08, 2.7), Vector3(-7.0, 0.08, -5.2), Vector3(7.0, 0.08, -5.2), Vector3(-10.0, 0.08, -10.5), Vector3(10.0, 0.08, -10.5)]:
+		_add_sourced_model(topology, "res://assets/quaternius-stylized-nature/glTF/Fern_1.gltf", 0.42, position)
+
+func _create_forest_bramble(parent: Node3D, position: Vector3, size: Vector3, color: Color) -> void:
+	var bramble := StaticBody3D.new()
+	bramble.name = "BrambleEdge"
+	bramble.set_meta("route_edge", true)
+	bramble.position = position
+	var wall := MeshInstance3D.new()
+	wall.name = "BrambleVisual"
+	var wall_mesh := BoxMesh.new()
+	wall_mesh.size = size
+	wall.mesh = wall_mesh
+	wall.material_override = _material(color, 0.88)
+	wall.position.y = size.y * 0.5
+	bramble.add_child(wall)
+	var collision := CollisionShape3D.new()
+	collision.name = "BrambleCollision"
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	collision.position.y = size.y * 0.5
+	bramble.add_child(collision)
+	parent.add_child(bramble)
 
 func _create_route_barrier(parent: Node3D, position: Vector3, blocked_branch: String, accent: Color) -> void:
 	var barrier := StaticBody3D.new()
@@ -2671,10 +2747,11 @@ func _update_expedition_hazard(delta: float) -> void:
 		return
 	var tick_interval := 18.0
 	match current_zone:
-		"Sunlit Beach": tick_interval = 18.0
-		"Ember Ridge": tick_interval = 16.0
-		"Glass Desert": tick_interval = 12.0
-		"Sunken Dungeon": tick_interval = 10.0
+		"Whisperwood": tick_interval = 5.5
+		"Sunlit Beach": tick_interval = 5.0
+		"Ember Ridge": tick_interval = 4.5
+		"Glass Desert": tick_interval = 4.0
+		"Sunken Dungeon": tick_interval = 3.5
 	if _is_player_in_route_shelter():
 		hazard_timer = 0.0
 		if not hazard_shelter_active:
