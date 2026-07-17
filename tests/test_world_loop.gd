@@ -124,6 +124,8 @@ func _run() -> void:
 	assert(int(session.get("expedition_run").get("contact_progress", {}).get(str(tree_node.get("node_id")), 0)) == 1)
 	assert(world.call("collect_resource", tree_node))
 	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == forest_wood_before + 2)
+	assert(tree_node.get_node_or_null("FelledLogVisual") != null)
+	assert((tree_node.get_node("FelledLogVisual") as Node3D).visible)
 	var forest_guardian: Node = null
 	for candidate in get_nodes_in_group("guardian"):
 		if candidate.get_parent().name == "Whisperwood":

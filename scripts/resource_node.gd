@@ -35,18 +35,21 @@ func restore() -> void:
 	contacts = 0
 	_refresh_contact_label()
 	visible = zone_active
+	_set_depleted_visual(false)
 	_set_collision_enabled(zone_active)
 
 func set_zone_active(active: bool) -> void:
 	zone_active = active
-	visible = active and not depleted
+	visible = active
+	_set_depleted_visual(depleted)
 	_set_collision_enabled(active and not depleted)
 
 func set_depleted_from_save(value: bool) -> void:
 	depleted = value
 	contacts = required_contacts if value else 0
 	_refresh_contact_label()
-	visible = zone_active and not depleted
+	visible = zone_active
+	_set_depleted_visual(depleted)
 	_set_collision_enabled(zone_active and not depleted)
 
 func set_contact_progress(value: int) -> void:
@@ -70,8 +73,34 @@ func _refresh_contact_label() -> void:
 func complete_depletion() -> void:
 	depleted = true
 	contacts = required_contacts
-	visible = false
+	visible = zone_active
+	_set_depleted_visual(true)
 	_set_collision_enabled(false)
+
+func _set_depleted_visual(show_log: bool) -> void:
+	var log_visual := get_node_or_null("FelledLogVisual") as Node3D
+	if resource_id != "wood":
+		return
+	if log_visual == null and show_log:
+		log_visual = Node3D.new()
+		log_visual.name = "FelledLogVisual"
+		var log_mesh := BoxMesh.new()
+		log_mesh.size = Vector3(1.9, 0.22, 0.3)
+		var log := MeshInstance3D.new()
+		log.name = "FelledLog"
+		log.mesh = log_mesh
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color("#8c6047")
+		material.roughness = 0.92
+		log.material_override = material
+		log.position = Vector3(0.0, 0.14, 0.0)
+		log_visual.add_child(log)
+		add_child(log_visual)
+	if log_visual != null:
+		log_visual.visible = show_log
+	for child in get_children():
+		if child != log_visual:
+			child.visible = not show_log
 
 func _set_collision_enabled(enabled: bool) -> void:
 	for child in get_children():

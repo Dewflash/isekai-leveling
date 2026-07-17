@@ -2324,6 +2324,7 @@ func _construction_interact(structure_node: Node3D) -> void:
 			return
 		if audio_director != null:
 			audio_director.call("play_action", "build")
+		_spawn_material_delivery_feedback(str(material_id), structure_node)
 		var new_state := str(delivered_structure.get("state", "blueprint"))
 		_refresh_structure_visual(instance_id, delivered_structure)
 		session.call("save_game")
@@ -3466,6 +3467,26 @@ func _sleep() -> void:
 		_show_toast("The day could not be secured to disk. Nothing was consumed; try sleeping again.", 3.0)
 		return
 	_show_toast("Day %d begins softly. Crops, jobs, and the forest have refreshed." % day, 3.0)
+
+func _spawn_material_delivery_feedback(material_id: String, target: Node3D) -> void:
+	if player == null or target == null:
+		return
+	var bundle := MeshInstance3D.new()
+	bundle.name = "CarriedMaterialFeedback"
+	if material_id in ["wood", "plank"]:
+		var log_mesh := BoxMesh.new()
+		log_mesh.size = Vector3(1.35 if material_id == "wood" else 1.05, 0.18, 0.26)
+		bundle.mesh = log_mesh
+	else:
+		bundle.mesh = _sphere_mesh(0.28, 0.56, 8, 5)
+	bundle.material_override = _material(palette["wood"] if material_id in ["wood", "plank"] else palette["stone"], 0.96)
+	add_child(bundle)
+	bundle.global_position = player.global_position + Vector3(0.0, 1.15, -0.35)
+	var tween := bundle.create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(bundle, "global_position", target.global_position + Vector3(0.0, 0.42, 0.0), 0.34)
+	tween.parallel().tween_property(bundle, "rotation", Vector3(0.0, PI * 0.75, 0.0), 0.34)
+	tween.tween_callback(bundle.queue_free)
 
 func _toggle_furnace() -> void:
 	if current_zone != "Sanctuary":
