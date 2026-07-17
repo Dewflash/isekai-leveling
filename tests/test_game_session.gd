@@ -210,6 +210,24 @@ func _init() -> void:
 	preserved_backup.close()
 	assert(preserved_backup_data is Dictionary)
 	assert(int(preserved_backup_data.get("coins", 0)) == 444)
+	# A future content schema must not be silently rewritten as the current
+	# content version, and a day receipt ahead of its day must be rejected before
+	# it can soft-lock the next sleep transaction.
+	var future_content_file := FileAccess.open("user://qa_future_content.json", FileAccess.WRITE)
+	future_content_file.store_string(JSON.stringify({"save_version": 7, "content_version": 2}))
+	future_content_file.close()
+	var future_content := SessionScript.new()
+	future_content.save_slot = "qa_future_content"
+	root.add_child(future_content)
+	assert(not future_content.load_game())
+	assert(future_content.save_blocked)
+	var impossible_day_file := FileAccess.open("user://qa_impossible_day.json", FileAccess.WRITE)
+	impossible_day_file.store_string(JSON.stringify({"save_version": 7, "content_version": 1, "day": 5, "last_day_transaction": 6}))
+	impossible_day_file.close()
+	var impossible_day := SessionScript.new()
+	impossible_day.save_slot = "qa_impossible_day"
+	root.add_child(impossible_day)
+	assert(not impossible_day.load_game())
 	# Research is persistent and only available after a discovery is recorded.
 	var built_state: Dictionary = expedition_loaded.built
 	built_state["library"] = true
@@ -305,8 +323,10 @@ func _init() -> void:
 	systems.inventory["plank"] = 2
 	assert(not systems.can_place_structure("rain_cistern", [0, -4]))
 	assert(not systems.can_place_structure("rain_cistern", [5, 3]))
-	assert(systems.can_place_structure("rain_cistern", [11, 7]))
-	var cistern: Dictionary = systems.place_structure("rain_cistern", [11, 7])
+	assert(not systems.can_place_structure("rain_cistern", [-12, -6]))
+	assert(not systems.can_place_structure("rain_cistern", [11, 7]))
+	assert(systems.can_place_structure("rain_cistern", [11, 8]))
+	var cistern: Dictionary = systems.place_structure("rain_cistern", [11, 8])
 	assert(cistern["state"] == "blueprint")
 	assert(int(systems.inventory["wood"]) == 8)
 	assert(int(systems.inventory["plank"]) == 2)
@@ -320,6 +340,24 @@ func _init() -> void:
 	assert(str(systems.structures[cistern["id"]]["state"]) == "building")
 	systems.advance_day(systems.day + 1)
 	assert(str(systems.structures[cistern["id"]]["state"]) == "operational")
+	# The same staged pipeline applies to a player-placed utility building, and
+	# completing it unlocks the connected station capability from authoritative
+	# state rather than from a presentation label.
+	var placed_builder := SessionScript.new()
+	placed_builder.save_slot = "qa_placed_builder"
+	root.add_child(placed_builder)
+	placed_builder.inventory["wood"] = 12
+	placed_builder.inventory["stone"] = 8
+	placed_builder.inventory["plank"] = 4
+	var workshop_blueprint: Dictionary = placed_builder.place_structure("workshop", [2, 0])
+	assert(workshop_blueprint["state"] == "blueprint")
+	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "wood", 12)["state"] == "blueprint")
+	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "stone", 8)["state"] == "blueprint")
+	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "plank", 4)["state"] == "building")
+	for build_day in 3:
+		placed_builder.advance_day(placed_builder.day + 1)
+	assert(str(placed_builder.structures[workshop_blueprint["id"]]["state"]) == "operational")
+	assert(bool(placed_builder.built["workshop"]))
 	# The Dungeon is a coin-gated fixed challenge and does not consume travel energy.
 	var dungeon := SessionScript.new()
 	dungeon.save_slot = "qa_dungeon"

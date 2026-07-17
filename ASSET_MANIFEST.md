@@ -37,10 +37,13 @@ clearing dressing.
 - Contents: Cow, Horse, Llama, Pig, Pug, Sheep, and Zebra in FBX, OBJ, and
   Blender formats.
 
-The source family is checked in for the living-world asset pass. The current
-resident keeps a procedural fallback because the freely mirrored pack is OBJ/
-FBX/Blend rather than glTF; this is recorded explicitly instead of pretending
-that an unsupported runtime import is active.
+The source family is checked in for the living-world asset pass. Godot 4.7's
+built-in FBX importer successfully imports these FBX files as `PackedScene`
+resources with their rigs and animation clips available; glTF conversion is not
+required. The runtime uses `Cow.fbx` as an ambient paddock resident and starts
+its imported `Armature|Walk` clip when present. Clover keeps the procedural
+fallback because this pack has no chicken model and the egg-producing resident
+must remain consistent with the game rules.
 
 ## Kenney RPG Audio
 

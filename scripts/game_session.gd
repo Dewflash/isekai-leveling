@@ -87,9 +87,16 @@ const FIXED_RESERVED_RECTS := [
 	[-8, 2, -3, 6], # Garden plot
 	[-2, 5, 2, 9], # Livestock pen
 	[4, -8, 9, -4], # Workshop
-	[-10, -8, -4, -4], # Archive
+	[-9, -9, -5, -7], # Archive starter shell, clear of the Whisperwood road
 	[-1, -9, 1, 9], # Main path
 	[0, -3, 13, -2], # Bazaar path
+	[-11, -8, -11, -8], # Sanctuary tree
+	[-8, 7, -8, 7], # Sanctuary tree
+	[12, 7, 12, 7], # Sanctuary tree
+	[11, -2, 11, -2], # Sanctuary tree
+	[-12, 2, -12, 2], # Sanctuary tree
+	[3, 8, 3, 8], # Sanctuary tree
+	[-4, 6, -4, 6], # Fiber patch
 ]
 
 func _ready() -> void:
@@ -638,6 +645,9 @@ func _fixed_cell_occupied(cell: Vector2i) -> bool:
 	for rect in FIXED_RESERVED_RECTS:
 		if cell.x >= int(rect[0]) and cell.x <= int(rect[2]) and cell.y >= int(rect[1]) and cell.y <= int(rect[3]):
 			return true
+	for rect in ContentRegistry.ROUTE_RESERVED_RECTS:
+		if cell.x >= int(rect[0]) and cell.x <= int(rect[2]) and cell.y >= int(rect[1]) and cell.y <= int(rect[3]):
+			return true
 	return false
 
 func place_structure(structure_id: String, cell: Array) -> Dictionary:
@@ -772,9 +782,12 @@ func finish_expedition() -> Dictionary:
 	var cargo: Dictionary = expedition_run.get("cargo", {}).duplicate(true)
 	var cargo_count := 0
 	for resource_id in cargo:
-		add_item(str(resource_id), int(cargo[resource_id]))
-		cargo_count += int(cargo[resource_id])
-	progress_quest(cargo_count)
+		var amount := int(cargo[resource_id])
+		if amount > 0:
+			inventory[str(resource_id)] = int(inventory.get(str(resource_id), 0)) + amount
+			cargo_count += amount
+	if cargo_count > 0 and not bool(quest.get("claimed", false)):
+		quest["progress"] = mini(int(quest.get("target", 5)), int(quest.get("progress", 0)) + cargo_count)
 	expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
 	state_changed.emit()
 	return cargo
@@ -865,13 +878,13 @@ func clear_expired_recovery_pack() -> bool:
 	state_changed.emit()
 	return true
 
-func advance_day(target_day: int = -1) -> void:
+func advance_day(target_day: int = -1) -> bool:
 	# The target day is an idempotency key. Repeated calls in the same frame can
 	# never grow crops or finish a job twice.
 	if target_day < 0:
 		target_day = day + 1
 	if target_day != day + 1 or last_day_transaction >= target_day:
-		return
+		return false
 	last_day_transaction = target_day
 	var previous_day := day
 	day = target_day
@@ -911,6 +924,7 @@ func advance_day(target_day: int = -1) -> void:
 			structure["remaining_hours"] = maxf(0.0, float(structure.get("remaining_hours", 0.0)) - 12.0)
 			if float(structure.get("remaining_hours", 0.0)) <= 0.0:
 				structure["state"] = "operational"
+				_activate_structure_kind(str(structure.get("kind", "")))
 		elif str(structure.get("state", "removed")) == "operational" and str(structure.get("kind", "")) == "rain_cistern":
 			inventory["water"] = int(inventory.get("water", 0)) + 2
 		structures[structure_id] = structure
@@ -925,6 +939,13 @@ func advance_day(target_day: int = -1) -> void:
 	sanctuary_depleted_ids.clear()
 	sanctuary_contact_progress.clear()
 	state_changed.emit()
+	return true
+
+func _activate_structure_kind(kind: String) -> void:
+	match kind:
+		"workshop": built["workshop"] = true
+		"archive": built["library"] = true
+		"livestock_pen": built["livestock_pen"] = true
 
 func save_game() -> bool:
 	if save_blocked:
@@ -975,6 +996,17 @@ func save_game() -> bool:
 		state_changed.emit()
 	return result
 
+## Used by scene-level transactions that must be all-or-nothing when durable
+## storage is unavailable. The returned dictionary is detached from live state.
+func snapshot_state() -> Dictionary:
+	return _to_dict().duplicate(true)
+
+func restore_state(snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	_apply_dict(snapshot)
+	state_changed.emit()
+
 func load_game() -> bool:
 	var primary := _read_json(_save_path())
 	var backup := _read_json(_backup_path())
@@ -988,7 +1020,9 @@ func load_game() -> bool:
 		# written by a newer build we cannot safely interpret.
 		payload = migrated_backup
 	if payload.is_empty():
-		if (not primary.is_empty() and int(primary.get("save_version", 0)) > SAVE_VERSION) and (backup.is_empty() or int(backup.get("save_version", 0)) > SAVE_VERSION):
+		var primary_future := not primary.is_empty() and (int(primary.get("save_version", 0)) > SAVE_VERSION or int(primary.get("content_version", 0)) > CONTENT_VERSION)
+		var backup_future := not backup.is_empty() and (int(backup.get("save_version", 0)) > SAVE_VERSION or int(backup.get("content_version", 0)) > CONTENT_VERSION)
+		if primary_future and (backup.is_empty() or backup_future):
 			save_blocked = true
 		return false
 	# Older saves intentionally fill new fields from the current defaults;
@@ -1049,7 +1083,8 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 				old_structures[old_id] = old_structure
 			data["structures"] = old_structures
 	data["save_version"] = SAVE_VERSION
-	data["content_version"] = CONTENT_VERSION
+	if not data.has("content_version"):
+		data["content_version"] = CONTENT_VERSION
 	return data
 
 func _valid_integer(value: Variant, minimum: int, maximum: int) -> bool:
@@ -1083,7 +1118,7 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 	for key in ["day", "level", "ability_points", "coins", "xp", "last_day_transaction", "activity_mapping_version"]:
 		if data.has(key) and not _valid_integer(data[key], 0, 2147483647):
 			return false
-	if data.has("last_day_transaction") and int(data["last_day_transaction"]) > saved_day + 1:
+	if data.has("last_day_transaction") and int(data["last_day_transaction"]) > saved_day:
 		return false
 	for key in ["nutrition", "hydration"]:
 		if data.has(key) and not _valid_integer(data[key], 0, 100):
@@ -1302,6 +1337,8 @@ func _apply_dict(data: Dictionary) -> void:
 			var structure: Variant = stored_structures.get(structure_id, {})
 			if structure is Dictionary and str(structure.get("kind", "")).is_empty() == false:
 				structures[str(structure_id)] = structure.duplicate(true)
+				if str(structure.get("state", "")) == "operational":
+					_activate_structure_kind(str(structure.get("kind", "")))
 	var stored_features: Variant = data.get("unlocked_features", [])
 	if stored_features is Array:
 		unlocked_features = []

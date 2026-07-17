@@ -6,7 +6,7 @@ Updated: 2026-07-18, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote state: pushed checkpoint on `main`
+- Remote state: pending push for the route/construction hardening checkpoint
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -48,8 +48,15 @@ Updated: 2026-07-18, Asia/Singapore
   footprint, persisted as a player-authored blueprint, supplied with visible
   Wood/Plank deliveries, completed as a scaffold over sleep, and then produces
   extra water each day
+- The same authoritative staged construction registry now covers Workshop,
+  Archive, Livestock Pen, and Storage Shed blueprints; material delivery is
+  visible on site, operational walls/utilities appear only after the build,
+  and permanent starter shells yield to player-placed operational buildings
 - Five physical Sanctuary route gates now identify and approach-gate the five
   expedition maps; the destination selector is no longer a global teleport
+- Five route gates, paths, approach pads, and build reservations share one
+  immutable route-socket definition; all five destinations are tested through
+  actual interaction and out-of-range entry is rejected
 - Saved sanctuary reference image and acceptance notes now distinguish visual
   direction from player-owned building layout
 - Expedition extraction now requires returning to the entry beacon; defeated
@@ -69,6 +76,12 @@ Updated: 2026-07-18, Asia/Singapore
   Sanctuary and expedition maps; exact mirror, license, archive checksum, and
   extracted files are recorded in `ASSET_LICENSES.md` and `ASSET_MANIFEST.md`
 - Wind-driven tree sway, rain toggle, day/night cricket layer, surface labels
+- Quaternius Cow FBX is runtime-instantiated as an animated paddock resident;
+  Kenney foley maps separate surface footsteps and material/action samples
+  instead of flattening every action to one click or pot sound
+- Touch Interact is contextual (including Confirm placement), Pause is exposed
+  in the action rail, and attack/sleep/extract controls are hidden or disabled
+  outside their valid spatial contexts
 - Build charter and this status brief copied into the target repo
 - Current art is a deliberate hybrid: procedural low-poly buildings, player,
   guardian, UI, animation, effects, and sound with a sourced CC0 environment
@@ -89,11 +102,13 @@ Updated: 2026-07-18, Asia/Singapore
   durable tools, survival, livestock, grid placement, dungeon coin entry, and
   guardian defeat persistence, multi-contact expedition progress, atomic tool
   transactions, fixed-world placement, and backup preservation after a
-  malformed primary.
-- World integration test: passed for sourced-tree presence, Sunlit Beach cargo
+  malformed primary, future-content blocking, impossible-day rejection, and
+  scene-level sleep rollback after a forced save failure.
+- World integration test: passed for sourced-tree and animated-cow presence, Sunlit Beach cargo
   banking, Glass Desert camp use, return-to-home, Ember/Dungeon transitions,
   Sanctuary fishing/trading, interruptible gathering, Sanctuary placement and
-  material delivery, five route gates, beacon-only extraction, expedition
+  material delivery, five route gates, all destinations, out-of-range
+  rejection, beacon-only extraction, expedition
   anchor persistence, and zone transitions.
 - Visible game launch from the target checkout: headless smoke is clean apart
   from Godot's macOS certificate warning; desktop screenshot capture is not
@@ -124,16 +139,15 @@ Updated: 2026-07-18, Asia/Singapore
 
 ## Next actions (the project is not being called finished)
 
-1. Make the Whisperwood outing a gold path: a forked route, authored extraction
-   pressure, and a more readable guardian encounter. Multi-contact gathering is
-   now in the route; the path and encounter still need authored presentation.
+1. Build the authoritative player-owned Workshop gold slice: remove the
+   remaining fixed-shell visual authority, make the placed building the only
+   job surface, and validate a physical walk from Hearth through every route.
 2. Replace the remaining desktop-style HUD stack with safe-area contextual
    actions and explicit recipe/food/expedition sheets.
-3. Generalize the staged blueprint/material/scaffold pipeline to Workshop,
-   Archive, livestock, storage, and future shelter structures so the player
-   authors the useful Sanctuary layout rather than only placing a cistern.
-4. Harden the command/state boundary and migrate durable world mutations out of
-   presentation code.
+3. Finish the production art pass: replace generic procedural walls/gates with
+   curated CC0 modular building pieces, animate the player and Mira, and add
+   spatial ambient audio/footstep variation.
+4. Harden the command/state boundary and expand export/device QA; current
+   desktop/headless evidence is strong but not a completeness claim.
 5. Replace the temporary manual effort logger with the chosen Prodewty data
-   bridge without changing the receipt contract, then do device-specific export
-   and hands-on gameplay QA.
+   bridge without changing the receipt contract.

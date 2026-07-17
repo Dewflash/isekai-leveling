@@ -82,6 +82,10 @@ var action_hint: Label
 var explore_button: Button
 var destination_button: Button
 var return_button: Button
+var interact_button: Button
+var attack_button: Button
+var sleep_button: Button
+var pause_button: Button
 var smelt_button: Button
 var sanctuary_nodes: Array[Node3D] = []
 var forest_nodes: Array[Node3D] = []
@@ -111,6 +115,7 @@ var water_button: Button
 var livestock_button: Button
 var repair_button: Button
 var structure_button: Button
+var blueprint_button: Button
 var stat_button: Button
 var recipe_button: Button
 var dodge_button: Button
@@ -223,8 +228,10 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		if get_tree().paused and event.keycode != KEY_ESCAPE:
+			return
 		if event.keycode == KEY_E:
-			_place_structure() if placement_mode else _interact()
+			_contextual_interact()
 		elif event.keycode == KEY_SPACE:
 			_player_attack(player)
 		elif event.keycode == KEY_SHIFT:
@@ -247,6 +254,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_repair_tools()
 		elif event.keycode == KEY_B:
 			_toggle_structure_placement()
+		elif event.keycode == KEY_N:
+			_cycle_structure_selection()
 		elif event.keycode == KEY_C:
 			station_interact(workshop)
 		elif event.keycode == KEY_L:
@@ -290,27 +299,26 @@ func _build_world() -> void:
 	_create_floor(sanctuary_zone, Vector3(0.0, -0.25, 0.0), Vector2(32.0, 24.0), palette["grass"], "SanctuaryGround")
 	_create_path(sanctuary_zone, Vector3(0.0, 0.02, 1.0), Vector3(3.0, 0.08, 24.0), palette["stone"])
 	_create_path(sanctuary_zone, Vector3(5.5, 0.02, -1.5), Vector3(12.0, 0.08, 2.2), palette["stone"])
-	_create_path(sanctuary_zone, Vector3(-7.2, 0.02, -5.7), Vector3(9.0, 0.08, 1.0), palette["stone"])
-	_create_path(sanctuary_zone, Vector3(-7.2, 0.02, 1.9), Vector3(9.0, 0.08, 1.0), palette["stone"])
-	_create_path(sanctuary_zone, Vector3(-6.8, 0.02, 6.0), Vector3(8.0, 0.08, 1.0), palette["stone"])
-	_create_path(sanctuary_zone, Vector3(9.2, 0.02, -5.4), Vector3(6.0, 0.08, 1.0), palette["stone"])
-	_create_path(sanctuary_zone, Vector3(9.2, 0.02, 2.0), Vector3(6.0, 0.08, 1.0), palette["stone"])
+	for route_id in ContentRegistry.ROUTE_SOCKETS:
+		var route_socket: Dictionary = ContentRegistry.ROUTE_SOCKETS[route_id]
+		var path_center: Array = route_socket.get("path_center", [0.0, 0.0])
+		var path_size: Array = route_socket.get("path_size", [1.0, 1.0])
+		_create_path(sanctuary_zone, Vector3(float(path_center[0]), 0.02, float(path_center[1])), Vector3(float(path_size[0]), 0.08, float(path_size[1])), palette["stone"])
 	_create_building(sanctuary_zone, Vector3(0.0, 0.0, -4.0), "Hearth", palette["wood"], palette["wood_dark"], "wood")
 	_create_guide_npc(sanctuary_zone, Vector3(2.7, 0.0, -2.3))
 	_create_building(sanctuary_zone, Vector3(-7.5, 0.0, -1.5), "Wanderer's Bazaar", palette["sand"], palette["wood_dark"], "sand")
 	_create_trade_stall(sanctuary_zone, Vector3(-6.0, 0.0, -0.1))
 	_create_notice_board(sanctuary_zone, Vector3(-8.2, 0.0, 1.5))
 	_create_pond(sanctuary_zone, Vector3(7.0, 0.08, 5.0))
-	_create_route_gate(sanctuary_zone, "Whisperwood", Vector3(-11.0, 0.0, -5.7), Color("#6fb4a1"))
-	_create_route_gate(sanctuary_zone, "Sunlit Beach", Vector3(-11.0, 0.0, 1.9), Color("#6bc1d0"))
-	_create_route_gate(sanctuary_zone, "Ember Ridge", Vector3(-10.2, 0.0, 6.0), Color("#e28c61"))
-	_create_route_gate(sanctuary_zone, "Glass Desert", Vector3(11.0, 0.0, -5.4), Color("#edbb6f"))
-	_create_route_gate(sanctuary_zone, "Sunken Dungeon", Vector3(11.0, 0.0, 2.0), Color("#a88ce0"))
+	for route_id in ContentRegistry.ROUTE_SOCKETS:
+		var route_socket: Dictionary = ContentRegistry.ROUTE_SOCKETS[route_id]
+		var gate_position: Array = route_socket.get("gate_position", [0.0, 0.0])
+		_create_route_gate(sanctuary_zone, route_id, str(route_socket.get("destination_id", "Unknown")), Vector3(float(gate_position[0]), 0.0, float(gate_position[1])), Color("#" + str(route_socket.get("accent", "ffffff"))))
 	_create_farm_plot(sanctuary_zone, Vector3(-5.5, 0.0, 4.0))
 	_create_livestock_pen(sanctuary_zone, Vector3(-0.2, 0.0, 7.0))
 	_create_workshop(sanctuary_zone, Vector3(6.2, 0.0, -5.6))
-	_create_building(sanctuary_zone, Vector3(-7.0, 0.0, -6.0), "Archive", palette["stone"], palette["wood_dark"], "stone")
-	_create_library_station(sanctuary_zone, Vector3(-5.4, 0.0, -5.2))
+	_create_building(sanctuary_zone, Vector3(-7.0, 0.0, -7.8), "Archive", palette["stone"], palette["wood_dark"], "stone")
+	_create_library_station(sanctuary_zone, Vector3(-5.4, 0.0, -7.0))
 	var sanctuary_tree_positions := [Vector3(-11, 0, -8), Vector3(-8, 0, 7), Vector3(12, 0, 7), Vector3(11, 0, -2), Vector3(-12, 0, 2), Vector3(3, 0, 8)]
 	for index in sanctuary_tree_positions.size():
 		_create_tree(sanctuary_zone, sanctuary_tree_positions[index], 1.0 + float(index % 3) * 0.12, "wood", 2)
@@ -696,19 +704,21 @@ func _build_hud() -> void:
 	right_box.custom_minimum_size = Vector2(238, 0)
 	right_box.add_theme_constant_override("separation", 4)
 	hud_right_scroll.add_child(right_box)
+	pause_button = _button("Pause", _toggle_pause)
+	right_box.add_child(pause_button)
 	destination_button = _button("Destination: Whisperwood", _cycle_expedition)
 	right_box.add_child(destination_button)
 	explore_button = _button("Explore Whisperwood", _enter_selected_expedition)
 	right_box.add_child(explore_button)
 	return_button = _button("Return to Sanctuary", _return_home)
 	right_box.add_child(return_button)
-	var interact_button := _button("Interact  [E]", _interact)
+	interact_button = _button("Interact", _contextual_interact)
 	right_box.add_child(interact_button)
-	var attack_button := _button("Attack  [Space]", func() -> void: _player_attack(player))
+	attack_button = _button("Attack  [Space]", func() -> void: _player_attack(player))
 	right_box.add_child(attack_button)
 	dodge_button = _button("Dodge  [Shift]", _player_dodge)
 	right_box.add_child(dodge_button)
-	var sleep_button := _button("Sleep / Advance Day  [R]", _sleep)
+	sleep_button = _button("Sleep / Advance Day  [R]", _sleep)
 	right_box.add_child(sleep_button)
 	smelt_button = _button("Start Furnace", _toggle_furnace)
 	right_box.add_child(smelt_button)
@@ -726,6 +736,8 @@ func _build_hud() -> void:
 	right_box.add_child(recipe_button)
 	structure_button = _button("Place Rain Cistern  [B]", _toggle_structure_placement)
 	right_box.add_child(structure_button)
+	blueprint_button = _button("Blueprint: Rain Cistern  [N]", _cycle_structure_selection)
+	right_box.add_child(blueprint_button)
 	build_button = _button("Build Workshop", _build_workshop)
 	right_box.add_child(build_button)
 	utilities_button = _button("Open Ledger", _toggle_utilities)
@@ -1041,13 +1053,14 @@ func _create_explorer_tent(parent: Node3D, position: Vector3) -> void:
 	sign.position = Vector3(0, 2.8, 0)
 	tent.add_child(sign)
 
-func _create_route_gate(parent: Node3D, destination: String, position: Vector3, accent: Color) -> void:
+func _create_route_gate(parent: Node3D, route_id: String, destination: String, position: Vector3, accent: Color) -> void:
 	var gate := StationScript.new() as Node3D
 	gate.name = destination.replace(" ", "") + "RouteGate"
 	gate.set("world", self)
 	gate.set("station_id", "route")
 	gate.add_to_group("interactable")
 	gate.add_to_group("route_gate")
+	gate.set_meta("route_id", route_id)
 	gate.set_meta("destination_id", destination)
 	gate.position = position
 	parent.add_child(gate)
@@ -1077,6 +1090,80 @@ func _create_route_gate(parent: Node3D, destination: String, position: Vector3, 
 	route_label.name = "RouteLabel"
 	route_label.position.y = 2.75
 	gate.add_child(route_label)
+	match destination:
+		"Whisperwood":
+			for side in [-1.0, 1.0]:
+				var root := MeshInstance3D.new()
+				var root_mesh := BoxMesh.new()
+				root_mesh.size = Vector3(0.2, 1.45, 0.22)
+				root.mesh = root_mesh
+				root.material_override = _material(palette["leaf_dark"], 0.95)
+				root.position = Vector3(side * 0.58, 0.72, 0.18)
+				root.rotation_degrees.z = side * 28.0
+				gate.add_child(root)
+		"Sunlit Beach":
+			var mast := MeshInstance3D.new()
+			var mast_mesh := CylinderMesh.new()
+			mast_mesh.top_radius = 0.06
+			mast_mesh.bottom_radius = 0.09
+			mast_mesh.height = 2.8
+			mast_mesh.radial_segments = 7
+			mast.mesh = mast_mesh
+			mast.material_override = _material(palette["wood"], 0.95)
+			mast.position = Vector3(0.0, 1.35, 0.22)
+			gate.add_child(mast)
+			var sail := MeshInstance3D.new()
+			var sail_mesh := PrismMesh.new()
+			sail_mesh.size = Vector3(0.85, 0.72, 0.08)
+			sail.mesh = sail_mesh
+			sail.material_override = _material(accent, 0.82)
+			sail.position = Vector3(0.34, 1.85, 0.22)
+			gate.add_child(sail)
+		"Ember Ridge":
+			for index in 3:
+				var basalt := MeshInstance3D.new()
+				var basalt_mesh := CylinderMesh.new()
+				basalt_mesh.top_radius = 0.26
+				basalt_mesh.bottom_radius = 0.42
+				basalt_mesh.height = 0.72 + float(index) * 0.18
+				basalt_mesh.radial_segments = 6
+				basalt.mesh = basalt_mesh
+				basalt.material_override = _material(Color("#4d4b55"), 0.96)
+				basalt.position = Vector3(-0.5 + float(index) * 0.5, basalt_mesh.height * 0.5, 0.25)
+				basalt.rotation_degrees.z = float(index - 1) * 7.0
+				gate.add_child(basalt)
+		"Glass Desert":
+			var shade := MeshInstance3D.new()
+			var shade_mesh := PrismMesh.new()
+			shade_mesh.size = Vector3(2.1, 0.18, 1.15)
+			shade.mesh = shade_mesh
+			shade.material_override = _material(palette["sand"], 0.78)
+			shade.position = Vector3(0.0, 2.0, 0.3)
+			shade.rotation_degrees.z = -9.0
+			gate.add_child(shade)
+			var sun_disk := MeshInstance3D.new()
+			sun_disk.mesh = _sphere_mesh(0.24, 0.48, 8, 5)
+			sun_disk.material_override = _material(accent, 0.32, false, true)
+			sun_disk.position = Vector3(0.0, 2.25, 0.16)
+			gate.add_child(sun_disk)
+		"Sunken Dungeon":
+			for side in [-1.0, 1.0]:
+				var stone_portal := MeshInstance3D.new()
+				var portal_mesh := BoxMesh.new()
+				portal_mesh.size = Vector3(0.42, 2.0, 0.46)
+				stone_portal.mesh = portal_mesh
+				stone_portal.material_override = _material(Color("#59606b"), 0.98)
+				stone_portal.position = Vector3(side * 0.68, 1.0, 0.32)
+				gate.add_child(stone_portal)
+			var rune := MeshInstance3D.new()
+			var rune_mesh := TorusMesh.new()
+			rune_mesh.inner_radius = 0.3
+			rune_mesh.outer_radius = 0.38
+			rune.mesh = rune_mesh
+			rune.material_override = _material(accent, 0.42, false, true)
+			rune.position = Vector3(0.0, 1.42, 0.2)
+			rune.rotation_degrees.x = 90.0
+			gate.add_child(rune)
 
 func _create_tree(parent: Node3D, position: Vector3, size: float, resource_id: String, amount: int) -> Node3D:
 	var tree := ResourceNodeScript.new() as Node3D
@@ -1451,6 +1538,23 @@ func _create_livestock_pen(parent: Node3D, position: Vector3) -> void:
 	animal.set("animal_id", "clover")
 	animal.position = Vector3(0.0, 0.0, 0.2)
 	livestock_pen.add_child(animal)
+	var cow_scene := load("res://assets/sourced/quaternius-farm-animals/Farm Animals by @Quaternius/FBX/Cow.fbx") as PackedScene
+	if cow_scene != null:
+		var sourced_cow := cow_scene.instantiate() as Node3D
+		if sourced_cow != null:
+			sourced_cow.name = "SourcedPaddockCow"
+			sourced_cow.position = Vector3(1.05, 0.0, 0.28)
+			sourced_cow.scale = Vector3.ONE * 0.62
+			livestock_pen.add_child(sourced_cow)
+			var cow_animation := sourced_cow.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			if cow_animation != null:
+				var preferred_clip := ""
+				for candidate_clip in ["Walk", "Armature|Walk", "Idle", "Armature|Idle"]:
+					if cow_animation.has_animation(candidate_clip):
+						preferred_clip = candidate_clip
+						break
+				if not preferred_clip.is_empty():
+					cow_animation.play(preferred_clip)
 	var visual := Node3D.new()
 	visual.name = "Visual"
 	animal.add_child(visual)
@@ -2003,6 +2107,11 @@ func _update_hud() -> void:
 			status_label.text = "Nearby: %s  |  Press E" % nearby_name
 		else:
 			status_label.text = "Gather close to nodes. Press E to interact."
+	if interact_button != null:
+		interact_button.text = "Confirm placement" if placement_mode else "Interact"
+		interact_button.disabled = get_tree().paused
+	if pause_button != null:
+		pause_button.text = "Resume" if get_tree().paused else "Pause"
 	if smelt_button != null:
 		smelt_button.text = "Stop Furnace" if furnace_active else "Start Furnace"
 	var context_node := _nearest_interactable()
@@ -2014,6 +2123,22 @@ func _update_hud() -> void:
 		destination_button.visible = false
 	if return_button != null:
 		return_button.visible = current_zone != "Sanctuary"
+		var extraction_point := Vector3(0.0, 1.0, 7.5)
+		var at_extraction := current_zone != "Sanctuary" and player != null and player.global_position.distance_to(extraction_point) <= 2.8
+		return_button.disabled = not at_extraction
+		return_button.text = "Extract cargo" if at_extraction else "Reach extraction beacon"
+	if attack_button != null:
+		var near_guardian := false
+		if current_zone != "Sanctuary" and player != null:
+			for guardian_node in get_tree().get_nodes_in_group("guardian"):
+				if is_instance_valid(guardian_node) and guardian_node.is_visible_in_tree() and player.global_position.distance_to(guardian_node.global_position) <= 3.8:
+					near_guardian = true
+					break
+		attack_button.visible = near_guardian
+	if sleep_button != null:
+		var at_hearth := current_zone == "Sanctuary" and furnace != null and player != null and player.global_position.distance_to(furnace.global_position) <= 7.0
+		sleep_button.visible = at_hearth
+		sleep_button.disabled = not at_hearth
 	if dodge_button != null:
 		dodge_button.visible = current_zone != "Sanctuary"
 	if farm_button != null:
@@ -2027,7 +2152,7 @@ func _update_hud() -> void:
 	if livestock_button != null:
 		livestock_button.visible = current_zone == "Sanctuary" and context_node == livestock_pen
 		var pen_built := session != null and bool(session.get("built").get("livestock_pen", false))
-		livestock_button.text = "Collect / Feed Clover" if pen_built else "Build Livestock Pen"
+		livestock_button.text = "Collect / Feed Clover" if pen_built else "Place Livestock Pen Blueprint"
 	if repair_button != null:
 		repair_button.visible = current_zone == "Sanctuary" and context_node == workshop
 	if recipe_button != null:
@@ -2035,13 +2160,16 @@ func _update_hud() -> void:
 		recipe_button.text = "Recipe: %s  [Q]" % selected_recipe.capitalize()
 	if structure_button != null:
 		structure_button.visible = current_zone == "Sanctuary"
-		structure_button.text = "Cancel Placement  [B]" if placement_mode else "Place Rain Cistern  [B]"
+		structure_button.text = "Cancel Placement  [B]" if placement_mode else "Place %s  [B]" % _structure_display_name(placement_structure_id)
+	if blueprint_button != null:
+		blueprint_button.visible = current_zone == "Sanctuary"
+		blueprint_button.text = "Blueprint: %s  [N]" % _structure_display_name(placement_structure_id)
 	if build_button != null:
 		build_button.visible = current_zone == "Sanctuary" and context_node == workshop
 		var construction_state := "none"
 		if session != null:
 			construction_state = str(session.get("construction_job").get("status", "none"))
-		build_button.text = "Workshop Built" if session != null and bool(session.get("built").get("workshop", false)) else ("Finish Workshop" if construction_state == "ready" else ("Building... Sleep to advance" if construction_state == "building" else "Build Workshop"))
+		build_button.text = "Workshop Built" if session != null and bool(session.get("built").get("workshop", false)) else ("Finish Workshop" if construction_state == "ready" else ("Building... Sleep to advance" if construction_state == "building" else "Place Workshop Blueprint"))
 	if smelt_button != null:
 		smelt_button.visible = current_zone == "Sanctuary" and furnace != null and player.global_position.distance_to(furnace.global_position) < 5.0
 	if utilities_button != null:
@@ -2104,6 +2232,8 @@ func _nearest_interactable() -> Node:
 	return nearest
 
 func _interact() -> void:
+	if get_tree().paused:
+		return
 	var nearest := _nearest_interactable()
 	if nearest == null:
 		_show_toast("Nothing close enough to interact with.", 1.8)
@@ -2114,19 +2244,36 @@ func _interact() -> void:
 	if nearest.has_method("interact"):
 		nearest.call("interact", player)
 
+func _contextual_interact() -> void:
+	if get_tree().paused:
+		return
+	if placement_mode:
+		_place_structure()
+	else:
+		_interact()
+
 func _construction_interact(structure_node: Node3D) -> void:
 	if structure_node == null or session == null or not structure_node.has_meta("construction_id"):
 		return
 	var instance_id := str(structure_node.get_meta("construction_id"))
 	var structure: Dictionary = session.get("structures").get(instance_id, {})
 	var state := str(structure.get("state", "removed"))
+	var kind := str(structure.get("kind", ""))
 	if state == "operational":
-		_show_toast("Rain Cistern operational. It adds 2 Water at dawn.", 2.4)
+		if kind == "workshop":
+			_workshop_use(structure_node)
+			return
+		if kind == "archive":
+			_library_interact(structure_node)
+			return
+		if kind == "livestock_pen":
+			_livestock_interact(structure_node)
+			return
+		_show_toast("%s operational. %s" % [_structure_display_name(kind), str(ContentRegistry.structure_definition(kind).get("summary", "The building is ready."))], 2.8)
 		return
 	if state == "building":
-		_show_toast("The frame is complete. Sleep to finish the build (%dh remaining)." % int(structure.get("remaining_hours", 0.0)), 2.6)
+		_show_toast("The %s frame is complete. Sleep to finish the build (%dh remaining)." % [_structure_display_name(kind), int(structure.get("remaining_hours", 0.0))], 2.6)
 		return
-	var kind := str(structure.get("kind", ""))
 	var definition := ContentRegistry.structure_definition(kind)
 	var cost: Dictionary = definition.get("cost", {})
 	var delivered: Dictionary = structure.get("delivered_materials", {})
@@ -2149,7 +2296,7 @@ func _construction_interact(structure_node: Node3D) -> void:
 		_refresh_structure_visual(instance_id, delivered_structure)
 		session.call("save_game")
 		if new_state == "building":
-			_show_toast("Scaffold complete. Sleep twice to finish the cistern frame.", 3.0)
+			_show_toast("Scaffold complete. Sleep to finish the %s frame." % _structure_display_name(kind), 3.0)
 		else:
 			_show_toast("Delivered 1 %s. The scaffold now shows the material on site." % str(material_id).capitalize(), 2.0)
 		return
@@ -2378,10 +2525,27 @@ func station_interact(station: Node) -> void:
 		_livestock_interact(station)
 		return
 	if station_id == "library":
-		_library_interact()
+		_library_interact(station)
+		return
+	_workshop_use(station)
+
+func _has_operational_player_structure(kind: String) -> bool:
+	if session == null:
+		return false
+	for structure_id in session.get("structures"):
+		var structure: Dictionary = session.get("structures").get(structure_id, {})
+		if str(structure.get("kind", "")) == kind and str(structure.get("state", "")) == "operational":
+			return true
+	return false
+
+func _workshop_use(source: Node3D = null) -> void:
+	if session == null:
+		return
+	if source == workshop and _has_operational_player_structure("workshop"):
+		_show_toast("This is the old workshop shell. Use the Workshop you placed in the Sanctuary.", 2.6)
 		return
 	if not bool(session.get("built").get("workshop", false)):
-		_show_toast("This is a shell. Build the Workshop before using its station.", 2.5)
+		_show_toast("This is a shell. Place and finish a Workshop blueprint first.", 2.5)
 		return
 	var job: Dictionary = session.get("station_job")
 	if str(job.get("kind", "none")) != "none":
@@ -2475,14 +2639,14 @@ func _livestock_interact(station: Node) -> void:
 	if player.global_position.distance_to(station.global_position) > 2.35:
 		_show_toast("Move closer to Clover's pen first.", 1.8)
 		return
+	if station == livestock_pen and _has_operational_player_structure("livestock_pen"):
+		_show_toast("This is the old pen shell. Use the Livestock Pen you placed in the Sanctuary.", 2.6)
+		return
 	var built_state: Dictionary = session.get("built")
 	if not bool(built_state.get("livestock_pen", false)):
-		if session.call("build_livestock_pen"):
-			_show_toast("Clover's pen is ready. Feed her wheat, then sleep for eggs.", 3.0)
-			_refresh_livestock_visual()
-			session.call("save_game")
-		else:
-			_show_toast("Pen needs 4 Wood + 2 Fiber. A fed resident pays you back over time.", 2.6)
+		placement_structure_id = "livestock_pen"
+		_toggle_structure_placement()
+		_show_toast("Choose a clear place for Clover's pen. Deliver 10 Wood, 6 Fiber, and 2 Planks at the blueprint.", 3.2)
 		return
 	var collected: Dictionary = session.call("collect_livestock", "clover")
 	if not collected.is_empty():
@@ -2555,15 +2719,15 @@ func _bazaar_interact() -> void:
 	_show_toast("Traded %s  |  +%d Coins  |  Trading mastery +8" % [trade_name, payout], 2.8)
 	session.call("save_game")
 
-func _library_interact() -> void:
+func _library_interact(source: Node3D = null) -> void:
+	if source == library_station and _has_operational_player_structure("archive"):
+		_show_toast("This is the old archive shell. Use the Archive you placed in the Sanctuary.", 2.6)
+		return
 	var built: Dictionary = session.get("built")
 	if not bool(built.get("library", false)):
-		if not session.has_method("build_library") or not session.call("build_library"):
-			_show_toast("Archive shell needs 4 Wood + 4 Stone.", 2.4)
-			return
-		_show_toast("The Archive is open. Bring discoveries home to understand them.", 3.0)
-		session.call("save_game")
-		_refresh_station_visual()
+		placement_structure_id = "archive"
+		_toggle_structure_placement()
+		_show_toast("Choose a clear place for the Archive. Deliver 8 Wood, 8 Stone, and 3 Planks at the blueprint.", 3.2)
 		return
 	var next_discovery := ""
 	for discovery_id in session.get("discovered"):
@@ -2640,6 +2804,11 @@ func _build_workshop() -> void:
 	if bool(session.get("built").get("workshop", false)):
 		_show_toast("The Workshop is ready. Press C beside it to craft.", 2.2)
 		return
+	if str(session.get("construction_job").get("status", "none")) == "none":
+		placement_structure_id = "workshop"
+		_toggle_structure_placement()
+		_show_toast("Choose a clear place for the Workshop. Deliver 12 Wood, 8 Stone, and 4 Planks at the blueprint.", 3.2)
+		return
 	var construction_state := str(session.get("construction_job").get("status", "none"))
 	if construction_state == "ready":
 		if session.call("claim_construction"):
@@ -2688,7 +2857,9 @@ func _refresh_station_visual() -> void:
 	if workshop != null:
 		var marker := workshop.get_node_or_null("StationLabel") as Label3D
 		if marker != null:
-			if not bool(session.get("built").get("workshop", false)):
+			if _has_operational_player_structure("workshop"):
+				marker.text = "WORKSHOP\nSTARTER PAD"
+			elif not bool(session.get("built").get("workshop", false)):
 				marker.text = "WORKSHOP\nSHELL"
 			else:
 				var job: Dictionary = session.get("station_job")
@@ -2696,10 +2867,36 @@ func _refresh_station_visual() -> void:
 	if library_station != null:
 		var library_marker := library_station.get_node_or_null("LibraryLabel") as Label3D
 		if library_marker != null:
-			library_marker.text = "ARCHIVE\n" + ("OPEN" if bool(session.get("built").get("library", false)) else "SHELL")
+			library_marker.text = "ARCHIVE\n" + ("STARTER PAD" if _has_operational_player_structure("archive") else ("OPEN" if bool(session.get("built").get("library", false)) else "SHELL"))
+
+func _structure_display_name(structure_id: String) -> String:
+	match structure_id:
+		"rain_cistern": return "Rain Cistern"
+		"workshop": return "Workshop"
+		"archive": return "Archive"
+		"livestock_pen": return "Livestock Pen"
+		"storage_shed": return "Storage Shed"
+	return structure_id.replace("_", " ").capitalize()
+
+func _cycle_structure_selection() -> void:
+	if current_zone != "Sanctuary" or placement_mode:
+		if placement_mode:
+			_show_toast("Cancel the current placement before changing its blueprint.", 2.0)
+		return
+	var structure_ids: Array = ContentRegistry.STRUCTURES.keys()
+	if structure_ids.is_empty():
+		return
+	var current_index := structure_ids.find(placement_structure_id)
+	placement_structure_id = str(structure_ids[(current_index + 1) % structure_ids.size()])
+	var definition := ContentRegistry.structure_definition(placement_structure_id)
+	var cost: Dictionary = definition.get("cost", {})
+	var cost_parts: Array[String] = []
+	for material_id in cost:
+		cost_parts.append("%d %s" % [int(cost[material_id]), str(material_id).capitalize()])
+	_show_toast("Blueprint selected: %s  |  %s" % [_structure_display_name(placement_structure_id), " + ".join(cost_parts)], 2.8)
 
 func _toggle_structure_placement() -> void:
-	if current_zone != "Sanctuary" or session == null:
+	if get_tree().paused or current_zone != "Sanctuary" or session == null:
 		return
 	if placement_mode:
 		placement_mode = false
@@ -2710,11 +2907,11 @@ func _toggle_structure_placement() -> void:
 	for existing_id in session.get("structures"):
 		var existing: Dictionary = session.get("structures").get(existing_id, {})
 		if str(existing.get("kind", "")) == placement_structure_id and str(existing.get("state", "")) != "removed":
-			_show_toast("The rain cistern is already part of this Sanctuary.", 2.0)
+			_show_toast("A %s is already part of this Sanctuary." % _structure_display_name(placement_structure_id), 2.0)
 			return
 	placement_mode = true
 	_update_structure_preview()
-	_show_toast("Place the Rain Cistern on a clear grid cell. Press E to confirm or B to cancel.", 3.0)
+	_show_toast("Place the %s blueprint on a clear grid cell. Press E to confirm or B to cancel." % _structure_display_name(placement_structure_id), 3.0)
 
 func _preview_structure_cell() -> Vector2i:
 	var direction := player.get("last_direction") as Vector3
@@ -2725,7 +2922,9 @@ func _preview_structure_cell() -> Vector2i:
 func _structure_preview_valid(cell: Vector2i) -> bool:
 	if session == null or not session.call("can_place_structure", placement_structure_id, [cell.x, cell.y]):
 		return false
-	for occupied_cell in SettlementGrid.cells_for(cell, Vector2i(2, 2)):
+	var footprint_data: Array = ContentRegistry.structure_definition(placement_structure_id).get("footprint", [1, 1])
+	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+	for occupied_cell in SettlementGrid.cells_for(cell, footprint):
 		if SettlementGrid.cell_to_world(occupied_cell).distance_to(player.global_position) < 1.5:
 			return false
 	return true
@@ -2741,7 +2940,6 @@ func _update_structure_preview() -> void:
 		var ghost := MeshInstance3D.new()
 		ghost.name = "GhostFootprint"
 		var ghost_mesh := BoxMesh.new()
-		ghost_mesh.size = Vector3(2.0, 0.08, 2.0)
 		ghost.mesh = ghost_mesh
 		ghost.position.y = 0.05
 		build_marker.add_child(ghost)
@@ -2751,10 +2949,16 @@ func _update_structure_preview() -> void:
 		build_marker.add_child(ghost_label)
 		add_child(build_marker)
 	var cell := _preview_structure_cell()
-	build_marker.visible = true
-	build_marker.global_position = SettlementGrid.footprint_center_to_world(cell, Vector2i(2, 2))
-	var valid := _structure_preview_valid(cell)
+	var footprint_data: Array = ContentRegistry.structure_definition(placement_structure_id).get("footprint", [1, 1])
+	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
 	var ghost_mesh := build_marker.get_node_or_null("GhostFootprint") as MeshInstance3D
+	if ghost_mesh != null:
+		var footprint_box := ghost_mesh.mesh as BoxMesh
+		if footprint_box != null:
+			footprint_box.size = Vector3(float(footprint.x), 0.08, float(footprint.y))
+	build_marker.visible = true
+	build_marker.global_position = SettlementGrid.footprint_center_to_world(cell, footprint)
+	var valid := _structure_preview_valid(cell)
 	if ghost_mesh != null:
 		ghost_mesh.material_override = _material(palette["leaf"] if valid else palette["danger"], 0.3, true, true)
 	var ghost_label := build_marker.get_node_or_null("GhostLabel") as Label3D
@@ -2762,7 +2966,7 @@ func _update_structure_preview() -> void:
 		ghost_label.text = "PLACE" if valid else "BLOCKED"
 
 func _place_structure() -> void:
-	if not placement_mode or session == null or current_zone != "Sanctuary":
+	if get_tree().paused or not placement_mode or session == null or current_zone != "Sanctuary":
 		return
 	var cell := _preview_structure_cell()
 	if not _structure_preview_valid(cell):
@@ -2770,7 +2974,7 @@ func _place_structure() -> void:
 		return
 	var placed: Dictionary = session.call("place_structure", placement_structure_id, [cell.x, cell.y])
 	if placed.is_empty():
-		_show_toast("Rain Cistern needs 8 Wood + 2 Planks.", 2.5)
+		_show_toast("That blueprint cannot be placed on this footprint.", 2.5)
 		return
 	var instance_id := str(placed.get("id", ""))
 	if not instance_id.is_empty():
@@ -2778,7 +2982,11 @@ func _place_structure() -> void:
 	placement_mode = false
 	if build_marker != null:
 		build_marker.visible = false
-	_show_toast("Cistern scaffolding placed. Sleep twice to finish construction; it will collect water each day.", 3.0)
+	var definition := ContentRegistry.structure_definition(placement_structure_id)
+	var cost_parts: Array[String] = []
+	for material_id in definition.get("cost", {}):
+		cost_parts.append("%d %s" % [int(definition["cost"][material_id]), str(material_id).capitalize()])
+	_show_toast("%s blueprint placed. Deliver %s at the site, then sleep to finish the frame." % [_structure_display_name(placement_structure_id), " + ".join(cost_parts)], 3.4)
 	session.call("save_game")
 
 func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
@@ -2793,13 +3001,18 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	structure.name = instance_id
 	structure.add_to_group("interactable")
 	structure.set_meta("construction_id", instance_id)
-	var footprint_data: Array = ContentRegistry.structure_definition(str(data.get("kind", "rain_cistern"))).get("footprint", [1, 1])
-	structure.position = SettlementGrid.footprint_center_to_world(Vector2i(int(cell_data[0]), int(cell_data[1])), Vector2i(int(footprint_data[0]), int(footprint_data[1])))
+	var kind := str(data.get("kind", "rain_cistern"))
+	structure.set_meta("structure_kind", kind)
+	var footprint_data: Array = ContentRegistry.structure_definition(kind).get("footprint", [1, 1])
+	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+	var footprint_width := maxf(1.8, float(footprint.x) - 0.2)
+	var footprint_depth := maxf(1.8, float(footprint.y) - 0.2)
+	structure.position = SettlementGrid.footprint_center_to_world(Vector2i(int(cell_data[0]), int(cell_data[1])), footprint)
 	sanctuary_zone.add_child(structure)
 	var base := MeshInstance3D.new()
 	base.name = "CisternBase"
 	var base_mesh := BoxMesh.new()
-	base_mesh.size = Vector3(1.8, 0.22, 1.8)
+	base_mesh.size = Vector3(footprint_width, 0.22, footprint_depth)
 	base.mesh = base_mesh
 	base.material_override = _material(palette["stone"], 0.96)
 	base.position.y = 0.11
@@ -2807,9 +3020,9 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var scaffold := Node3D.new()
 	scaffold.name = "ScaffoldFrame"
 	structure.add_child(scaffold)
-	for offset in [Vector3(-0.72, 0.55, -0.72), Vector3(0.72, 0.55, -0.72), Vector3(-0.72, 0.55, 0.72), Vector3(0.72, 0.55, 0.72)]:
+	for offset in [Vector3(-footprint_width * 0.42, 0.55, -footprint_depth * 0.42), Vector3(footprint_width * 0.42, 0.55, -footprint_depth * 0.42), Vector3(-footprint_width * 0.42, 0.55, footprint_depth * 0.42), Vector3(footprint_width * 0.42, 0.55, footprint_depth * 0.42)]:
 		var post := MeshInstance3D.new()
-		post.name = "CisternPost"
+		post.name = "StructurePost"
 		var post_mesh := BoxMesh.new()
 		post_mesh.size = Vector3(0.14, 1.05, 0.14)
 		post.mesh = post_mesh
@@ -2822,10 +3035,10 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 		var log := MeshInstance3D.new()
 		log.name = "Log_%d" % index
 		var log_mesh := BoxMesh.new()
-		log_mesh.size = Vector3(1.05, 0.16, 0.18)
+		log_mesh.size = Vector3(minf(footprint_width * 0.68, 2.2), 0.16, 0.18)
 		log.mesh = log_mesh
 		log.material_override = _material(palette["wood"], 0.92)
-		log.position = Vector3(-0.7 + float(index) * 0.18, 0.22 + float(index) * 0.18, 1.03)
+		log.position = Vector3(-footprint_width * 0.34 + float(index) * 0.18, 0.22 + float(index) * 0.18, footprint_depth * 0.48)
 		delivered_logs.add_child(log)
 	structure.add_child(delivered_logs)
 	var delivered_planks := Node3D.new()
@@ -2834,10 +3047,10 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 		var plank := MeshInstance3D.new()
 		plank.name = "Plank_%d" % index
 		var plank_mesh := BoxMesh.new()
-		plank_mesh.size = Vector3(0.9, 0.08, 0.24)
+		plank_mesh.size = Vector3(minf(footprint_width * 0.6, 2.0), 0.08, 0.24)
 		plank.mesh = plank_mesh
 		plank.material_override = _material(palette["wood"].lightened(0.12), 0.92)
-		plank.position = Vector3(1.0, 0.22 + float(index) * 0.12, -0.7 + float(index) * 0.24)
+		plank.position = Vector3(footprint_width * 0.48, 0.22 + float(index) * 0.12, -footprint_depth * 0.3 + float(index) * 0.24)
 		delivered_planks.add_child(plank)
 	structure.add_child(delivered_planks)
 	var tank := MeshInstance3D.new()
@@ -2849,19 +3062,39 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var roof := MeshInstance3D.new()
 	roof.name = "CisternRoof"
 	var roof_mesh := PrismMesh.new()
-	roof_mesh.size = Vector3(2.0, 0.22, 2.0)
+	roof_mesh.size = Vector3(footprint_width + 0.2, 0.22, footprint_depth + 0.2)
 	roof.mesh = roof_mesh
 	roof.material_override = _material(palette["wood"], 0.9)
 	roof.position.y = 1.35
 	structure.add_child(roof)
-	var label := _label3d("CISTERN", 0.17, palette["cream"])
+	var label := _label3d(_structure_display_name(kind).to_upper(), 0.17, palette["cream"])
 	label.name = "StructureLabel"
 	label.position.y = 1.75
 	structure.add_child(label)
+	var finished_walls := Node3D.new()
+	finished_walls.name = "FinishedWalls"
+	var wall_color: Color = palette["stone"] if kind == "archive" else palette["wood"]
+	for wall_data in [
+		[Vector3(0.0, 0.66, -footprint_depth * 0.46), Vector3(footprint_width * 0.86, 1.1, 0.12)],
+		[Vector3(-footprint_width * 0.43, 0.66, 0.0), Vector3(0.12, 1.1, footprint_depth * 0.86)],
+		[Vector3(footprint_width * 0.43, 0.66, 0.0), Vector3(0.12, 1.1, footprint_depth * 0.86)],
+	]:
+		var wall := MeshInstance3D.new()
+		var wall_mesh := BoxMesh.new()
+		wall_mesh.size = wall_data[1]
+		wall.mesh = wall_mesh
+		wall.material_override = _material(wall_color, 0.94)
+		wall.position = wall_data[0]
+		finished_walls.add_child(wall)
+	structure.add_child(finished_walls)
+	var utility := Node3D.new()
+	utility.name = "StructureUtility"
+	structure.add_child(utility)
+	_create_structure_utility_visual(utility, kind, footprint_width, footprint_depth)
 	var body := StaticBody3D.new()
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(1.8, 1.2, 1.8)
+	shape.size = Vector3(footprint_width, 1.2, footprint_depth)
 	collision.shape = shape
 	collision.position.y = 0.6
 	body.add_child(collision)
@@ -2869,37 +3102,98 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	settlement_visuals[instance_id] = structure
 	_refresh_structure_visual(instance_id, data)
 
+func _create_structure_utility_visual(parent: Node3D, kind: String, width: float, depth: float) -> void:
+	match kind:
+		"workshop":
+			var bench := MeshInstance3D.new()
+			var bench_mesh := BoxMesh.new()
+			bench_mesh.size = Vector3(minf(width * 0.7, 2.2), 0.32, 0.58)
+			bench.mesh = bench_mesh
+			bench.material_override = _material(palette["wood_dark"], 0.96)
+			bench.position = Vector3(0.0, 0.5, depth * 0.1)
+			parent.add_child(bench)
+			var anvil := MeshInstance3D.new()
+			anvil.mesh = _sphere_mesh(0.22, 0.42, 8, 4)
+			anvil.material_override = _material(palette["stone"], 0.98)
+			anvil.position = Vector3(-width * 0.25, 0.78, depth * 0.1)
+			parent.add_child(anvil)
+		"archive":
+			for side in [-1.0, 1.0]:
+				var shelf := MeshInstance3D.new()
+				var shelf_mesh := BoxMesh.new()
+				shelf_mesh.size = Vector3(0.22, 1.15, depth * 0.68)
+				shelf.mesh = shelf_mesh
+				shelf.material_override = _material(palette["wood_dark"], 0.96)
+				shelf.position = Vector3(side * width * 0.32, 0.72, 0.0)
+				parent.add_child(shelf)
+			var table := MeshInstance3D.new()
+			var table_mesh := BoxMesh.new()
+			table_mesh.size = Vector3(width * 0.46, 0.12, depth * 0.35)
+			table.mesh = table_mesh
+			table.material_override = _material(palette["wood"], 0.92)
+			table.position.y = 0.62
+			parent.add_child(table)
+		"livestock_pen":
+			var trough := MeshInstance3D.new()
+			var trough_mesh := BoxMesh.new()
+			trough_mesh.size = Vector3(width * 0.42, 0.26, 0.42)
+			trough.mesh = trough_mesh
+			trough.material_override = _material(palette["wood_dark"], 0.96)
+			trough.position = Vector3(0.0, 0.34, -depth * 0.18)
+			parent.add_child(trough)
+		"storage_shed":
+			var crate := MeshInstance3D.new()
+			var crate_mesh := BoxMesh.new()
+			crate_mesh.size = Vector3(width * 0.34, 0.68, depth * 0.42)
+			crate.mesh = crate_mesh
+			crate.material_override = _material(palette["wood"], 0.96)
+			crate.position = Vector3(0.0, 0.46, 0.0)
+			parent.add_child(crate)
+
 func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var structure: Node3D = settlement_visuals.get(instance_id)
 	if not is_instance_valid(structure):
 		return
+	var kind := str(data.get("kind", "rain_cistern"))
+	var display_name := _structure_display_name(kind).to_upper()
 	var state := str(data.get("state", "building"))
+	var definition := ContentRegistry.structure_definition(kind)
+	var cost: Dictionary = definition.get("cost", {})
 	var delivered: Dictionary = data.get("delivered_materials", {})
 	var wood_delivered := int(delivered.get("wood", 0))
 	var plank_delivered := int(delivered.get("plank", 0))
 	var label := structure.get_node_or_null("StructureLabel") as Label3D
 	if label != null:
 		if state == "operational":
-			label.text = "CISTERN\nOPERATIONAL"
+			label.text = "%s\nOPERATIONAL" % display_name
 		elif state == "building":
-			label.text = "CISTERN\nFRAME %dh" % int(data.get("remaining_hours", 0.0))
+			label.text = "%s\nFRAME %dh" % [display_name, int(data.get("remaining_hours", 0.0))]
 		else:
-			label.text = "CISTERN BLUEPRINT\nWOOD %d/8  PLANK %d/2" % [wood_delivered, plank_delivered]
+			var material_parts: Array[String] = []
+			for material_id in cost:
+				material_parts.append("%s %d/%d" % [str(material_id).to_upper(), int(delivered.get(str(material_id), 0)), int(cost[material_id])])
+			label.text = "%s BLUEPRINT\n%s" % [display_name, "  ".join(material_parts)]
 	var tank := structure.get_node_or_null("CisternTank") as MeshInstance3D
 	if tank != null:
-		tank.visible = state == "operational"
+		tank.visible = kind == "rain_cistern" and state == "operational"
 	var roof := structure.get_node_or_null("CisternRoof") as MeshInstance3D
 	if roof != null:
 		roof.visible = state == "operational"
+	var utility := structure.get_node_or_null("StructureUtility") as Node3D
+	if utility != null:
+		utility.visible = kind != "rain_cistern" and state == "operational"
+	var finished_walls := structure.get_node_or_null("FinishedWalls") as Node3D
+	if finished_walls != null:
+		finished_walls.visible = state == "operational"
 	var scaffold := structure.get_node_or_null("ScaffoldFrame") as Node3D
 	if scaffold != null:
-		scaffold.visible = wood_delivered > 0 or state in ["building", "operational"]
+		scaffold.visible = state == "building" or (state == "blueprint" and wood_delivered > 0)
 	var delivered_logs := structure.get_node_or_null("DeliveredLogs") as Node3D
 	if delivered_logs != null:
-		delivered_logs.visible = wood_delivered > 0
+		delivered_logs.visible = state != "operational" and wood_delivered > 0
 	var delivered_planks := structure.get_node_or_null("DeliveredPlanks") as Node3D
 	if delivered_planks != null:
-		delivered_planks.visible = plank_delivered > 0
+		delivered_planks.visible = state != "operational" and plank_delivered > 0
 	var base := structure.get_node_or_null("CisternBase") as MeshInstance3D
 	if base != null:
 		base.material_override = _material(palette["stone"] if state != "blueprint" else palette["violet"], 0.96 if state != "blueprint" else 0.48, state == "blueprint", state == "blueprint")
@@ -2957,13 +3251,14 @@ func _route_gate_interact(station: Node) -> void:
 	_enter_selected_expedition(station)
 
 func _enter_selected_expedition(route_gate: Node = null) -> void:
-	if current_zone != "Sanctuary":
+	if get_tree().paused or current_zone != "Sanctuary":
 		return
 	var gate := route_gate if route_gate != null else _nearest_route_gate()
 	if gate == null or not gate.has_meta("destination_id"):
 		_show_toast("Choose a destination by walking to one of the five route gates.", 2.8)
 		return
 	selected_expedition = str(gate.get_meta("destination_id"))
+	var before_start: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
 	if session == null or not session.call("start_expedition", selected_expedition):
 		var entry_cost := ContentRegistry.expedition_entry_coins(selected_expedition)
 		_show_toast("You need %d coins and enough energy for this route. Rest or trade before leaving." % entry_cost if entry_cost > 0 else "You need a full breath before another expedition. Rest at the Hearth.", 2.8)
@@ -2972,21 +3267,33 @@ func _enter_selected_expedition(route_gate: Node = null) -> void:
 	_set_zone(selected_expedition)
 	_restore_active_expedition_nodes()
 	_sync_expedition_anchor()
-	session.call("save_game")
+	if not bool(session.call("save_game")):
+		if not before_start.is_empty():
+			session.call("restore_state", before_start)
+		_set_zone("Sanctuary")
+		_copy_session_to_runtime()
+		_show_toast("The route could not be secured to disk. You remain at the Sanctuary gate.", 3.0)
+		return
 	var flavor: String = "%s  |  %s" % [selected_expedition, str(ContentRegistry.EXPEDITIONS.get(selected_expedition, {}).get("summary", "The road opens."))]
 	_show_toast(flavor, 3.0)
 
 func _return_home() -> void:
-	if current_zone == "Sanctuary":
+	if get_tree().paused or current_zone == "Sanctuary":
 		return
 	var extraction_point := Vector3(0.0, 1.0, 7.5)
 	if player == null or player.global_position.distance_to(extraction_point) > 2.8:
 		_show_toast("Reach the expedition beacon before extracting your cargo.", 2.5)
 		return
 	_sync_expedition_anchor()
+	var before_extract: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
 	if session != null and session.has_method("finish_expedition"):
 		session.call("finish_expedition")
-		session.call("save_game")
+		if not bool(session.call("save_game")):
+			if not before_extract.is_empty():
+				session.call("restore_state", before_extract)
+			_copy_session_to_runtime()
+			_show_toast("Extraction could not be secured to disk. Your cargo remains in the run.", 3.0)
+			return
 	_set_zone("Sanctuary")
 	_copy_session_to_runtime()
 	expedition_loot = {}
@@ -3084,14 +3391,18 @@ func _zone_background(zone: String) -> Color:
 	return Color("#8fc1bf")
 
 func _sleep() -> void:
+	if get_tree().paused:
+		return
 	if current_zone != "Sanctuary":
 		_show_toast("You need to be home before you can sleep.", 2.0)
 		return
 	if furnace != null and player.global_position.distance_to(furnace.global_position) > 7.0:
 		_show_toast("Rest at the Hearth to advance the day.", 2.2)
 		return
-	if session != null:
-		session.call("advance_day", day + 1)
+	var before_sleep: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
+	if session == null or not bool(session.call("advance_day", day + 1)):
+		_show_toast("The Hearth cannot advance the day from this saved state. Save or reload before trying again.", 2.8)
+		return
 	_copy_session_to_runtime()
 	for node in get_tree().get_nodes_in_group("resource_node"):
 		if is_instance_valid(node) and node.has_method("restore"):
@@ -3106,8 +3417,22 @@ func _sleep() -> void:
 	_restore_recovery_pack()
 	_refresh_farm_plot()
 	_refresh_station_visual()
-	if session != null:
-		session.call("save_game")
+	_refresh_structure_visuals()
+	if not bool(session.call("save_game")):
+		if not before_sleep.is_empty():
+			session.call("restore_state", before_sleep)
+		_copy_session_to_runtime()
+		_refresh_farm_plot()
+		_refresh_station_visual()
+		_refresh_structure_visuals()
+		_restore_active_expedition_nodes()
+		for pack in get_tree().get_nodes_in_group("recovery_pack"):
+			if is_instance_valid(pack):
+				pack.queue_free()
+		recovery_loot = {}
+		_restore_recovery_pack()
+		_show_toast("The day could not be secured to disk. Nothing was consumed; try sleeping again.", 3.0)
+		return
 	_show_toast("Day %d begins softly. Crops, jobs, and the forest have refreshed." % day, 3.0)
 
 func _toggle_furnace() -> void:
@@ -3122,7 +3447,7 @@ func _toggle_weather() -> void:
 	_show_toast("The weather follows the day cycle: %s. Prepare supplies before leaving." % forecast.capitalize(), 2.6)
 
 func _player_dodge() -> void:
-	if current_zone == "Sanctuary" or player == null:
+	if get_tree().paused or current_zone == "Sanctuary" or player == null:
 		return
 	if not bool(player.call("can_dodge")):
 		_show_toast("Dodge is still recovering.", 1.0)
@@ -3137,7 +3462,7 @@ func _player_dodge() -> void:
 		_show_toast("Dodge", 0.55)
 
 func _player_attack(_actor: Node) -> void:
-	if attack_cooldown > 0.0 or pending_attack_target != null:
+	if get_tree().paused or attack_cooldown > 0.0 or pending_attack_target != null:
 		return
 	attack_cooldown = 0.42
 	var target: Node = null

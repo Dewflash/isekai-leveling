@@ -12,6 +12,26 @@ const EXPEDITIONS := {
 	"Sunken Dungeon": {"travel_energy": 0, "entry_coins": 30, "surface": "stone", "summary": "A fixed challenge of relics, veinstone, and an armored dead."},
 }
 
+## One authoritative definition for the physical Sanctuary trailheads. The
+## world renderer owns presentation, while the session owns placement safety;
+## both read these same sockets so player construction cannot seal a road that
+## the scene still presents as usable.
+const ROUTE_SOCKETS := {
+	"whisperwood": {"destination_id": "Whisperwood", "gate_position": [-11.0, -5.7], "path_center": [-7.2, -5.7], "path_size": [9.0, 1.0], "approach_rect": [-13, -7, -9, -3], "spoke_rect": [-12, -6, -2, -5], "accent": "6fb4a1"},
+	"sunlit_beach": {"destination_id": "Sunlit Beach", "gate_position": [-11.0, 1.9], "path_center": [-7.2, 1.9], "path_size": [9.0, 1.0], "approach_rect": [-13, 0, -9, 3], "spoke_rect": [-12, 1, -2, 2], "accent": "6bc1d0"},
+	"ember_ridge": {"destination_id": "Ember Ridge", "gate_position": [-10.2, 6.0], "path_center": [-6.8, 6.0], "path_size": [8.0, 1.0], "approach_rect": [-12, 4, -8, 7], "spoke_rect": [-11, 5, -2, 6], "accent": "e28c61"},
+	"glass_desert": {"destination_id": "Glass Desert", "gate_position": [11.0, -5.4], "path_center": [9.2, -5.4], "path_size": [6.0, 1.0], "approach_rect": [9, -7, 13, -3], "spoke_rect": [6, -6, 13, -5], "accent": "edbb6f"},
+	"sunken_dungeon": {"destination_id": "Sunken Dungeon", "gate_position": [11.0, 2.0], "path_center": [9.2, 2.0], "path_size": [6.0, 1.0], "approach_rect": [9, 0, 13, 4], "spoke_rect": [6, 1, 13, 2], "accent": "a88ce0"},
+}
+
+const ROUTE_RESERVED_RECTS := [
+	[-13, -7, -9, -3], [-12, -6, -2, -5],
+	[-13, 0, -9, 3], [-12, 1, -2, 2],
+	[-12, 4, -8, 7], [-11, 5, -2, 6],
+	[9, -7, 13, -3], [6, -6, 13, -5],
+	[9, 0, 13, 4], [6, 1, 13, 2],
+]
+
 const DISCOVERIES := {
 	"Whisperglass": {"blueprint": "Whisperglass Tonic", "grant": "tonic_recipe", "summary": "A resonant forest growth that holds a night's warmth."},
 	"Tideglass": {"blueprint": "Tideglass Compass", "grant": "safe_tides", "summary": "A shell that points toward safe water and hidden coves."},
@@ -42,6 +62,10 @@ const TRADE_OFFERS := [
 
 const STRUCTURES := {
 	"rain_cistern": {"footprint": [2, 2], "cost": {"wood": 8, "plank": 2}, "hours": 24.0, "summary": "Collects two extra water at each new day."},
+	"workshop": {"footprint": [3, 3], "cost": {"wood": 12, "stone": 8, "plank": 4}, "hours": 36.0, "summary": "A player-placed workshop for turning supplies into useful goods."},
+	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "summary": "A player-placed archive for researching discoveries."},
+	"livestock_pen": {"footprint": [4, 3], "cost": {"wood": 10, "fiber": 6, "plank": 2}, "hours": 24.0, "summary": "A player-placed pen that gives livestock a safe home."},
+	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "summary": "A sturdy player-placed shed for future storage upgrades."},
 }
 
 static func expedition_cost(expedition_id: String) -> int:

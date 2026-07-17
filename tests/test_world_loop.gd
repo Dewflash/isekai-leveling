@@ -11,6 +11,9 @@ func _enter_route(world: Node, destination: String) -> void:
 	assert(gate != null)
 	world.call("_set_zone", "Sanctuary")
 	assert(get_nodes_in_group("route_gate").size() == 5)
+	world.player.global_position = Vector3(0.0, 1.0, 0.0)
+	world.call("_route_gate_interact", gate)
+	assert(world.get("current_zone") == "Sanctuary")
 	world.player.global_position = gate.global_position + Vector3(0.0, 1.0, 0.0)
 	world.call("_interact")
 	assert(world.get("current_zone") == destination)
@@ -27,6 +30,22 @@ func _run() -> void:
 	root.add_child(world)
 	await process_frame
 	var session: Node = world.get("session")
+	assert(world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow") != null)
+	var paddock_cow := world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow")
+	var paddock_animation := paddock_cow.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	assert(paddock_animation != null and (paddock_animation.is_playing() or paddock_animation.current_animation == "Armature|Walk"))
+	var paused_day := int(session.get("day"))
+	world.call("_toggle_pause")
+	world.call("_sleep")
+	world.call("_contextual_interact")
+	assert(int(session.get("day")) == paused_day)
+	world.call("_toggle_pause")
+	world.player.global_position = world.furnace.global_position
+	var save_failure_day := int(session.get("day"))
+	session.save_blocked = true
+	world.call("_sleep")
+	assert(int(session.get("day")) == save_failure_day)
+	session.save_blocked = false
 	session.expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
 	session.recovery_pack = {}
 	session.energy = 24
@@ -56,7 +75,7 @@ func _run() -> void:
 	world.player.global_position = Vector3(3.0, 1.0, 7.0)
 	world.call("_toggle_structure_placement")
 	world.call("_update_structure_preview")
-	world.call("_place_structure")
+	world.call("_contextual_interact")
 	assert(session.get("structures").size() == 1)
 	var placed_id := str(session.get("structures").keys()[0])
 	var placed_visual: Node3D = world.get("settlement_visuals").get(placed_id)
@@ -126,6 +145,13 @@ func _run() -> void:
 	assert(int(session.get("inventory").get("slime_gel", 0)) == 0)
 	world.player.global_position = Vector3(0.0, 1.0, 7.5)
 	world.call("_return_home")
+	assert(world.get("current_zone") == "Sanctuary")
+	session.energy = 24
+	_enter_route(world, "Ember Ridge")
+	assert(world.get("current_zone") == "Ember Ridge")
+	world.player.global_position = Vector3(0.0, 1.0, 7.5)
+	world.call("_return_home")
+	assert(world.get("current_zone") == "Sanctuary")
 	session.energy = 24
 	_enter_route(world, "Glass Desert")
 	assert(world.get("current_zone") == "Glass Desert")

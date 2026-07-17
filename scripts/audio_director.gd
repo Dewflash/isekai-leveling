@@ -29,6 +29,8 @@ var sampled_cursor := 0
 var music_streams: Dictionary = {}
 var current_music := ""
 
+const RPG_AUDIO_ROOT := "res://assets/sourced/kenney-rpg-audio/Audio/"
+
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		audio_enabled = false
@@ -63,12 +65,29 @@ func _load_sampled_assets() -> void:
 	# Kenney's CC0 recordings provide recognizable foley while the procedural
 	# layers continue to carry weather, wind, and dynamic world tone.
 	sampled_streams = {
-		"step": load("res://assets/sourced/kenney-rpg-audio/Audio/footstep00.ogg"),
-		"gather_wood": load("res://assets/sourced/kenney-rpg-audio/Audio/chop.ogg"),
-		"hit": load("res://assets/sourced/kenney-rpg-audio/Audio/knifeSlice.ogg"),
-		"discovery": load("res://assets/sourced/kenney-rpg-audio/Audio/bookOpen.ogg"),
-		"quest": load("res://assets/sourced/kenney-rpg-audio/Audio/handleCoins.ogg"),
-		"craft": load("res://assets/sourced/kenney-rpg-audio/Audio/metalPot1.ogg"),
+		"step_grass": load(RPG_AUDIO_ROOT + "footstep01.ogg"),
+		"step_dirt": load(RPG_AUDIO_ROOT + "footstep03.ogg"),
+		"step_sand": load(RPG_AUDIO_ROOT + "footstep05.ogg"),
+		"step_stone": load(RPG_AUDIO_ROOT + "footstep07.ogg"),
+		"step_wood": load(RPG_AUDIO_ROOT + "footstep09.ogg"),
+		"step": load(RPG_AUDIO_ROOT + "footstep00.ogg"),
+		"gather_wood": load(RPG_AUDIO_ROOT + "chop.ogg"),
+		"gather_stone": load(RPG_AUDIO_ROOT + "metalClick.ogg"),
+		"gather_ore": load(RPG_AUDIO_ROOT + "metalPot2.ogg"),
+		"gather_fiber": load(RPG_AUDIO_ROOT + "cloth1.ogg"),
+		"gather_shell": load(RPG_AUDIO_ROOT + "handleSmallLeather.ogg"),
+		"gather_sunstone": load(RPG_AUDIO_ROOT + "metalPot3.ogg"),
+		"gather_water": load(RPG_AUDIO_ROOT + "handleSmallLeather2.ogg"),
+		"hit": load(RPG_AUDIO_ROOT + "knifeSlice.ogg"),
+		"discovery": load(RPG_AUDIO_ROOT + "bookOpen.ogg"),
+		"quest": load(RPG_AUDIO_ROOT + "handleCoins.ogg"),
+		"craft": load(RPG_AUDIO_ROOT + "metalPot1.ogg"),
+		"build": load(RPG_AUDIO_ROOT + "creak1.ogg"),
+		"repair": load(RPG_AUDIO_ROOT + "metalClick.ogg"),
+		"collect": load(RPG_AUDIO_ROOT + "handleSmallLeather2.ogg"),
+		"eat": load(RPG_AUDIO_ROOT + "metalPot3.ogg"),
+		"drink": load(RPG_AUDIO_ROOT + "metalPot2.ogg"),
+		"dodge": load(RPG_AUDIO_ROOT + "clothBelt.ogg"),
 		"ui": load("res://assets/sourced/kenney-interface-sounds/Audio/click_001.ogg"),
 	}
 	for index in 4:
@@ -119,11 +138,11 @@ func play_action(kind: String) -> void:
 	sfx_time = 0.24 if kind == "hit" else (0.28 if kind in ["discovery", "quest", "camp"] else (0.18 if kind.begins_with("step") else 0.16))
 	phases["sfx"] = 0.0
 	var sampled_key := kind
-	if kind.begins_with("step"):
+	if kind.begins_with("step") and not sampled_streams.has(kind):
 		sampled_key = "step"
 	elif kind.begins_with("gather_") and not sampled_streams.has(kind):
-		sampled_key = "gather_wood" if kind == "gather_wood" else "ui"
-	elif kind in ["repair", "collect", "eat", "drink", "camp"]:
+		sampled_key = "gather_wood"
+	elif kind in ["camp", "gather_prepare"]:
 		sampled_key = "craft"
 	var sampled = sampled_streams.get(sampled_key)
 	if sampled is AudioStream and not sampled_players.is_empty():
