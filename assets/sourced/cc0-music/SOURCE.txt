@@ -1,0 +1,14 @@
+Prodewty CC0 music source record
+
+Source page:
+https://opengameart.org/content/two-simple-game-music-loops
+
+License:
+CC0 1.0 dedication as published by the author on the source page.
+
+Files copied into this project:
+- sanctuary-loop.ogg
+- expedition-loop.ogg
+
+The checksums for these files are recorded in ASSET_MANIFEST.md and
+ASSET_LICENSES.md.

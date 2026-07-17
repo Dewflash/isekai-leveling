@@ -1,0 +1,85 @@
+class_name ProdewtyResourceNode
+extends Node3D
+
+var world: Node
+var resource_id := "wood"
+var resource_amount := 2
+var resource_label := "Wood"
+var discovery_id := ""
+var node_id := ""
+var depleted := false
+var zone_active := true
+var required_contacts := 1
+var contacts := 0
+
+func interact(_actor: Node) -> void:
+	if depleted or not visible:
+		return
+	if world != null and world.has_method("is_resource_depleted") and world.is_resource_depleted(self):
+		depleted = true
+		visible = false
+		_set_collision_enabled(false)
+		return
+	if world != null and world.has_method("begin_resource_action"):
+		world.begin_resource_action(self)
+		return
+	if world != null and world.has_method("collect_resource"):
+		var collected: bool = world.collect_resource(self)
+		if collected:
+			depleted = true
+			visible = false
+			_set_collision_enabled(false)
+
+func restore() -> void:
+	depleted = false
+	contacts = 0
+	_refresh_contact_label()
+	visible = zone_active
+	_set_collision_enabled(zone_active)
+
+func set_zone_active(active: bool) -> void:
+	zone_active = active
+	visible = active and not depleted
+	_set_collision_enabled(active and not depleted)
+
+func set_depleted_from_save(value: bool) -> void:
+	depleted = value
+	contacts = required_contacts if value else 0
+	_refresh_contact_label()
+	visible = zone_active and not depleted
+	_set_collision_enabled(zone_active and not depleted)
+
+func set_contact_progress(value: int) -> void:
+	if depleted:
+		return
+	contacts = clampi(value, 0, required_contacts)
+	_refresh_contact_label()
+
+func apply_contact() -> bool:
+	if depleted:
+		return false
+	contacts = mini(required_contacts, contacts + 1)
+	_refresh_contact_label()
+	return contacts >= required_contacts
+
+func _refresh_contact_label() -> void:
+	var stage := get_node_or_null("ResourceStage") as Label3D
+	if stage != null and required_contacts > 1:
+		stage.text = "%s\n%d / %d" % [resource_label.to_upper(), contacts, required_contacts]
+
+func complete_depletion() -> void:
+	depleted = true
+	contacts = required_contacts
+	visible = false
+	_set_collision_enabled(false)
+
+func _set_collision_enabled(enabled: bool) -> void:
+	for child in get_children():
+		if child is CollisionShape3D:
+			child.disabled = not enabled
+		if child is StaticBody3D:
+			child.collision_layer = 1 if enabled else 0
+			child.collision_mask = 1 if enabled else 0
+			for shape in child.get_children():
+				if shape is CollisionShape3D:
+					shape.disabled = not enabled
