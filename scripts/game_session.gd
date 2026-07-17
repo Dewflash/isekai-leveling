@@ -10,7 +10,7 @@ const SettlementGrid = preload("res://scripts/settlement_grid.gd")
 signal state_changed
 signal feedback_requested(kind: String, payload: Dictionary)
 
-const SAVE_VERSION := 7
+const SAVE_VERSION := 8
 const CONTENT_VERSION := 1
 const SAVE_PATH := "user://prodewty_save.json"
 const BACKUP_PATH := "user://prodewty_save.backup.json"
@@ -1389,6 +1389,15 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 					old_structure["remaining_hours"] = 0.0
 				old_structures[old_id] = old_structure
 			data["structures"] = old_structures
+	if version < 8:
+		var rotation_structures: Variant = data.get("structures", {})
+		if rotation_structures is Dictionary:
+			for structure_id in rotation_structures:
+				var structure: Variant = rotation_structures.get(structure_id, {})
+				if structure is Dictionary and not structure.has("rotation"):
+					structure["rotation"] = 0
+				rotation_structures[structure_id] = structure
+			data["structures"] = rotation_structures
 	if not data.has("unlocked_routes"):
 		# Saves from before route gating already exposed every expedition. Preserve
 		# that player's access; only a truly new session starts at Whisperwood.
@@ -1507,6 +1516,7 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 				return false
 	var structures_data: Variant = data.get("structures", {})
 	var occupied_saved_cells := {}
+	var unique_saved_kinds := {}
 	if structures_data is Dictionary:
 		for structure_id in structures_data:
 			var structure: Variant = structures_data.get(structure_id, {})
@@ -1517,6 +1527,10 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 			var structure_state := str(structure.get("state", ""))
 			if not ContentRegistry.STRUCTURES.has(kind) or not (structure_cell is Array) or structure_cell.size() != 2 or structure_state not in ["blueprint", "building", "operational"]:
 				return false
+			if _structure_is_unique(kind):
+				if unique_saved_kinds.has(kind):
+					return false
+				unique_saved_kinds[kind] = true
 			if not _valid_integer(structure_cell[0], SettlementGrid.MIN_X, SettlementGrid.MAX_X) or not _valid_integer(structure_cell[1], SettlementGrid.MIN_Z, SettlementGrid.MAX_Z):
 				return false
 			if structure.has("rotation") and not _valid_integer(structure.get("rotation", 0), 0, 3):
@@ -1537,8 +1551,7 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 				for material_id in structure_cost:
 					if int(delivered_materials.get(str(material_id), 0)) != int(structure_cost[material_id]):
 						return false
-			var footprint_data: Array = ContentRegistry.structure_definition(kind).get("footprint", [1, 1])
-			var cells := SettlementGrid.cells_for(Vector2i(int(structure_cell[0]), int(structure_cell[1])), Vector2i(int(footprint_data[0]), int(footprint_data[1])))
+			var cells := _structure_cells(kind, Vector2i(int(structure_cell[0]), int(structure_cell[1])), int(structure.get("rotation", 0)))
 			if not SettlementGrid.inside_bounds(cells):
 				return false
 			for cell in cells:

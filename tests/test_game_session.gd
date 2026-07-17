@@ -81,9 +81,10 @@ func _init() -> void:
 	var duplicate_structures := SessionScript.new()
 	duplicate_structures.save_slot = "qa_duplicate_structures"
 	root.add_child(duplicate_structures)
+	duplicate_structures.blueprints.append("Tideglass Compass")
 	duplicate_structures.structures = {
-		"rain_cistern_legacy_a": {"id": "rain_cistern_legacy_a", "kind": "rain_cistern", "cell": [11, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 8, "plank": 2}},
-		"rain_cistern_legacy_b": {"id": "rain_cistern_legacy_b", "kind": "rain_cistern", "cell": [8, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 8, "plank": 2}},
+		"storage_shed_legacy_a": {"id": "storage_shed_legacy_a", "kind": "storage_shed", "cell": [11, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
+		"storage_shed_legacy_b": {"id": "storage_shed_legacy_b", "kind": "storage_shed", "cell": [7, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
 	}
 	assert(duplicate_structures.save_game())
 	var duplicate_loaded := SessionScript.new()
@@ -91,6 +92,14 @@ func _init() -> void:
 	root.add_child(duplicate_loaded)
 	assert(duplicate_loaded.load_game())
 	assert(duplicate_loaded.structures.size() == 2)
+	var unique_duplicate := SessionScript.new()
+	unique_duplicate.save_slot = "qa_unique_duplicate"
+	root.add_child(unique_duplicate)
+	unique_duplicate.structures = {
+		"rain_cistern_duplicate_a": {"id": "rain_cistern_duplicate_a", "kind": "rain_cistern", "cell": [11, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 8, "plank": 2}},
+		"rain_cistern_duplicate_b": {"id": "rain_cistern_duplicate_b", "kind": "rain_cistern", "cell": [8, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 8, "plank": 2}},
+	}
+	assert(not unique_duplicate.save_game())
 	# Expedition cargo is isolated from banked inventory and survives a reload.
 	var expedition := SessionScript.new()
 	expedition.save_slot = "qa_expedition"
@@ -604,6 +613,12 @@ func _init() -> void:
 	assert(storage_session.can_place_structure("storage_shed", [10, 7], 1))
 	var rotated_storage: Dictionary = storage_session.place_structure("storage_shed", [10, 7], 1)
 	assert(int(rotated_storage.get("rotation", -1)) == 1)
+	assert(storage_session.save_game())
+	var rotated_loaded := SessionScript.new()
+	rotated_loaded.save_slot = "qa_storage_shed"
+	root.add_child(rotated_loaded)
+	assert(rotated_loaded.load_game())
+	assert(int(rotated_loaded.structures[rotated_storage["id"]].get("rotation", -1)) == 1)
 	assert(storage_session.start_expedition("Whisperwood"))
 	for cargo_index in 16:
 		assert(storage_session.collect_expedition_resource("storage-cargo-%d" % cargo_index, "wood", 1))
