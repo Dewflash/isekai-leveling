@@ -3040,6 +3040,7 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
 	var footprint_width := maxf(1.8, float(footprint.x) - 0.2)
 	var footprint_depth := maxf(1.8, float(footprint.y) - 0.2)
+	var structure_height := 1.65 if kind in ["rain_cistern", "livestock_pen"] else 2.05
 	structure.position = SettlementGrid.footprint_center_to_world(Vector2i(int(cell_data[0]), int(cell_data[1])), footprint)
 	sanctuary_zone.add_child(structure)
 	var base := MeshInstance3D.new()
@@ -3053,11 +3054,11 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var scaffold := Node3D.new()
 	scaffold.name = "ScaffoldFrame"
 	structure.add_child(scaffold)
-	for offset in [Vector3(-footprint_width * 0.42, 0.55, -footprint_depth * 0.42), Vector3(footprint_width * 0.42, 0.55, -footprint_depth * 0.42), Vector3(-footprint_width * 0.42, 0.55, footprint_depth * 0.42), Vector3(footprint_width * 0.42, 0.55, footprint_depth * 0.42)]:
+	for offset in [Vector3(-footprint_width * 0.42, structure_height * 0.5, -footprint_depth * 0.42), Vector3(footprint_width * 0.42, structure_height * 0.5, -footprint_depth * 0.42), Vector3(-footprint_width * 0.42, structure_height * 0.5, footprint_depth * 0.42), Vector3(footprint_width * 0.42, structure_height * 0.5, footprint_depth * 0.42)]:
 		var post := MeshInstance3D.new()
 		post.name = "StructurePost"
 		var post_mesh := BoxMesh.new()
-		post_mesh.size = Vector3(0.14, 1.05, 0.14)
+		post_mesh.size = Vector3(0.14, structure_height, 0.14)
 		post.mesh = post_mesh
 		post.material_override = _material(palette["wood_dark"], 0.9)
 		post.position = offset
@@ -3098,19 +3099,19 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	roof_mesh.size = Vector3(footprint_width + 0.2, 0.22, footprint_depth + 0.2)
 	roof.mesh = roof_mesh
 	roof.material_override = _material(palette["wood"], 0.9)
-	roof.position.y = 1.35
+	roof.position.y = structure_height + 0.28
 	structure.add_child(roof)
 	var label := _label3d(_structure_display_name(kind).to_upper(), 0.17, palette["cream"])
 	label.name = "StructureLabel"
-	label.position.y = 1.75
+	label.position.y = structure_height + 0.65
 	structure.add_child(label)
 	var finished_walls := Node3D.new()
 	finished_walls.name = "FinishedWalls"
 	var wall_color: Color = palette["stone"] if kind == "archive" else palette["wood"]
 	for wall_data in [
-		[Vector3(0.0, 0.66, -footprint_depth * 0.46), Vector3(footprint_width * 0.86, 1.1, 0.12)],
-		[Vector3(-footprint_width * 0.43, 0.66, 0.0), Vector3(0.12, 1.1, footprint_depth * 0.86)],
-		[Vector3(footprint_width * 0.43, 0.66, 0.0), Vector3(0.12, 1.1, footprint_depth * 0.86)],
+		[Vector3(0.0, 0.11 + structure_height * 0.5, -footprint_depth * 0.46), Vector3(footprint_width * 0.86, structure_height, 0.12)],
+		[Vector3(-footprint_width * 0.43, 0.11 + structure_height * 0.5, 0.0), Vector3(0.12, structure_height, footprint_depth * 0.86)],
+		[Vector3(footprint_width * 0.43, 0.11 + structure_height * 0.5, 0.0), Vector3(0.12, structure_height, footprint_depth * 0.86)],
 	]:
 		var wall := MeshInstance3D.new()
 		var wall_mesh := BoxMesh.new()
@@ -3127,9 +3128,9 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var body := StaticBody3D.new()
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(footprint_width, 1.2, footprint_depth)
+	shape.size = Vector3(footprint_width, structure_height + 0.22, footprint_depth)
 	collision.shape = shape
-	collision.position.y = 0.6
+	collision.position.y = 0.11 + (structure_height + 0.22) * 0.5
 	body.add_child(collision)
 	structure.add_child(body)
 	settlement_visuals[instance_id] = structure
