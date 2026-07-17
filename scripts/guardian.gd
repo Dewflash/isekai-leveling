@@ -77,13 +77,22 @@ func take_damage(amount: int) -> void:
 	if world != null and world.has_method("combat_feedback"):
 		world.combat_feedback(self, amount)
 	if health <= 0:
-		visible = false
-		set_physics_process(false)
-		var collision := get_node_or_null("CollisionShape3D") as CollisionShape3D
-		if collision != null:
-			collision.disabled = true
+		var reward_resolved := true
 		if world != null and world.has_method("guardian_defeated"):
-			world.guardian_defeated(self)
+			reward_resolved = bool(world.call("guardian_defeated", self))
+		if reward_resolved:
+			visible = false
+			set_physics_process(false)
+			var collision := get_node_or_null("CollisionShape3D") as CollisionShape3D
+			if collision != null:
+				collision.disabled = true
+		else:
+			# A full satchel is a recoverable tactical state, not a silently
+			# deleted guardian reward. Leave the enemy standing at one HP so the
+			# player can extract, make room, and finish the encounter.
+			health = 1
+			attack_cooldown = 1.0
+			alerted = false
 
 func restore() -> void:
 	health = max_health
@@ -119,7 +128,8 @@ func set_defeated_from_save(value: bool) -> void:
 		velocity = Vector3.ZERO
 		set_active(false)
 	else:
-		if health <= 0:
-			health = max_health
+		# Only defeated IDs are persisted. A failed full-satchel reward can leave
+		# the encounter at one HP for this run, but a later run respawns it whole.
+		health = max_health
 		visible = true
 		set_active(zone_active)

@@ -52,6 +52,7 @@ var build_marker: Node3D
 var furnace_active := false
 var current_zone := "Sanctuary"
 var selected_expedition := "Whisperwood"
+var route_gate_unlock_signature := ""
 var day := 1
 var hour := 10.0
 var weather := "clear"
@@ -325,6 +326,7 @@ func _build_world() -> void:
 		_create_tree(sanctuary_zone, sanctuary_tree_positions[index], 1.0 + float(index % 3) * 0.12, "wood", 2)
 	for position in [Vector3(-5, 0, 5), Vector3(4, 0, 6), Vector3(9, 0, 1), Vector3(-10, 0, -5)]:
 		_create_flower_patch(sanctuary_zone, position, palette["leaf"])
+	_dress_sanctuary_edges(sanctuary_zone)
 	_create_fiber_patch(sanctuary_zone, Vector3(-4.0, 0.0, 6.0))
 	forest_zone = Node3D.new()
 	forest_zone.name = "Whisperwood"
@@ -350,6 +352,7 @@ func _build_world() -> void:
 	_create_rock(beach_zone, Vector3(-5, 0, 2), "stone", 1)
 	_create_rock(beach_zone, Vector3(6, 0, -4), "shell", 1, "Shell Fragment")
 	_create_shell_discovery(beach_zone, Vector3(4.0, 0.0, 2.5))
+	_create_shell_discovery(beach_zone, Vector3(-7.0, 0.0, -4.4), "SunlitBeach:TideglassShell:pool")
 	_create_guardian(beach_zone, Vector3(-6.0, 0.9, -4.0), "tide_wraith", Color("#5eb6bd"))
 	_create_camp_site(beach_zone, Vector3(9.0, 0.0, -6.0), "TIDE CAMP")
 	world_zones.append(beach_zone)
@@ -364,7 +367,7 @@ func _build_world() -> void:
 	desert_zone = _create_expedition_zone("Glass Desert", Color("#c58b62"), Color("#9b674f"), Color("#d66f57"))
 	_create_cactus(desert_zone, Vector3(-8, 0, -6))
 	_create_cactus(desert_zone, Vector3(7, 0, 3))
-	_create_rock(desert_zone, Vector3(-2, 0, 6), "ore", 1, "Sunstone Ore")
+	_create_rock(desert_zone, Vector3(-2, 0, 6), "sunstone", 1, "Sunstone")
 	_create_rock(desert_zone, Vector3(9, 0, -7), "stone", 1)
 	_create_guardian(desert_zone, Vector3(-5.0, 0.9, 4.5), "dune_wisp", Color("#e6ad61"))
 	_create_camp_site(desert_zone, Vector3(8.0, 0.0, -5.5), "DUNE CAMP")
@@ -399,6 +402,8 @@ func _create_expedition_zone(zone_name: String, ground_color: Color, path_color:
 		"Ember Ridge": _create_ridge_landmarks(zone)
 		"Glass Desert": _create_desert_landmarks(zone)
 		"Sunken Dungeon": _create_dungeon_landmarks(zone)
+	_create_map_identity(zone, zone_name, accent)
+	_create_expedition_route_landmarks(zone, zone_name, accent)
 	return zone
 
 func _create_whisperwood_landmarks(parent: Node3D) -> void:
@@ -444,6 +449,8 @@ func _create_whisperwood_landmarks(parent: Node3D) -> void:
 	branch_label.name = "BranchChoiceLabel"
 	branch_label.position = Vector3(0.0, 1.92, 0.0)
 	branch_marker.add_child(branch_label)
+	_create_route_barrier(route, Vector3(-3.35, 0.0, -2.72), "grove", Color("#6f8f71"))
+	_create_route_barrier(route, Vector3(3.45, 0.0, -2.72), "clearing", Color("#956c61"))
 	_create_whisper_cache(route, Vector3(-8.2, 0.0, -4.8), "grove", "FERN GROVE CACHE", Color("#8fcf9a"))
 	_create_whisper_cache(route, Vector3(8.0, 0.0, -5.0), "clearing", "GUARDIAN CACHE", Color("#d58b9c"))
 	var shortcut := Node3D.new()
@@ -463,6 +470,48 @@ func _create_whisperwood_landmarks(parent: Node3D) -> void:
 		_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Grass_Common_Tall.gltf", 0.34, position)
 	_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Pine_3.gltf", 0.62, Vector3(-12.0, 0.08, -6.0))
 	_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Pine_3.gltf", 0.54, Vector3(11.5, 0.08, 1.5))
+
+func _create_route_barrier(parent: Node3D, position: Vector3, blocked_branch: String, accent: Color) -> void:
+	var barrier := StaticBody3D.new()
+	barrier.name = "WhisperwoodBarrier_" + blocked_branch.capitalize()
+	barrier.set_meta("blocked_branch", blocked_branch)
+	barrier.position = position
+	barrier.visible = false
+	var wall := MeshInstance3D.new()
+	wall.name = "BarrierWall"
+	var wall_mesh := BoxMesh.new()
+	wall_mesh.size = Vector3(5.05, 1.9, 0.38)
+	wall.mesh = wall_mesh
+	wall.material_override = _material(accent, 0.9)
+	wall.position.y = 0.95
+	barrier.add_child(wall)
+	for side in [-1.0, 1.0]:
+		var post := MeshInstance3D.new()
+		post.name = "BarrierPost_%s" % side
+		var post_mesh := CylinderMesh.new()
+		post_mesh.top_radius = 0.13
+		post_mesh.bottom_radius = 0.18
+		post_mesh.height = 2.25
+		post_mesh.radial_segments = 7
+		post.mesh = post_mesh
+		post.material_override = _material(palette["wood_dark"], 0.96)
+		post.position = Vector3(side * 2.15, 1.12, 0.0)
+		barrier.add_child(post)
+	var vine := MeshInstance3D.new()
+	vine.name = "BarrierVine"
+	vine.mesh = _sphere_mesh(0.22, 0.9, 8, 5)
+	vine.material_override = _material(accent.lightened(0.15), 0.82, false, true)
+	vine.position = Vector3(0.0, 1.22, -0.2)
+	vine.scale = Vector3(4.4, 0.55, 0.45)
+	barrier.add_child(vine)
+	var collision := CollisionShape3D.new()
+	collision.name = "BarrierCollision"
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(5.05, 1.9, 0.38)
+	collision.shape = shape
+	collision.position.y = 0.95
+	barrier.add_child(collision)
+	parent.add_child(barrier)
 
 func _create_whisper_cache(parent: Node3D, position: Vector3, branch_id: String, label_text: String, accent: Color) -> void:
 	var cache := StationScript.new() as Node3D
@@ -504,6 +553,16 @@ func _refresh_whisperwood_route() -> void:
 		var branch_label := branch_marker.get_node_or_null("BranchChoiceLabel") as Label3D
 		if branch_label != null:
 			branch_label.text = "OLD TRAIL MARKER\nCHOOSE A BRANCH" if branch_id.is_empty() else ("GROVE CHOSEN" if branch_id == "grove" else "CLEARING CHOSEN")
+	for barrier_node in route.get_children():
+		var barrier := barrier_node as StaticBody3D
+		if barrier == null or not barrier.has_meta("blocked_branch"):
+			continue
+		var blocked_branch := str(barrier.get_meta("blocked_branch", ""))
+		var blocked := active and not branch_id.is_empty() and blocked_branch != branch_id
+		barrier.visible = blocked
+		var collision := barrier.get_node_or_null("BarrierCollision") as CollisionShape3D
+		if collision != null:
+			collision.disabled = not blocked
 	for cache_node in route.get_children():
 		var cache := cache_node as Node3D
 		if cache == null or str(cache.get("station_id")) != "whisper_cache":
@@ -616,6 +675,215 @@ func _create_dungeon_landmarks(parent: Node3D) -> void:
 	altar.position = Vector3(0.0, 0.24, -6.0)
 	parent.add_child(altar)
 
+func _create_map_identity(parent: Node3D, route_id: String, accent: Color) -> void:
+	# These authored silhouettes make each destination readable before the HUD
+	# tells the player where they are. They are deliberately assembled from the
+	# licensed CC0 nature kit plus simple toon geometry, so the map can keep its
+	# cozy anime language without becoming a wall of debug labels.
+	var identity := Node3D.new()
+	identity.name = "MapIdentity"
+	identity.set_meta("route_id", route_id)
+	parent.add_child(identity)
+	var title := _label3d("", 0.17, palette["cream"])
+	title.name = "IdentityTitle"
+	title.position = Vector3(0.0, 1.15, 6.0)
+	identity.add_child(title)
+	match route_id:
+		"Sunlit Beach":
+			title.text = "TIDE LINE\nREAD THE WATER"
+			_create_path(identity, Vector3(0.0, 0.055, -8.0), Vector3(29.0, 0.06, 4.5), Color("#3eabb4"))
+			for index in 7:
+				var foam := MeshInstance3D.new()
+				foam.name = "TideFoam_%d" % index
+				foam.mesh = _sphere_mesh(1.25, 0.05, 12, 4)
+				foam.material_override = _material(Color("#d9f3df"), 0.25, false, true)
+				foam.scale = Vector3(1.6, 1.0, 0.32)
+				foam.position = Vector3(-11.5 + float(index) * 3.8, 0.12, -6.9 + sin(float(index)) * 0.25)
+				identity.add_child(foam)
+				animated_water.append(foam)
+			for position in [Vector3(-10.8, 0.08, -5.6), Vector3(-4.6, 0.08, -6.2), Vector3(5.8, 0.08, -5.8), Vector3(10.4, 0.08, -6.4)]:
+				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Wide.gltf", 0.28, position)
+			for position in [Vector3(-8.6, 0.08, -4.6), Vector3(7.6, 0.08, -4.9)]:
+				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/Flower_4_Group.gltf", 0.34, position)
+		"Ember Ridge":
+			title.text = "EMBER RIDGE\nFOLLOW THE HOT STONE"
+			for index in 5:
+				var cliff := Node3D.new()
+				cliff.name = "RidgeOutcrop_%d" % index
+				cliff.position = Vector3(-12.0 + float(index) * 6.0, 0.0, -7.5 + float(index % 2) * 14.0)
+				identity.add_child(cliff)
+				_add_sourced_model(cliff, "res://assets/quaternius-stylized-nature/glTF/Rock_Medium_%d.gltf" % (2 + index % 2), 0.52 + float(index % 2) * 0.12, Vector3.ZERO)
+			var heat_marker := _label3d("ASHFALL\nSTAY MOVING", 0.14, Color("#ffd39e"))
+			heat_marker.position = Vector3(0.0, 0.58, -6.4)
+			identity.add_child(heat_marker)
+			for position in [Vector3(-1.6, 0.08, -6.5), Vector3(7.2, 0.08, 5.4)]:
+				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/Rock_Medium_3.gltf", 0.34, position)
+		"Glass Desert":
+			title.text = "GLASS DESERT\nCHASE THE SHADE"
+			for position in [Vector3(-10.0, 0.08, -2.0), Vector3(11.0, 0.08, 5.5), Vector3(0.0, 0.08, 7.0)]:
+				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/DeadTree_4.gltf", 0.52, position)
+			for index in 5:
+				var heat := MeshInstance3D.new()
+				heat.name = "HeatShimmer_%d" % index
+				heat.mesh = _sphere_mesh(0.42, 1.6, 8, 5)
+				heat.material_override = _material(Color("#ffd08c"), 0.38, false, true)
+				heat.position = Vector3(-8.0 + float(index) * 4.0, 0.8, 5.6 - float(index % 2) * 8.0)
+				heat.scale = Vector3(0.35, 1.0, 0.35)
+				identity.add_child(heat)
+				animated_beacons.append(heat)
+			for position in [Vector3(-4.6, 0.08, -4.8), Vector3(5.4, 0.08, -4.4), Vector3(8.8, 0.08, 2.7)]:
+				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Thin.gltf", 0.42, position)
+		"Sunken Dungeon":
+			title.text = "SUNKEN DUNGEON\nKEEP THE TORCHES LIT"
+			_create_path(identity, Vector3(0.0, 0.055, -7.9), Vector3(25.0, 0.06, 3.8), Color("#344452"))
+			for index in 6:
+				var torch := MeshInstance3D.new()
+				torch.name = "DungeonTorch_%d" % index
+				torch.mesh = _sphere_mesh(0.18, 0.48, 8, 5)
+				torch.material_override = _material(Color("#ffc07d"), 0.3, false, true)
+				torch.position = Vector3(-10.0 + float(index) * 4.0, 1.65, -7.1)
+				identity.add_child(torch)
+				animated_beacons.append(torch)
+			for position in [Vector3(-10.5, 0.08, 0.8), Vector3(10.5, 0.08, -0.8), Vector3(-6.2, 0.08, 6.2), Vector3(6.2, 0.08, 6.2)]:
+				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Wide.gltf", 0.38, position)
+
+func _create_route_pressure_visual(parent: Node3D, route_id: String, accent: Color) -> void:
+	var pressure := Node3D.new()
+	pressure.name = "RoutePressure"
+	pressure.visible = false
+	parent.add_child(pressure)
+	var ring := MeshInstance3D.new()
+	ring.name = "PressureRing"
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 0.62
+	ring_mesh.outer_radius = 0.78
+	ring.mesh = ring_mesh
+	ring.material_override = _material(accent.lightened(0.18), 0.25, false, true)
+	ring.position = Vector3(0.0, 0.12, 0.0)
+	pressure.add_child(ring)
+	var label := _label3d("", 0.14, palette["cream"])
+	label.name = "PressureLabel"
+	label.position = Vector3(0.0, 0.95, 0.0)
+	pressure.add_child(label)
+	pressure.set_meta("route_id", route_id)
+
+func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent: Color) -> void:
+	# Every non-forest expedition gets the same readable spatial language as the
+	# Whisperwood fork: an entry marker, two visible approaches, a physical
+	# blocker, and a branch capstone. The content table decides what the branch
+	# means; this function only authors the player-facing space.
+	var route := Node3D.new()
+	route.name = "ExpeditionRoute"
+	route.set_meta("route_id", route_id)
+	parent.add_child(route)
+	_create_route_pressure_visual(route, route_id, accent)
+	_create_path(route, Vector3(0.0, 0.045, -1.9), Vector3(3.4, 0.07, 1.0), accent.darkened(0.18))
+	_create_path(route, Vector3(-3.5, 0.045, -2.85), Vector3(5.8, 0.07, 1.0), accent.darkened(0.26))
+	_create_path(route, Vector3(3.5, 0.045, -2.85), Vector3(5.8, 0.07, 1.0), accent.darkened(0.26))
+	var options: Array = ContentRegistry.expedition_branch_ids(route_id)
+	if options.size() < 2:
+		return
+	var marker := StationScript.new() as Node3D
+	marker.name = "RouteChoiceMarker"
+	marker.set("world", self)
+	marker.set("station_id", "map_branch")
+	marker.set_meta("route_id", route_id)
+	marker.add_to_group("interactable")
+	marker.position = Vector3(0.0, 0.0, -1.9)
+	route.add_child(marker)
+	for side in [-1.0, 1.0]:
+		_structure_box(marker, "ChoicePost_%s" % side, Vector3(0.16, 1.55, 0.16), Vector3(side * 1.25, 0.78, 0.0), accent.darkened(0.4))
+	_structure_box(marker, "ChoiceBeam", Vector3(2.7, 0.16, 0.16), Vector3(0.0, 1.48, 0.0), accent.darkened(0.4))
+	var marker_label := _label3d("ROUTE FORK\nCHOOSE A TRAIL", 0.15, palette["cream"])
+	marker_label.name = "RouteChoiceLabel"
+	marker_label.position = Vector3(0.0, 1.92, 0.0)
+	marker.add_child(marker_label)
+	for index in 2:
+		var branch_id := str(options[index])
+		var definition: Dictionary = ContentRegistry.expedition_route_definition(route_id, branch_id)
+		var side := -1.0 if index == 0 else 1.0
+		_create_route_barrier(route, Vector3(side * 3.45, 0.0, -2.85), branch_id, accent if index == 0 else accent.lightened(0.16))
+		var barrier := route.get_node_or_null("WhisperwoodBarrier_" + branch_id.capitalize()) as StaticBody3D
+		if barrier != null:
+			barrier.name = "RouteBarrier_" + branch_id.capitalize()
+		var capstone := StationScript.new() as Node3D
+		capstone.name = "RouteCapstone_" + branch_id.capitalize()
+		capstone.set("world", self)
+		capstone.set("station_id", "map_capstone")
+		capstone.set_meta("route_id", route_id)
+		capstone.set_meta("route_branch", branch_id)
+		capstone.add_to_group("interactable")
+		capstone.position = Vector3(side * 8.1, 0.0, -4.8)
+		route.add_child(capstone)
+		_structure_box(capstone, "CapstoneStone", Vector3(1.2, 0.45, 1.0), Vector3(0.0, 0.24, 0.0), palette["stone"])
+		_structure_box(capstone, "CapstoneSigil", Vector3(0.55, 0.10, 0.18), Vector3(0.0, 0.62, 0.0), accent)
+		var capstone_label := _label3d(str(definition.get("label", branch_id.to_upper())) + "\nOBJECTIVE", 0.15, palette["cream"])
+		capstone_label.name = "CapstoneLabel"
+		capstone_label.position = Vector3(0.0, 1.18, 0.0)
+		capstone.add_child(capstone_label)
+	var route_title := _label3d(route_id.to_upper() + "\nTWO TRAILS, ONE RETURN", 0.14, palette["cream"])
+	route_title.name = "RouteTitle"
+	route_title.position = Vector3(0.0, 1.8, -0.8)
+	route.add_child(route_title)
+
+func _refresh_expedition_routes() -> void:
+	if session == null:
+		return
+	for zone in [beach_zone, mountain_zone, desert_zone, dungeon_zone]:
+		if zone == null:
+			continue
+		var route := zone.get_node_or_null("ExpeditionRoute") as Node3D
+		if route == null:
+			continue
+		var route_id := str(route.get_meta("route_id", ""))
+		var run: Dictionary = session.get("expedition_run")
+		var active := str(run.get("status", "none")) == "active" and str(run.get("biome_id", "")) == route_id
+		var branch_id := str(run.get("branch_id", ""))
+		var objective_complete := bool(run.get("objective_complete", false))
+		var objective_progress := int(run.get("objective_progress", 0))
+		var objective_target := int(run.get("objective_target", 0))
+		var objective_counter := "%d/%d" % [objective_progress, objective_target] if objective_target > 0 else "—"
+		var route_title := route.get_node_or_null("RouteTitle") as Label3D
+		if route_title != null:
+			route_title.text = route_id.to_upper() + ("\nCHOOSE A TRAIL" if active and branch_id.is_empty() else ("\nCAPSTONE READY %s" % objective_counter if active and objective_complete else ("\nOBJECTIVE %s" % objective_counter if active else "\nTWO TRAILS, ONE RETURN")))
+		var pressure := route.get_node_or_null("RoutePressure") as Node3D
+		if pressure != null:
+			var pressure_active := active and bool(run.get("stake_active", false))
+			pressure.visible = pressure_active
+			var pressure_label := pressure.get_node_or_null("PressureLabel") as Label3D
+			if pressure_label != null:
+				var pressure_copy := {
+					"Sunlit Beach": "TIDE RISING  |  RETURN",
+					"Ember Ridge": "ASHFALL  |  RETURN",
+					"Glass Desert": "HEAT BUILDING  |  RETURN",
+					"Sunken Dungeon": "WATER RISING  |  RETURN",
+				}
+				pressure_label.text = str(pressure_copy.get(route_id, "THE ROUTE IS SHIFTING  |  RETURN"))
+		var choice_marker := route.get_node_or_null("RouteChoiceMarker") as Node3D
+		if choice_marker != null:
+			choice_marker.visible = active and branch_id.is_empty()
+			var choice_label := choice_marker.get_node_or_null("RouteChoiceLabel") as Label3D
+			if choice_label != null:
+				choice_label.text = "ROUTE FORK\nCHOOSE A TRAIL" if branch_id.is_empty() else "ROUTE COMMITTED\n" + branch_id.to_upper()
+		for child in route.get_children():
+			var barrier := child as StaticBody3D
+			if barrier != null and barrier.has_meta("blocked_branch"):
+				var blocked_branch := str(barrier.get_meta("blocked_branch", ""))
+				var blocked := active and not branch_id.is_empty() and blocked_branch != branch_id
+				barrier.visible = blocked
+				var collision := barrier.get_node_or_null("BarrierCollision") as CollisionShape3D
+				if collision != null:
+					collision.disabled = not blocked
+			var capstone := child as Node3D
+			if capstone == null or str(capstone.get("station_id")) != "map_capstone":
+				continue
+			var capstone_branch := str(capstone.get_meta("route_branch", ""))
+			capstone.visible = active and (branch_id.is_empty() or capstone_branch == branch_id)
+			var capstone_label := capstone.get_node_or_null("CapstoneLabel") as Label3D
+			if capstone_label != null:
+				var definition := ContentRegistry.expedition_route_definition(route_id, capstone_branch)
+				capstone_label.text = str(definition.get("label", capstone_branch.to_upper())) + ("\nCLAIM CAPSTONE" if objective_complete and capstone_branch == branch_id and not bool(run.get("cache_claimed", false)) else ("\nSECURED" if bool(run.get("cache_claimed", false)) and capstone_branch == branch_id else ("\nOBJECTIVE %s" % objective_counter)))
+
 func _build_player() -> void:
 	player = PlayerScript.new() as CharacterBody3D
 	player.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -632,10 +900,14 @@ func _build_player() -> void:
 	visual.name = "Visual"
 	player.add_child(visual)
 	var body := MeshInstance3D.new()
-	body.mesh = _sphere_mesh(0.54, 1.35, 12, 8)
+	var body_mesh := CapsuleMesh.new()
+	body_mesh.radius = 0.34
+	body_mesh.height = 1.12
+	body_mesh.radial_segments = 10
+	body_mesh.rings = 4
+	body.mesh = body_mesh
 	body.material_override = _material(Color("#d98467"), 0.82)
-	body.scale = Vector3(1.0, 1.15, 1.0)
-	body.position.y = 0.86
+	body.position.y = 1.02
 	visual.add_child(body)
 	var head := MeshInstance3D.new()
 	head.mesh = _sphere_mesh(0.42, 0.84, 12, 8)
@@ -659,6 +931,41 @@ func _build_player() -> void:
 	cloak.material_override = _material(Color("#425d72"), 0.88)
 	cloak.position = Vector3(0.0, 1.03, 0.35)
 	visual.add_child(cloak)
+	for limb_data in [["LegLeft", -0.18, Color("#496579")], ["LegRight", 0.18, Color("#496579")]]:
+		var leg := Node3D.new()
+		leg.name = str(limb_data[0])
+		leg.position = Vector3(float(limb_data[1]), 0.58, 0.0)
+		var leg_mesh := CapsuleMesh.new()
+		leg_mesh.radius = 0.12
+		leg_mesh.height = 0.68
+		leg_mesh.radial_segments = 8
+		leg_mesh.rings = 3
+		var leg_visual := MeshInstance3D.new()
+		leg_visual.mesh = leg_mesh
+		leg_visual.material_override = _material(limb_data[2], 0.86)
+		leg_visual.position.y = -0.12
+		leg.add_child(leg_visual)
+		var boot := MeshInstance3D.new()
+		boot.mesh = _sphere_mesh(0.15, 0.22, 8, 4)
+		boot.material_override = _material(palette["wood_dark"], 0.9)
+		boot.position = Vector3(0.0, -0.43, -0.08)
+		leg.add_child(boot)
+		visual.add_child(leg)
+	for limb_data in [["ArmLeft", -0.42, Color("#d98467")], ["ArmRight", 0.42, Color("#d98467")]]:
+		var arm := Node3D.new()
+		arm.name = str(limb_data[0])
+		arm.position = Vector3(float(limb_data[1]), 1.38, 0.0)
+		var arm_mesh := CapsuleMesh.new()
+		arm_mesh.radius = 0.105
+		arm_mesh.height = 0.65
+		arm_mesh.radial_segments = 8
+		arm_mesh.rings = 3
+		var arm_visual := MeshInstance3D.new()
+		arm_visual.mesh = arm_mesh
+		arm_visual.material_override = _material(limb_data[2], 0.84)
+		arm_visual.position.y = -0.28
+		arm.add_child(arm_visual)
+		visual.add_child(arm)
 	var weapon_rig := Node3D.new()
 	weapon_rig.name = "WeaponRig"
 	weapon_rig.position = Vector3(0.58, 1.17, -0.12)
@@ -913,6 +1220,19 @@ func _create_path(parent: Node3D, position: Vector3, size: Vector3, color: Color
 	mesh_instance.position = position
 	parent.add_child(mesh_instance)
 
+func _dress_sanctuary_edges(parent: Node3D) -> void:
+	# Break the rectangular path edges with sourced CC0 ground cover while
+	# keeping the walkable centre open for readable Last-Day-on-Earth scale.
+	for position in [Vector3(-9.5, 0.02, -5.0), Vector3(-6.8, 0.02, 6.2), Vector3(5.2, 0.02, 6.5), Vector3(10.0, 0.02, 2.4), Vector3(-10.4, 0.02, 1.0), Vector3(2.9, 0.02, 7.0)]:
+		_add_sourced_model(parent, "res://assets/quaternius-stylized-nature/glTF/Grass_Common_Short.gltf", 0.28, position)
+	for position in [Vector3(-9.0, 0.02, -5.6), Vector3(-7.9, 0.02, 5.7), Vector3(5.8, 0.02, 6.0), Vector3(10.4, 0.02, 1.3)]:
+		_add_sourced_model(parent, "res://assets/quaternius-stylized-nature/glTF/Fern_1.gltf", 0.34, position)
+	for position in [Vector3(-6.0, 0.02, 2.3), Vector3(4.2, 0.02, 2.6), Vector3(8.7, 0.02, 6.2), Vector3(-10.5, 0.02, -2.0)]:
+		_add_sourced_model(parent, "res://assets/quaternius-stylized-nature/glTF/Bush_Common_Flowers.gltf", 0.42, position)
+	for index in 8:
+		var stone_position := Vector3(-10.0 + float(index) * 2.6, 0.06, 2.25 + sin(float(index) * 0.8) * 0.22)
+		_add_sourced_model(parent, "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Small_2.gltf", 0.22, stone_position)
+
 func _add_sourced_model(parent: Node3D, asset_path: String, scale_value: float, local_position := Vector3.ZERO) -> bool:
 	if asset_path.is_empty():
 		return false
@@ -982,13 +1302,23 @@ func _create_building(parent: Node3D, position: Vector3, title: String, floor_co
 	roof.material_override = _material(palette["wood_dark"], 0.84)
 	roof.position = Vector3(0, 2.35, 0)
 	roof.rotation_degrees.z = -2.0
+	roof.visible = false
 	building.add_child(roof)
+	var gabled_roof := Node3D.new()
+	gabled_roof.name = "GabledRoof"
+	building.add_child(gabled_roof)
+	_structure_box(gabled_roof, "RoofPanelLeft", Vector3(5.9, 0.18, 2.5), Vector3(0.0, 2.58, -0.82), palette["wood_dark"], Vector3(-26.0, 0.0, 0.0))
+	_structure_box(gabled_roof, "RoofPanelRight", Vector3(5.9, 0.18, 2.5), Vector3(0.0, 2.58, 0.82), palette["wood_dark"], Vector3(26.0, 0.0, 0.0))
+	_structure_box(gabled_roof, "Ridge", Vector3(5.95, 0.2, 0.2), Vector3(0.0, 3.18, 0.0), palette["wood"])
+	for side in [-1.0, 1.0]:
+		_structure_box(building, "TimberPost_%s" % side, Vector3(0.14, 2.0, 0.14), Vector3(side * 2.25, 1.08, 1.72), palette["wood_dark"])
+	_structure_box(building, "TimberBeam", Vector3(4.6, 0.14, 0.14), Vector3(0.0, 1.92, 1.72), palette["wood_dark"])
 	var door := MeshInstance3D.new()
 	var door_mesh := BoxMesh.new()
-	door_mesh.size = Vector3(0.9, 1.45, 0.12)
+	door_mesh.size = Vector3(0.9, 1.9, 0.12)
 	door.mesh = door_mesh
 	door.material_override = _material(palette["wood_dark"], 0.9)
-	door.position = Vector3(0.0, 0.76, 1.91)
+	door.position = Vector3(0.0, 0.95, 1.91)
 	building.add_child(door)
 	for window_x in [-1.45, 1.45]:
 		var window := MeshInstance3D.new()
@@ -1143,6 +1473,7 @@ func _create_route_gate(parent: Node3D, route_id: String, destination: String, p
 	gate.add_to_group("route_gate")
 	gate.set_meta("route_id", route_id)
 	gate.set_meta("destination_id", destination)
+	gate.set_meta("route_accent", accent)
 	gate.position = position
 	parent.add_child(gate)
 	for post_position in [Vector3(-0.9, 1.15, 0.0), Vector3(0.9, 1.15, 0.0)]:
@@ -1246,6 +1577,36 @@ func _create_route_gate(parent: Node3D, route_id: String, destination: String, p
 			rune.rotation_degrees.x = 90.0
 			gate.add_child(rune)
 
+func _refresh_route_gate_visuals() -> void:
+	if session == null or not session.has_method("route_is_unlocked"):
+		return
+	var signature_parts: Array[String] = []
+	for gate_node in get_tree().get_nodes_in_group("route_gate"):
+		var gate_for_signature := gate_node as Node3D
+		if gate_for_signature == null:
+			continue
+		var destination_for_signature := str(gate_for_signature.get_meta("destination_id", ""))
+		signature_parts.append(destination_for_signature + ":" + str(session.call("route_is_unlocked", destination_for_signature)))
+	var signature := "|".join(signature_parts)
+	if signature == route_gate_unlock_signature:
+		return
+	route_gate_unlock_signature = signature
+	for gate_node in get_tree().get_nodes_in_group("route_gate"):
+		var gate := gate_node as Node3D
+		if gate == null:
+			continue
+		var destination := str(gate.get_meta("destination_id", ""))
+		var unlocked := bool(session.call("route_is_unlocked", destination))
+		gate.set_meta("route_locked", not unlocked)
+		var route_label := gate.get_node_or_null("RouteLabel") as Label3D
+		if route_label != null:
+			route_label.text = destination.to_upper() + ("\nROUTE" if unlocked else "\nLOCKED")
+		var marker := gate.get_node_or_null("RouteMarker") as MeshInstance3D
+		if marker != null:
+			var accent_variant: Variant = gate.get_meta("route_accent", palette["muted"])
+			var accent: Color = accent_variant as Color if accent_variant is Color else palette["muted"]
+			marker.material_override = _material(accent if unlocked else palette["muted"], 0.35 if unlocked else 0.68, false, unlocked)
+
 func _create_tree(parent: Node3D, position: Vector3, size: float, resource_id: String, amount: int) -> Node3D:
 	var tree := ResourceNodeScript.new() as Node3D
 	tree.name = "WhisperwoodTree"
@@ -1313,12 +1674,14 @@ func _create_rock(parent: Node3D, position: Vector3, resource_id: String, amount
 	rock.set("resource_amount", amount)
 	rock.set("resource_label", "Stone" if resource_label.is_empty() else resource_label)
 	rock.set("node_id", "%s:%s:%d" % [parent.name, resource_id, parent.get_child_count()])
+	if parent.name == "EmberRidge" and resource_id == "ore":
+		rock.set_meta("route_branch", "quarry")
 	rock.position = position
 	rock.add_to_group("interactable")
 	parent.add_child(rock)
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = _sphere_mesh(0.7, 0.9, 7, 4)
-	mesh_instance.material_override = _material(Color("#c77b4e") if resource_id == "ore" else palette["stone"], 0.98)
+	mesh_instance.material_override = _material(Color("#c77b4e") if resource_id in ["ore", "sunstone"] else palette["stone"], 0.98)
 	mesh_instance.scale = Vector3(1.25, 0.72, 0.92)
 	mesh_instance.position.y = 0.42
 	rock.add_child(mesh_instance)
@@ -1381,6 +1744,7 @@ func _create_mushroom(parent: Node3D, position: Vector3, stable_id := "Whisperwo
 	mushroom.set("resource_label", "Whisperglass")
 	mushroom.set("discovery_id", "Whisperglass")
 	mushroom.set("node_id", stable_id)
+	mushroom.set_meta("route_branch", "grove")
 	mushroom.position = position
 	mushroom.add_to_group("resource_node")
 	mushroom.add_to_group("interactable")
@@ -1404,7 +1768,7 @@ func _create_mushroom(parent: Node3D, position: Vector3, stable_id := "Whisperwo
 	mushroom.add_child(marker)
 	forest_nodes.append(mushroom)
 
-func _create_shell_discovery(parent: Node3D, position: Vector3) -> void:
+func _create_shell_discovery(parent: Node3D, position: Vector3, stable_id := "") -> void:
 	var shell := ResourceNodeScript.new() as Node3D
 	shell.name = "TideglassShell"
 	shell.set("world", self)
@@ -1412,7 +1776,8 @@ func _create_shell_discovery(parent: Node3D, position: Vector3) -> void:
 	shell.set("resource_amount", 1)
 	shell.set("resource_label", "Tideglass Shell")
 	shell.set("discovery_id", "Tideglass")
-	shell.set("node_id", "%s:TideglassShell" % parent.name)
+	shell.set("node_id", stable_id if not stable_id.is_empty() else "%s:TideglassShell" % parent.name)
+	shell.set_meta("route_branch", "tidepool")
 	shell.position = position
 	shell.add_to_group("resource_node")
 	shell.add_to_group("interactable")
@@ -1436,6 +1801,7 @@ func _create_relic_discovery(parent: Node3D, position: Vector3) -> void:
 	relic.set("resource_label", "Aether Relic")
 	relic.set("discovery_id", "Aether Relic")
 	relic.set("node_id", "%s:AetherRelic" % parent.name)
+	relic.set_meta("route_branch", "vault")
 	relic.position = position
 	relic.add_to_group("resource_node")
 	relic.add_to_group("interactable")
@@ -1468,6 +1834,7 @@ func _create_cactus(parent: Node3D, position: Vector3) -> void:
 	cactus.set("resource_amount", 2)
 	cactus.set("resource_label", "Cactus Fiber")
 	cactus.set("node_id", "%s:Cactus:%d" % [parent.name, parent.get_child_count()])
+	cactus.set_meta("route_branch", "oasis")
 	cactus.position = position
 	cactus.add_to_group("resource_node")
 	cactus.add_to_group("interactable")
@@ -1991,6 +2358,8 @@ func _copy_session_to_runtime() -> void:
 	inventory = session.get("inventory").duplicate(true)
 	_sync_expedition_cargo()
 	_refresh_whisperwood_route()
+	_refresh_expedition_routes()
+	_refresh_route_gate_visuals()
 	if player != null:
 		player.set("health", health)
 	if farm_plot != null:
@@ -2011,9 +2380,13 @@ func _on_session_feedback(kind: String, payload: Dictionary) -> void:
 		_show_toast("Effort logged  |  +%d Activity XP  |  +%d energy" % [int(payload.get("xp", 0)), mini(6, int(payload.get("xp", 0)))], 3.0)
 	elif kind == "mastery_unlock":
 		_show_toast("Permission unlocked: %s  |  %s" % [str(payload.get("label", "Mastery")), str(payload.get("summary", "New capability available."))], 3.6)
+	elif kind == "route_unlock":
+		_show_toast("New route opened: %s  |  %s" % [str(payload.get("route", "Unknown")), str(payload.get("requirement", "The road is ready."))], 4.0)
+	elif kind == "route_capstone":
+		_show_toast("Capstone reached: %s  |  Secure it, then return to the beacon." % str(payload.get("label", "Route objective")), 3.2)
 
 func _record_activity() -> void:
-	if session == null:
+	if get_tree().paused or session == null:
 		return
 	var receipt := "manual-%d-%d" % [day, Time.get_ticks_msec()]
 	var metadata := {"source_id": "manual_ui", "event_id": receipt, "occurred_at": Time.get_datetime_string_from_system(true), "timezone": "local", "mapping_version": 1}
@@ -2025,6 +2398,8 @@ func _record_activity() -> void:
 	session.call("save_game")
 
 func _allocate_best_stat() -> void:
+	if get_tree().paused:
+		return
 	if session != null and session.call("allocate_stat", "Strength"):
 		strength = int(session.get("stats").get("Strength", strength))
 		_show_toast("Strength increased. Your light attack now hits harder.", 2.4)
@@ -2039,6 +2414,8 @@ func _toggle_pause() -> void:
 		toast_label.visible = true
 
 func _toggle_utilities() -> void:
+	if get_tree().paused:
+		return
 	utilities_open = not utilities_open
 	_show_toast("Ledger opened: effort, save, and ability points." if utilities_open else "Ledger closed.", 1.4)
 
@@ -2089,15 +2466,39 @@ func _update_lighting() -> void:
 	sun_light.light_color = Color("#ffe8c4").lerp(Color("#8ea6d0"), 1.0 - daylight)
 
 func _update_expedition_hazard(delta: float) -> void:
-	if current_zone != "Glass Desert" or session == null or not session.call("has_active_expedition"):
+	if current_zone == "Sanctuary" or session == null or not session.call("has_active_expedition"):
+		hazard_timer = 0.0
+		return
+	var run: Dictionary = session.get("expedition_run")
+	if not bool(run.get("stake_active", false)):
 		hazard_timer = 0.0
 		return
 	hazard_timer += delta
-	if hazard_timer < 24.0:
+	var tick_interval := 18.0
+	match current_zone:
+		"Sunlit Beach": tick_interval = 18.0
+		"Ember Ridge": tick_interval = 16.0
+		"Glass Desert": tick_interval = 12.0
+		"Sunken Dungeon": tick_interval = 10.0
+	if hazard_timer < tick_interval:
 		return
-	hazard_timer = 0.0
-	if session.call("spend_energy", 1):
-		_show_toast("The glass desert takes its toll. Find the Dune Camp before you run dry.", 2.6)
+	hazard_timer -= tick_interval
+	var before_stake: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	var result: Dictionary = session.call("apply_expedition_stake_tick") if session.has_method("apply_expedition_stake_tick") else {}
+	if result.is_empty():
+		return
+	var loss := int(result.get("energy_loss", 0))
+	var damage := int(result.get("health_loss", 0))
+	_show_toast("%s  |  -%d Energy" % [str(result.get("message", "The route is demanding a safe return.")), loss], 2.6)
+	if damage > 0:
+		player_took_damage(damage)
+	# Persist the stake and the resulting health together. Saving before damage
+	# would leave a reload with the energy loss but the old health value.
+	if not bool(session.call("save_game")):
+		if not before_stake.is_empty():
+			session.call("restore_state", before_stake)
+		_copy_session_to_runtime()
+		return
 
 func _update_audio_context() -> void:
 	if audio_director == null or player == null:
@@ -2202,6 +2603,8 @@ func _update_hud() -> void:
 			status_label.text = "Gather close to nodes. Press E to interact."
 	if hud_bag_panel != null:
 		hud_bag_panel.visible = utilities_open
+	if hud_quest_panel != null:
+		hud_quest_panel.visible = utilities_open or current_zone != "Sanctuary"
 	if interact_button != null:
 		interact_button.text = "Confirm placement" if placement_mode else "Interact"
 		interact_button.disabled = get_tree().paused
@@ -2211,10 +2614,18 @@ func _update_hud() -> void:
 		smelt_button.text = "Stop Furnace" if furnace_active else "Start Furnace"
 	var context_node := _nearest_interactable()
 	_update_world_label_visibility(context_node)
+	var compact_rail := not utilities_open and current_zone == "Sanctuary" and context_node == null
+	if hud_right_panel != null:
+		hud_right_panel.size.y = 118.0 if compact_rail else maxf(260.0, hud_root.size.y - 28.0)
+		hud_right_panel.visible = true
+	if hud_right_scroll != null and hud_right_panel != null:
+		hud_right_scroll.size = hud_right_panel.size - Vector2(20.0, 20.0)
 	if explore_button != null:
 		var nearby_route: bool = context_node != null and context_node.has_meta("destination_id")
 		explore_button.visible = current_zone == "Sanctuary" and nearby_route
-		explore_button.text = "Enter %s" % str(context_node.get_meta("destination_id")) if nearby_route else "Walk to a route gate"
+		var nearby_destination := str(context_node.get_meta("destination_id")) if nearby_route else ""
+		var nearby_unlocked := nearby_route and session != null and session.has_method("route_is_unlocked") and bool(session.call("route_is_unlocked", nearby_destination))
+		explore_button.text = ("Enter %s" % nearby_destination) if nearby_unlocked else ("Route locked: %s" % nearby_destination if nearby_route else "Walk to a route gate")
 	if destination_button != null:
 		destination_button.visible = false
 	if return_button != null:
@@ -2241,10 +2652,10 @@ func _update_hud() -> void:
 		farm_button.visible = current_zone == "Sanctuary" and context_node == farm_plot
 	var field_supplies_available: bool = session != null and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition"))
 	if food_button != null:
-		food_button.visible = current_zone == "Sanctuary" or field_supplies_available
+		food_button.visible = utilities_open or current_zone != "Sanctuary" and field_supplies_available
 		food_button.text = "Eat %s  [G]  (%d)" % [selected_food.capitalize(), int(inventory.get(selected_food, 0))]
 	if water_button != null:
-		water_button.visible = current_zone == "Sanctuary" or field_supplies_available
+		water_button.visible = utilities_open or current_zone != "Sanctuary" and field_supplies_available
 		water_button.text = "Drink Water  [H]  (%d)" % int(inventory.get("water", 0))
 	if livestock_button != null:
 		var livestock_context := current_zone == "Sanctuary" and (context_node == livestock_pen or _is_player_structure_kind(context_node, "livestock_pen"))
@@ -2257,10 +2668,10 @@ func _update_hud() -> void:
 		recipe_button.visible = current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop")) and session != null and bool(session.get("built").get("workshop", false))
 		recipe_button.text = "Recipe: %s  [Q]" % selected_recipe.capitalize()
 	if structure_button != null:
-		structure_button.visible = current_zone == "Sanctuary"
+		structure_button.visible = current_zone == "Sanctuary" and (utilities_open or context_node != null)
 		structure_button.text = "Cancel Placement  [B]" if placement_mode else "Place %s  [B]" % _structure_display_name(placement_structure_id)
 	if blueprint_button != null:
-		blueprint_button.visible = current_zone == "Sanctuary"
+		blueprint_button.visible = current_zone == "Sanctuary" and (utilities_open or context_node != null)
 		blueprint_button.text = "Blueprint: %s  [N]" % _structure_display_name(placement_structure_id)
 	if build_button != null:
 		var workshop_context := current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
@@ -2290,7 +2701,16 @@ func _update_hud() -> void:
 		elif current_zone == "Sanctuary":
 			action_hint.text = "WASD / joystick to move  |  Walk to a route gate, resource, villager, or build site to reveal the next action"
 		else:
-			action_hint.text = "Follow the beacon  |  Cargo is at risk until extraction  |  Gather, camp once, and choose your fights"
+			var expedition_hint := "Follow the beacon  |  Cargo is at risk until extraction  |  Gather, camp once, and choose your fights"
+			if session != null and session.has_method("expedition_route_snapshot") and bool(session.call("has_active_expedition")):
+				var route_state: Dictionary = session.call("expedition_route_snapshot")
+				var route_definition: Dictionary = route_state.get("branch_definition", {})
+				var branch_text := str(route_definition.get("label", "Choose a trail")) if not str(route_state.get("branch_id", "")).is_empty() else "Choose a trail at the route fork"
+				var objective_target := int(route_state.get("objective_target", 0))
+				var objective_progress := int(route_state.get("objective_progress", 0))
+				var objective_text := "CAPSTONE READY" if bool(route_state.get("objective_complete", false)) else ("OBJECTIVE %d/%d  |  %s" % [objective_progress, objective_target, str(route_definition.get("summary", "Gather supplies and read the terrain."))] if objective_target > 0 else str(route_definition.get("summary", "Gather supplies and read the terrain.")))
+				expedition_hint = "%s  |  %s  |  Extract at the beacon" % [branch_text, objective_text]
+			action_hint.text = expedition_hint
 	if hud_right_box != null:
 		for child in hud_right_box.get_children():
 			if child is Button and child != pause_button:
@@ -2444,16 +2864,23 @@ func _construction_interact(structure_node: Node3D) -> void:
 		if inventory_amount <= 0:
 			_show_toast("Bring %d %s to the scaffold (%d / %d delivered)." % [required - supplied, str(material_id).capitalize(), supplied, required], 2.6)
 			return
+		var before_delivery: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 		var delivered_structure: Dictionary = session.call("deliver_structure_material", instance_id, str(material_id), 1)
 		if delivered_structure.is_empty():
 			_show_toast("That material could not be delivered.", 2.0)
 			return
 		if audio_director != null:
-			audio_director.call("play_action", "build")
+			audio_director.call("play_action_at", "build", structure_node.global_position)
 		_spawn_material_delivery_feedback(str(material_id), structure_node)
 		var new_state := str(delivered_structure.get("state", "blueprint"))
 		_refresh_structure_visual(instance_id, delivered_structure)
-		session.call("save_game")
+		if not bool(session.call("save_game")):
+			if not before_delivery.is_empty():
+				session.call("restore_state", before_delivery)
+			_copy_session_to_runtime()
+			_refresh_structure_visuals()
+			_show_toast("The material delivery could not be secured. Nothing was consumed.", 3.0)
+			return
 		if new_state == "building":
 			_show_toast("Scaffold complete. Sleep to finish the %s frame." % _structure_display_name(kind), 3.0)
 		else:
@@ -2466,6 +2893,11 @@ func collect_resource(node: Node) -> bool:
 	var resource_label: String = str(node.get("resource_label"))
 	var discovery_id: String = str(node.get("discovery_id"))
 	var collected := false
+	if not _route_resource_is_available(node):
+		return false
+	if current_zone != "Sanctuary" and not discovery_id.is_empty() and session != null and session.has_method("can_record_expedition_discovery") and not bool(session.call("can_record_expedition_discovery", discovery_id)):
+		_show_toast("That discovery lies on the closed trail. Your committed route cannot reach it.", 2.5)
+		return false
 	if current_zone != "Sanctuary" and session != null and session.has_method("can_carry_expedition_amount") and not session.call("can_carry_expedition_amount", amount):
 		_show_toast("Your expedition satchel is full. Return to the beacon or leave something behind.", 2.6)
 		return false
@@ -2473,7 +2905,7 @@ func collect_resource(node: Node) -> bool:
 		var tool_name := "a tool"
 		if id == "wood":
 			tool_name = "a hatchet"
-		elif id in ["stone", "ore"]:
+		elif id in ["stone", "ore", "sunstone"]:
 			tool_name = "a pickaxe"
 		elif id == "shell":
 			tool_name = "a fishing knife"
@@ -2491,7 +2923,7 @@ func collect_resource(node: Node) -> bool:
 		if not contact_complete:
 			_show_toast("Contact %d / %d  |  Keep your footing." % [int(node.get("contacts")), int(node.get("required_contacts"))], 1.5)
 			if audio_director != null:
-				audio_director.call("play_action", "gather_wood")
+				audio_director.call("play_action_at", "gather_wood", node.global_position)
 			if session != null:
 				session.call("record_sanctuary_contact", str(node.get("node_id")), int(node.get("contacts")))
 				session.call("award_mastery", "Foraging", 1)
@@ -2515,7 +2947,7 @@ func collect_resource(node: Node) -> bool:
 			if not contact_complete:
 				_show_toast("Contact %d / %d  |  The forest is listening." % [int(node.get("contacts")), required_contacts], 1.5)
 				if audio_director != null:
-					audio_director.call("play_action", "gather_wood")
+					audio_director.call("play_action_at", "gather_wood", node.global_position)
 				if session != null:
 					session.call("record_expedition_contact", node_id, int(node.get("contacts")))
 					session.call("award_mastery", "Foraging", 1)
@@ -2532,7 +2964,7 @@ func collect_resource(node: Node) -> bool:
 		return false
 	if node.has_method("complete_depletion"):
 		node.call("complete_depletion")
-	var mastery_name := "Mining" if id in ["stone", "ore"] else "Foraging"
+	var mastery_name := "Mining" if id in ["stone", "ore", "sunstone"] else "Foraging"
 	var new_discovery := false
 	_sync_expedition_cargo()
 	if session != null:
@@ -2542,7 +2974,7 @@ func collect_resource(node: Node) -> bool:
 			new_discovery = true
 			_show_toast("Discovery: %s  |  Return to the Archive to understand it." % discovery_id, 3.2)
 	if audio_director != null:
-		audio_director.call("play_action", "gather_" + id)
+		audio_director.call("play_action_at", "gather_" + id, node.global_position)
 	_spawn_feedback_burst(node.global_position, palette["leaf"] if mastery_name == "Foraging" else palette["stone"])
 	if not new_discovery:
 		_show_toast("+%d %s  |  %s mastery +%d" % [amount, resource_label, mastery_name, amount * 3], 2.2)
@@ -2550,6 +2982,22 @@ func collect_resource(node: Node) -> bool:
 		player_made_noise(node.global_position, 7.0 if id in ["ore", "stone"] else 5.0)
 	if session != null:
 		session.call("save_game")
+	return true
+
+func _route_resource_is_available(node: Node) -> bool:
+	if node == null or current_zone == "Sanctuary" or session == null or not session.has_method("has_active_expedition") or not session.call("has_active_expedition"):
+		return true
+	var route_branch := str(node.get_meta("route_branch", ""))
+	if route_branch.is_empty():
+		return true
+	var run: Dictionary = session.get("expedition_run")
+	var branch_id := str(run.get("branch_id", ""))
+	if branch_id.is_empty():
+		_show_toast("Choose a trail at the route fork before harvesting this landmark.", 2.5)
+		return false
+	if branch_id != route_branch:
+		_show_toast("That landmark lies on the closed trail.", 2.2)
+		return false
 	return true
 
 func is_resource_depleted(node: Node) -> bool:
@@ -2567,6 +3015,8 @@ func is_resource_depleted(node: Node) -> bool:
 func begin_resource_action(node: Node) -> void:
 	if resource_action_node != null or node == null or not is_instance_valid(node):
 		return
+	if not _route_resource_is_available(node):
+		return
 	if current_zone == "Sanctuary" and player.global_position.distance_to(node.global_position) > 2.35:
 		_show_toast("Move closer before gathering.", 1.5)
 		return
@@ -2575,7 +3025,7 @@ func begin_resource_action(node: Node) -> void:
 		var tool_name := "your tool"
 		if resource_id == "wood":
 			tool_name = "your hatchet"
-		elif resource_id in ["stone", "ore"]:
+		elif resource_id in ["stone", "ore", "sunstone"]:
 			tool_name = "your pickaxe"
 		_show_toast("%s is worn out. Repair it at the Workshop." % tool_name.capitalize(), 2.4)
 		return
@@ -2586,7 +3036,7 @@ func begin_resource_action(node: Node) -> void:
 	if player != null and player.has_method("play_gather_feedback"):
 		player.call("play_gather_feedback")
 	if audio_director != null:
-		audio_director.call("play_action", "gather_prepare")
+			audio_director.call("play_action_at", "gather_prepare", node.global_position)
 
 func _update_resource_action(delta: float) -> void:
 	if resource_action_node == null:
@@ -2646,7 +3096,7 @@ func station_interact(station: Node) -> void:
 	if session == null:
 		return
 	var station_id := str(station.get("station_id"))
-	if station_id not in ["camp", "whisper_branch", "whisper_cache"] and current_zone != "Sanctuary":
+	if station_id not in ["camp", "whisper_branch", "whisper_cache", "map_branch", "map_capstone"] and current_zone != "Sanctuary":
 		return
 	if player.global_position.distance_to(station.global_position) > 2.35:
 		var station_name := "the Workshop"
@@ -2664,6 +3114,10 @@ func station_interact(station: Node) -> void:
 			station_name = "the Old Trail Marker"
 		elif station_id == "whisper_cache":
 			station_name = "the route cache"
+		elif station_id == "map_branch":
+			station_name = "the route fork"
+		elif station_id == "map_capstone":
+			station_name = "the route capstone"
 		_show_toast("Move closer to %s first." % station_name, 1.8)
 		return
 	if station_id == "notice":
@@ -2680,6 +3134,12 @@ func station_interact(station: Node) -> void:
 		return
 	if station_id == "whisper_cache":
 		_whisper_cache_interact(station)
+		return
+	if station_id == "map_branch":
+		_map_branch_interact(station)
+		return
+	if station_id == "map_capstone":
+		_map_capstone_interact(station)
 		return
 	if station_id == "guide":
 		_guide_interact()
@@ -2751,7 +3211,7 @@ func _cycle_food_selection() -> void:
 	_show_toast("No prepared food. Fish, harvest, or cook at the Workshop.", 2.2)
 
 func _eat_best_food() -> void:
-	if session == null or (current_zone != "Sanctuary" and not session.call("has_active_expedition")):
+	if get_tree().paused or session == null or (current_zone != "Sanctuary" and not session.call("has_active_expedition")):
 		return
 	var food_id := selected_food if int(inventory.get(selected_food, 0)) > 0 else ""
 	if food_id.is_empty():
@@ -2766,7 +3226,7 @@ func _eat_best_food() -> void:
 	session.call("save_game")
 
 func _cycle_recipe_selection() -> void:
-	if session == null:
+	if get_tree().paused or session == null:
 		return
 	var options := ["plank", "bread", "omelette"]
 	if session.get("unlocked_features").has("tonic_recipe"):
@@ -2776,7 +3236,7 @@ func _cycle_recipe_selection() -> void:
 	_show_toast("Workshop recipe selected: %s" % selected_recipe.capitalize(), 1.6)
 
 func _drink_water() -> void:
-	if session == null or (current_zone != "Sanctuary" and not session.call("has_active_expedition")):
+	if get_tree().paused or session == null or (current_zone != "Sanctuary" and not session.call("has_active_expedition")):
 		return
 	if not session.call("drink_water"):
 		_show_toast("Your water pouch is empty, or you are already hydrated.", 2.3)
@@ -2787,7 +3247,7 @@ func _drink_water() -> void:
 	session.call("save_game")
 
 func _repair_tools() -> void:
-	if current_zone != "Sanctuary" or session == null:
+	if get_tree().paused or current_zone != "Sanctuary" or session == null:
 		return
 	var repaired := ""
 	for tool_id in ["hatchet", "pickaxe", "fishing_knife"]:
@@ -2911,7 +3371,9 @@ func _library_interact(source: Node3D = null) -> void:
 		var understood_id := str(research_job.get("discovery_id", next_discovery))
 		if session.call("claim_research"):
 			if audio_director != null:
-				audio_director.call("play_action", "discovery")
+				var research_anchor: Node3D = source if source != null else library_station
+				if research_anchor != null:
+					audio_director.call("play_action_at", "discovery", research_anchor.global_position)
 			_show_toast("Understood: %s  |  %s added." % [understood_id, ContentRegistry.discovery_blueprint(understood_id)], 3.0)
 			session.call("save_game")
 			_refresh_station_visual()
@@ -2963,10 +3425,16 @@ func _whisper_branch_interact(_station: Node) -> void:
 	# Spatial choice: stand to the left of the marker for the fern grove or to
 	# the right for the guardian clearing. The decision is stored in the run.
 	var branch_id := "grove" if player.global_position.x <= 0.0 else "clearing"
+	var before_branch: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 	if session.call("commit_expedition_branch", branch_id):
+		if not bool(session.call("save_game")):
+			if not before_branch.is_empty():
+				session.call("restore_state", before_branch)
+			_copy_session_to_runtime()
+			_show_toast("The route commitment could not be secured. The fork remains open.", 3.0)
+			return
 		_refresh_whisperwood_route()
 		_show_toast("Route committed: %s. The other trail will wait." % ("Whisperglass Grove" if branch_id == "grove" else "Guardian Clearing"), 3.0)
-		session.call("save_game")
 
 func _whisper_cache_interact(station: Node) -> void:
 	if current_zone != "Whisperwood" or session == null or not session.call("has_active_expedition"):
@@ -2979,6 +3447,7 @@ func _whisper_cache_interact(station: Node) -> void:
 	if not bool(run.get("objective_complete", false)):
 		_show_toast("Finish this trail's capstone before opening its cache.", 2.5)
 		return
+	var before_cache: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 	var loot: Dictionary = session.call("open_expedition_cache")
 	if loot.is_empty():
 		_show_toast("The cache needs 2 Energy and enough satchel space.", 2.4)
@@ -2988,8 +3457,68 @@ func _whisper_cache_interact(station: Node) -> void:
 		loot_text.append("+%d %s" % [int(loot["loot"][resource_id]), str(resource_id).replace("_", " ").capitalize()])
 	_sync_expedition_cargo()
 	_refresh_whisperwood_route()
+	_refresh_expedition_routes()
+	if not bool(session.call("save_game")):
+		if not before_cache.is_empty():
+			session.call("restore_state", before_cache)
+		_copy_session_to_runtime()
+		_show_toast("The cache opening could not be secured. Nothing was claimed.", 3.0)
+		return
 	_show_toast("Cache opened  |  %s  |  shortcut open" % ", ".join(loot_text), 3.0)
-	session.call("save_game")
+
+func _map_branch_interact(station: Node) -> void:
+	if session == null or current_zone == "Sanctuary" or not session.call("has_active_expedition"):
+		return
+	var run: Dictionary = session.get("expedition_run")
+	if str(run.get("biome_id", "")) != current_zone or not str(run.get("branch_id", "")).is_empty():
+		_show_toast("This route is already committed. The other trail is closed for this run.", 2.4)
+		return
+	var options: Array = session.call("expedition_branch_options", current_zone)
+	if options.size() < 2:
+		return
+	var selected_index := 0 if player.global_position.x <= 0.0 else 1
+	var branch_id := str(options[selected_index])
+	var before_branch: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	if session.call("commit_expedition_branch", branch_id):
+		if not bool(session.call("save_game")):
+			if not before_branch.is_empty():
+				session.call("restore_state", before_branch)
+			_copy_session_to_runtime()
+			_show_toast("The route commitment could not be secured. The fork remains open.", 3.0)
+			return
+		_refresh_expedition_routes()
+		var definition: Dictionary = ContentRegistry.expedition_route_definition(current_zone, branch_id)
+		_show_toast("Route committed: %s  |  %s" % [str(definition.get("label", branch_id)), str(definition.get("summary", "The trail is yours."))], 3.2)
+
+func _map_capstone_interact(station: Node) -> void:
+	if session == null or current_zone == "Sanctuary" or not session.call("has_active_expedition"):
+		return
+	var run: Dictionary = session.get("expedition_run")
+	var branch_id := str(station.get_meta("route_branch", "")) if station != null else ""
+	if branch_id != str(run.get("branch_id", "")):
+		_show_toast("That capstone belongs to the other trail.", 2.2)
+		return
+	var definition: Dictionary = ContentRegistry.expedition_route_definition(current_zone, branch_id)
+	if not bool(run.get("objective_complete", false)):
+		_show_toast(str(definition.get("summary", "Complete the route objective first.")), 2.8)
+		return
+	var before_capstone: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	var loot: Dictionary = session.call("open_expedition_capstone")
+	if loot.is_empty():
+		_show_toast("The capstone needs 2 Energy and enough satchel space, or it has already been claimed.", 2.8)
+		return
+	var loot_text: Array[String] = []
+	for resource_id in loot.get("loot", {}):
+		loot_text.append("+%d %s" % [int(loot["loot"][resource_id]), str(resource_id).replace("_", " ").capitalize()])
+	_sync_expedition_cargo()
+	_refresh_expedition_routes()
+	if not bool(session.call("save_game")):
+		if not before_capstone.is_empty():
+			session.call("restore_state", before_capstone)
+		_copy_session_to_runtime()
+		_show_toast("The capstone could not be secured. Nothing was claimed.", 3.0)
+		return
+	_show_toast("Capstone secured  |  %s  |  return to the beacon" % ", ".join(loot_text), 3.0)
 
 func _guide_interact() -> void:
 	if session == null:
@@ -3087,8 +3616,12 @@ func _cycle_structure_selection() -> void:
 		if placement_mode:
 			_show_toast("Cancel the current placement before changing its blueprint.", 2.0)
 		return
-	var structure_ids: Array = ContentRegistry.STRUCTURES.keys()
+	var structure_ids: Array = []
+	for candidate_id in ContentRegistry.STRUCTURES.keys():
+		if session == null or not session.has_method("has_structure_blueprint") or bool(session.call("has_structure_blueprint", str(candidate_id))):
+			structure_ids.append(candidate_id)
 	if structure_ids.is_empty():
+		_show_toast("No building blueprints are decoded yet. Bring a discovery home first.", 2.4)
 		return
 	var current_index := structure_ids.find(placement_structure_id)
 	placement_structure_id = str(structure_ids[(current_index + 1) % structure_ids.size()])
@@ -3107,6 +3640,10 @@ func _toggle_structure_placement() -> void:
 		if build_marker != null:
 			build_marker.visible = false
 		_show_toast("Placement cancelled.", 1.4)
+		return
+	if not session.has_method("has_structure_blueprint") or not bool(session.call("has_structure_blueprint", placement_structure_id)):
+		var requirement := str(session.call("structure_blueprint_requirement", placement_structure_id)) if session.has_method("structure_blueprint_requirement") else "a new discovery"
+		_show_toast("Blueprint locked. Decode %s at the Archive first." % requirement, 2.8)
 		return
 	for existing_id in session.get("structures"):
 		var existing: Dictionary = session.get("structures").get(existing_id, {})
@@ -3176,6 +3713,7 @@ func _place_structure() -> void:
 	if not _structure_preview_valid(cell):
 		_show_toast("That footprint is blocked. Find a clear patch of Sanctuary.", 2.0)
 		return
+	var before_placement: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 	var placed: Dictionary = session.call("place_structure", placement_structure_id, [cell.x, cell.y])
 	if placed.is_empty():
 		_show_toast("That blueprint cannot be placed on this footprint.", 2.5)
@@ -3190,8 +3728,20 @@ func _place_structure() -> void:
 	var cost_parts: Array[String] = []
 	for material_id in definition.get("cost", {}):
 		cost_parts.append("%d %s" % [int(definition["cost"][material_id]), str(material_id).capitalize()])
+	if not bool(session.call("save_game")):
+		if not before_placement.is_empty():
+			session.call("restore_state", before_placement)
+		if not instance_id.is_empty() and settlement_visuals.has(instance_id):
+			var failed_visual := settlement_visuals.get(instance_id) as Node3D
+			if failed_visual != null:
+				failed_visual.queue_free()
+			settlement_visuals.erase(instance_id)
+		_copy_session_to_runtime()
+		placement_mode = true
+		_update_structure_preview()
+		_show_toast("The blueprint could not be secured. Try placing it again.", 3.0)
+		return
 	_show_toast("%s blueprint placed. Deliver %s at the site, then sleep to finish the frame." % [_structure_display_name(placement_structure_id), " + ".join(cost_parts)], 3.4)
-	session.call("save_game")
 
 func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	if instance_id.is_empty() or sanctuary_zone == null:
@@ -3264,6 +3814,27 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 		plank.position = Vector3(footprint_width * 0.48, 0.22 + float(index) * 0.12, -footprint_depth * 0.3 + float(index) * 0.24)
 		delivered_planks.add_child(plank)
 	structure.add_child(delivered_planks)
+	var delivered_stone := Node3D.new()
+	delivered_stone.name = "DeliveredStone"
+	for index in 5:
+		var stone := MeshInstance3D.new()
+		stone.name = "Stone_%d" % index
+		stone.mesh = _sphere_mesh(0.16 + float(index % 2) * 0.04, 0.30 + float(index % 3) * 0.05, 7, 4)
+		stone.material_override = _material(palette["stone"].darkened(0.1), 0.94)
+		stone.position = Vector3(-footprint_width * 0.42 + float(index % 3) * 0.24, 0.18 + float(index / 3) * 0.16, -footprint_depth * 0.38 + float(index % 2) * 0.18)
+		delivered_stone.add_child(stone)
+	structure.add_child(delivered_stone)
+	var delivered_fiber := Node3D.new()
+	delivered_fiber.name = "DeliveredFiber"
+	for index in 4:
+		var bundle := MeshInstance3D.new()
+		bundle.name = "FiberBundle_%d" % index
+		bundle.mesh = _sphere_mesh(0.10, 0.42, 6, 3)
+		bundle.material_override = _material(palette["leaf"], 0.9)
+		bundle.position = Vector3(footprint_width * 0.34 + float(index % 2) * 0.16, 0.3 + float(index / 2) * 0.20, footprint_depth * 0.32 + float(index % 2) * 0.16)
+		bundle.rotation_degrees.z = -18.0 + float(index) * 9.0
+		delivered_fiber.add_child(bundle)
+	structure.add_child(delivered_fiber)
 	var tank := MeshInstance3D.new()
 	tank.name = "CisternTank"
 	tank.mesh = _sphere_mesh(0.62, 1.1, 10, 6)
@@ -3689,12 +4260,36 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var scaffold := structure.get_node_or_null("ScaffoldFrame") as Node3D
 	if scaffold != null:
 		scaffold.visible = state == "building" or (state == "blueprint" and wood_delivered > 0)
+		var total_materials := 0
+		var delivered_total := 0
+		for material_id in cost:
+			total_materials += int(cost[material_id])
+			delivered_total += int(delivered.get(str(material_id), 0))
+		var material_progress := float(delivered_total) / float(maxi(1, total_materials))
+		if state == "building":
+			material_progress = maxf(material_progress, 1.0 - clampf(float(data.get("remaining_hours", 0.0)) / maxf(1.0, float(data.get("total_hours", 24.0))), 0.0, 1.0))
+		for index in scaffold.get_child_count():
+			var post := scaffold.get_child(index) as Node3D
+			if post != null:
+				post.visible = state == "building" and (index == 0 or material_progress >= 0.18 + float(index) * 0.18)
 	var delivered_logs := structure.get_node_or_null("DeliveredLogs") as Node3D
 	if delivered_logs != null:
 		delivered_logs.visible = state != "operational" and wood_delivered > 0
+		delivered_logs.scale = Vector3.ONE * (0.55 + clampf(float(wood_delivered) / float(maxi(1, int(cost.get("wood", 1)))), 0.0, 1.0) * 0.45)
 	var delivered_planks := structure.get_node_or_null("DeliveredPlanks") as Node3D
 	if delivered_planks != null:
 		delivered_planks.visible = state != "operational" and plank_delivered > 0
+		delivered_planks.scale = Vector3.ONE * (0.55 + clampf(float(plank_delivered) / float(maxi(1, int(cost.get("plank", 1)))), 0.0, 1.0) * 0.45)
+	var delivered_stone := structure.get_node_or_null("DeliveredStone") as Node3D
+	if delivered_stone != null:
+		var stone_delivered := int(delivered.get("stone", 0))
+		delivered_stone.visible = state != "operational" and stone_delivered > 0
+		delivered_stone.scale = Vector3.ONE * (0.55 + clampf(float(stone_delivered) / float(maxi(1, int(cost.get("stone", 1)))), 0.0, 1.0) * 0.45)
+	var delivered_fiber := structure.get_node_or_null("DeliveredFiber") as Node3D
+	if delivered_fiber != null:
+		var fiber_delivered := int(delivered.get("fiber", 0))
+		delivered_fiber.visible = state != "operational" and fiber_delivered > 0
+		delivered_fiber.scale = Vector3.ONE * (0.55 + clampf(float(fiber_delivered) / float(maxi(1, int(cost.get("fiber", 1)))), 0.0, 1.0) * 0.45)
 	var base := structure.get_node_or_null("CisternBase") as MeshInstance3D
 	if base != null:
 		base.material_override = _material(_structure_base_color(kind) if state != "blueprint" else palette["violet"], 0.96 if state != "blueprint" else 0.48, state == "blueprint", state == "blueprint")
@@ -3759,6 +4354,10 @@ func _enter_selected_expedition(route_gate: Node = null) -> void:
 		_show_toast("Choose a destination by walking to one of the five route gates.", 2.8)
 		return
 	selected_expedition = str(gate.get_meta("destination_id"))
+	if session == null or not session.has_method("route_is_unlocked") or not bool(session.call("route_is_unlocked", selected_expedition)):
+		var requirement := str(session.call("route_unlock_requirement", selected_expedition)) if session != null and session.has_method("route_unlock_requirement") else "Complete the previous route first."
+		_show_toast("%s is locked. %s" % [selected_expedition, requirement], 3.2)
+		return
 	var before_start: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
 	if session == null or not session.call("start_expedition", selected_expedition):
 		var entry_cost := ContentRegistry.expedition_entry_coins(selected_expedition)
@@ -3959,6 +4558,8 @@ func _spawn_material_delivery_feedback(material_id: String, target: Node3D) -> v
 	tween.tween_callback(bundle.queue_free)
 
 func _toggle_furnace() -> void:
+	if get_tree().paused:
+		return
 	if current_zone != "Sanctuary":
 		_show_toast("The furnace is back at the Hearth.", 2.0)
 		return
@@ -3987,6 +4588,11 @@ func _player_dodge() -> void:
 func _player_attack(_actor: Node) -> void:
 	if get_tree().paused or attack_cooldown > 0.0 or pending_attack_target != null:
 		return
+	if current_zone != "Sanctuary" and session != null and session.has_method("has_active_expedition") and session.call("has_active_expedition"):
+		var run: Dictionary = session.get("expedition_run")
+		if str(run.get("branch_id", "")).is_empty():
+			_show_toast("Choose a trail before engaging the guardian.", 2.4)
+			return
 	attack_cooldown = 0.42
 	var target: Node = null
 	var distance := 3.6
@@ -4028,12 +4634,12 @@ func _update_attack_action(delta: float) -> void:
 	target.call("take_damage", damage)
 	camera_shake = 0.06
 	if audio_director != null:
-		audio_director.call("play_action", "hit")
+		audio_director.call("play_action_at", "hit", target.global_position)
 
 func combat_feedback(target: Node, amount: int) -> void:
-	if session != null:
-		session.call("award_xp", amount)
-		session.call("award_mastery", "Attacking", 2)
+	# Combat mastery is awarded once the authoritative guardian reward settles.
+	# Keeping hit feedback presentation-only prevents a rejected final blow (full
+	# cargo or failed persistence) from becoming a repeatable mastery exploit.
 	camera_shake = 0.08
 	_show_toast("Impact  |  %s -%d HP" % [str(target.get("enemy_label")), amount], 1.0)
 
@@ -4048,19 +4654,21 @@ func guardian_attack(guardian: Node) -> void:
 		return
 	player.call("take_damage", maxi(1, int(guardian.get("attack_damage"))))
 	if audio_director != null:
-		audio_director.call("play_action", "hit")
+		audio_director.call("play_action_at", "hit", guardian_body.global_position)
 
-func guardian_defeated(guardian: Node) -> void:
+func guardian_defeated(guardian: Node) -> bool:
 	var guardian_id := str(guardian.get("guardian_id"))
 	var reward_id := str(guardian.get("reward_id"))
 	var reward_amount := int(guardian.get("reward_amount"))
 	var enemy_name := str(guardian.get("enemy_label"))
+	var before_guardian: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
 	if session != null and current_zone != "Sanctuary" and session.has_method("resolve_guardian_defeat"):
 		var resolution: Dictionary = session.call("resolve_guardian_defeat", guardian_id)
 		if resolution.is_empty():
 			var remaining := int(session.call("expedition_cargo_remaining"))
-			_show_toast("Your cargo is full. Extract before taking another reward." if remaining <= 0 else "That guardian has already been resolved.", 2.4)
-			return
+			var capacity_message := "Your cargo is full. Extract before taking another reward." if remaining <= 0 else "Only %d satchel space remains; this reward needs %d. Return to make room." % [remaining, reward_amount]
+			_show_toast(capacity_message, 2.4)
+			return false
 		reward_id = str(resolution.get("reward_id", reward_id))
 		reward_amount = int(resolution.get("reward_amount", reward_amount))
 	else:
@@ -4069,11 +4677,18 @@ func guardian_defeated(guardian: Node) -> void:
 		inventory[reward_id] += reward_amount
 	if session != null:
 		_sync_expedition_cargo()
-		session.call("save_game")
+		if not bool(session.call("save_game")):
+			if not before_guardian.is_empty():
+				session.call("restore_state", before_guardian)
+			_copy_session_to_runtime()
+			_show_toast("The guardian reward could not be secured. The encounter remains open.", 3.0)
+			return false
 	_show_toast("%s defeated  |  +%d %s  |  Combat mastery +12" % [enemy_name, reward_amount, reward_id.replace("_", " ").capitalize()], 3.0)
+	return true
 
 func player_took_damage(amount: int) -> void:
 	if session != null and player != null and session.has_method("apply_player_damage"):
+		var before_damage: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 		var result: Dictionary = session.call("apply_player_damage", amount)
 		player.set("health", int(result.get("health", player.get("health"))))
 		if bool(result.get("fainted", false)):
@@ -4081,21 +4696,30 @@ func player_took_damage(amount: int) -> void:
 				session.call("reset_player_health")
 				player.set("health", int(session.get("health")))
 			else:
-				player_fainted()
+				player_fainted(before_damage)
 	_show_toast("You took %d damage. Read the guardian's movement before engaging." % amount, 1.8)
 
-func player_fainted() -> void:
-	var pack: Dictionary = {}
-	if session != null and session.has_method("fail_expedition"):
-		pack = session.call("fail_expedition", player.global_position)
+func player_fainted(before_damage: Dictionary = {}) -> void:
+	if session == null or player == null or not session.has_method("fail_expedition"):
+		return
+	var before_faint: Dictionary = before_damage if not before_damage.is_empty() else (session.call("snapshot_state") if session.has_method("snapshot_state") else {})
+	var before_zone := current_zone
+	var before_position := player.global_position
+	var pack: Dictionary = session.call("fail_expedition", player.global_position)
+	session.call("reset_player_health")
+	if not bool(session.call("save_game")):
+		if not before_faint.is_empty():
+			session.call("restore_state", before_faint)
+		_copy_session_to_runtime()
+		current_zone = before_zone
+		player.global_position = before_position
+		_show_toast("The faint could not be secured. Your run remains active.", 3.2)
+		return
 	recovery_loot = pack.get("loot", {}) if pack is Dictionary else {}
 	expedition_loot = {}
 	if not recovery_loot.is_empty():
 		_clear_recovery_nodes()
-		_spawn_recovery_pack(recovery_loot, player.global_position, str(pack.get("zone_id", current_zone)))
-	if session != null:
-		session.call("reset_player_health")
-		session.call("save_game")
+		_spawn_recovery_pack(recovery_loot, player.global_position, str(pack.get("zone_id", before_zone)))
 	player.set("health", max_health)
 	_set_zone("Sanctuary")
 	_show_toast("You fainted. Half of unbanked expedition loot is waiting in a recovery pack.", 3.5)
@@ -4112,7 +4736,7 @@ func player_moved(moving: bool) -> void:
 	if not moving or footstep_timer > 0.0 or audio_director == null:
 		return
 	footstep_timer = 0.27
-	audio_director.call("play_action", "step_" + _current_surface())
+	audio_director.call("play_action_at", "step_" + _current_surface(), player.global_position)
 
 func player_made_noise(position: Vector3, intensity: float) -> void:
 	if current_zone == "Sanctuary":

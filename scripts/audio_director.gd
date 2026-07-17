@@ -1,5 +1,5 @@
 class_name ProdewtyAudioDirector
-extends Node
+extends Node3D
 
 var ambience_player: AudioStreamPlayer
 var weather_player: AudioStreamPlayer
@@ -25,7 +25,9 @@ var sfx_time := 0.0
 var audio_enabled := true
 var sampled_streams: Dictionary = {}
 var sampled_players: Array[AudioStreamPlayer] = []
+var spatial_players: Array[AudioStreamPlayer3D] = []
 var sampled_cursor := 0
+var spatial_cursor := 0
 var music_streams: Dictionary = {}
 var current_music := ""
 
@@ -96,6 +98,15 @@ func _load_sampled_assets() -> void:
 		player.bus = "Effects"
 		add_child(player)
 		sampled_players.append(player)
+	for index in 6:
+		var spatial_player := AudioStreamPlayer3D.new()
+		spatial_player.name = "SpatialEffect%d" % index
+		spatial_player.bus = "Effects"
+		spatial_player.max_distance = 18.0
+		spatial_player.unit_size = 3.0
+		spatial_player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		add_child(spatial_player)
+		spatial_players.append(spatial_player)
 	ui_player = AudioStreamPlayer.new()
 	ui_player.name = "UISampledPlayer"
 	ui_player.bus = "UI"
@@ -153,6 +164,28 @@ func play_action(kind: String) -> void:
 		player.play()
 		sfx_time = 0.0
 
+func play_action_at(kind: String, world_position: Vector3) -> void:
+	if spatial_players.is_empty():
+		play_action(kind)
+		return
+	var sampled_key := kind
+	if kind.begins_with("step") and not sampled_streams.has(kind):
+		sampled_key = "step"
+	elif kind.begins_with("gather_") and not sampled_streams.has(kind):
+		sampled_key = "gather_wood"
+	elif kind in ["camp", "gather_prepare"]:
+		sampled_key = "craft"
+	var sampled = sampled_streams.get(sampled_key)
+	if not sampled is AudioStream:
+		play_action(kind)
+		return
+	var player: AudioStreamPlayer3D = spatial_players[spatial_cursor % spatial_players.size()]
+	spatial_cursor += 1
+	player.global_position = world_position
+	player.stream = sampled
+	player.volume_db = -12.0 if sampled_key == "step" else -8.0
+	player.play()
+
 func play_ui(kind := "ui") -> void:
 	if ui_player == null:
 		return
@@ -186,6 +219,10 @@ func _exit_tree() -> void:
 			player.stop()
 			player.stream = null
 	for player in sampled_players:
+		if is_instance_valid(player):
+			player.stop()
+			player.stream = null
+	for player in spatial_players:
 		if is_instance_valid(player):
 			player.stop()
 			player.stream = null

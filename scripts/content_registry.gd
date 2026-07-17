@@ -12,6 +12,41 @@ const EXPEDITIONS := {
 	"Sunken Dungeon": {"travel_energy": 0, "entry_coins": 30, "surface": "stone", "summary": "A fixed challenge of relics, veinstone, and an armored dead."},
 }
 
+## Every route has a readable fork. The scene supplies the physical marker and
+## blocked trail; GameSession owns which branch was committed and what counts
+## as that branch's capstone. Keeping this table immutable makes the authored
+## route language consistent across the five maps and safe to save/migrate.
+const EXPEDITION_ROUTE_DEFINITIONS := {
+	"Whisperwood": {
+		"grove": {"label": "Whisperglass Grove", "objective_kind": "discovery", "objective_id": "Whisperglass", "objective_target": 1, "capstone_reward": {"berries": 2, "fiber": 1}, "summary": "Follow the fern trail and recover a living shard."},
+		"clearing": {"label": "Guardian Clearing", "objective_kind": "guardian", "objective_id": "forest_slime", "objective_target": 1, "capstone_reward": {"slime_gel": 2}, "summary": "Take the clearing and survive the forest guardian."},
+	},
+	"Sunlit Beach": {
+		"tidepool": {"label": "Tidepool Shelf", "objective_kind": "resource", "objective_id": "shell", "objective_target": 2, "capstone_reward": {"shell": 1}, "summary": "Read the tide and recover two Tideglass shells."},
+		"wreck": {"label": "Wreckwater", "objective_kind": "guardian", "objective_id": "tide_wraith", "objective_target": 1, "capstone_reward": {"fish": 2}, "summary": "Push through the wreck and face the Tide Wraith."},
+	},
+	"Ember Ridge": {
+		"quarry": {"label": "Copper Quarry", "objective_kind": "resource", "objective_id": "ore", "objective_target": 3, "capstone_reward": {"ore": 1}, "summary": "Work both exposed copper veins before the ridge shifts."},
+		"high_pass": {"label": "Ashfall Pass", "objective_kind": "guardian", "objective_id": "ember_golem", "objective_target": 1, "capstone_reward": {"stone": 2}, "summary": "Climb the hot pass and break the Ember Golem."},
+	},
+	"Glass Desert": {
+		"oasis": {"label": "Hidden Oasis", "objective_kind": "resource", "objective_id": "fiber", "objective_target": 4, "capstone_reward": {"fiber": 2}, "summary": "Harvest both cactus beds and leave before the heat wins."},
+		"glassway": {"label": "Singing Glassway", "objective_kind": "guardian", "objective_id": "dune_wisp", "objective_target": 1, "capstone_reward": {"sunstone": 1}, "summary": "Cross the singing shards and disperse the Dune Wisp."},
+	},
+	"Sunken Dungeon": {
+		"vault": {"label": "Aether Vault", "objective_kind": "discovery", "objective_id": "Aether Relic", "objective_target": 1, "capstone_reward": {"relic": 1}, "summary": "Recover the relic before the water closes the vault."},
+		"crypt": {"label": "Flooded Crypt", "objective_kind": "guardian", "objective_id": "crypt_knight", "objective_target": 1, "capstone_reward": {"ore": 2}, "summary": "Break the crypt seal by defeating its knight."},
+	},
+}
+
+const EXPEDITION_BRANCH_ORDER := {
+	"Whisperwood": ["grove", "clearing"],
+	"Sunlit Beach": ["tidepool", "wreck"],
+	"Ember Ridge": ["quarry", "high_pass"],
+	"Glass Desert": ["oasis", "glassway"],
+	"Sunken Dungeon": ["vault", "crypt"],
+}
+
 ## One authoritative definition for the physical Sanctuary trailheads. The
 ## world renderer owns presentation, while the session owns placement safety;
 ## both read these same sockets so player construction cannot seal a road that
@@ -70,14 +105,14 @@ const TRADE_OFFERS := [
 ]
 
 const STRUCTURES := {
-	"rain_cistern": {"footprint": [2, 2], "cost": {"wood": 8, "plank": 2}, "hours": 24.0, "summary": "Collects two extra water at each new day."},
+	"rain_cistern": {"footprint": [2, 2], "cost": {"wood": 8, "plank": 2}, "hours": 24.0, "requires_blueprint": "Tideglass Compass", "summary": "Collects two extra water at each new day."},
 	# Tier-zero bootstrap: the first Workshop is deliberately buildable from
 	# gathered raw materials. Planks are produced by the finished Workshop and
 	# become the gate for later district upgrades, preventing a fresh-save loop.
 	"workshop": {"footprint": [3, 3], "cost": {"wood": 12, "stone": 8}, "hours": 36.0, "summary": "A player-placed workshop for turning raw supplies into useful goods."},
-	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "summary": "A player-placed archive for researching discoveries."},
-	"livestock_pen": {"footprint": [4, 3], "cost": {"wood": 10, "fiber": 6, "plank": 2}, "hours": 24.0, "summary": "A player-placed pen that gives livestock a safe home."},
-	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "cargo_bonus": 4, "summary": "A sturdy stockpile that expands expedition satchel capacity by 4."},
+	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "requires_blueprint": "Whisperglass Tonic", "summary": "A player-placed archive for researching discoveries."},
+	"livestock_pen": {"footprint": [4, 3], "cost": {"wood": 10, "fiber": 6, "plank": 2}, "hours": 24.0, "requires_blueprint": "Whisperglass Tonic", "summary": "A player-placed pen that gives livestock a safe home."},
+	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "requires_blueprint": "Tideglass Compass", "cargo_bonus": 4, "summary": "A sturdy stockpile that expands expedition satchel capacity by 4."},
 }
 
 static func expedition_cost(expedition_id: String) -> int:
@@ -85,6 +120,12 @@ static func expedition_cost(expedition_id: String) -> int:
 
 static func expedition_entry_coins(expedition_id: String) -> int:
 	return int(EXPEDITIONS.get(expedition_id, {}).get("entry_coins", 0))
+
+static func expedition_route_definition(expedition_id: String, branch_id: String) -> Dictionary:
+	return EXPEDITION_ROUTE_DEFINITIONS.get(expedition_id, {}).get(branch_id, {}).duplicate(true)
+
+static func expedition_branch_ids(expedition_id: String) -> Array:
+	return EXPEDITION_BRANCH_ORDER.get(expedition_id, []).duplicate()
 
 static func discovery_blueprint(discovery_id: String) -> String:
 	return str(DISCOVERIES.get(discovery_id, {}).get("blueprint", ""))

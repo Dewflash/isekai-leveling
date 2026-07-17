@@ -3,9 +3,15 @@ extends SceneTree
 const SessionScript = preload("res://scripts/game_session.gd")
 
 func _init() -> void:
+	var qa_dir := DirAccess.open("user://")
+	if qa_dir != null:
+		for filename in qa_dir.get_files():
+			if filename.begins_with("qa_") and filename.ends_with(".json"):
+				qa_dir.remove(filename)
 	var session := SessionScript.new()
 	session.save_slot = "qa_session"
 	root.add_child(session)
+	var all_routes := ["Whisperwood", "Sunlit Beach", "Ember Ridge", "Glass Desert", "Sunken Dungeon"]
 	# Isolate the test from any user:// save left by an earlier run.
 	session.day = 1
 	session.xp = 0
@@ -65,10 +71,36 @@ func _init() -> void:
 	root.add_child(recovered)
 	assert(recovered.load_game())
 	assert(recovered.inventory["ore"] == 7)
+	var midnight := SessionScript.new()
+	midnight.save_slot = "qa_midnight"
+	root.add_child(midnight)
+	midnight.hour = 23.999
+	assert(midnight.save_game())
+	var midnight_loaded := SessionScript.new()
+	midnight_loaded.save_slot = "qa_midnight"
+	root.add_child(midnight_loaded)
+	assert(midnight_loaded.load_game())
+	assert(float(midnight_loaded.hour) > 23.99)
+	var duplicate_structures := SessionScript.new()
+	duplicate_structures.save_slot = "qa_duplicate_structures"
+	root.add_child(duplicate_structures)
+	duplicate_structures.structures = {
+		"rain_cistern_legacy_a": {"id": "rain_cistern_legacy_a", "kind": "rain_cistern", "cell": [11, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 8, "plank": 2}},
+		"rain_cistern_legacy_b": {"id": "rain_cistern_legacy_b", "kind": "rain_cistern", "cell": [8, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 8, "plank": 2}},
+	}
+	assert(duplicate_structures.save_game())
+	var duplicate_loaded := SessionScript.new()
+	duplicate_loaded.save_slot = "qa_duplicate_structures"
+	root.add_child(duplicate_loaded)
+	assert(duplicate_loaded.load_game())
+	assert(duplicate_loaded.structures.size() == 2)
 	# Expedition cargo is isolated from banked inventory and survives a reload.
 	var expedition := SessionScript.new()
 	expedition.save_slot = "qa_expedition"
 	root.add_child(expedition)
+	expedition.get("unlocked_routes").clear()
+	for route_id in all_routes:
+		expedition.get("unlocked_routes").append(route_id)
 	expedition.energy = 24
 	expedition.expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
 	expedition.recovery_pack = {}
@@ -110,6 +142,7 @@ func _init() -> void:
 	var energy_before_full := pressure.energy
 	assert(not pressure.collect_expedition_resource("Whisperwood:large", "wood", 2))
 	assert(pressure.energy == energy_before_full)
+	assert(pressure.commit_expedition_branch("clearing"))
 	var guardian_reward: Dictionary = pressure.resolve_guardian_defeat("forest_slime")
 	assert(guardian_reward["reward_id"] == "slime_gel")
 	assert(pressure.expedition_cargo_used() == 2)
@@ -218,6 +251,23 @@ func _init() -> void:
 	preserved_backup.close()
 	assert(preserved_backup_data is Dictionary)
 	assert(int(preserved_backup_data.get("coins", 0)) == 444)
+	# A type-correct but malformed primary save must fall back to a valid backup
+	# before any nested scalar reaches _apply_dict().
+	var typed_backup_writer := SessionScript.new()
+	typed_backup_writer.save_slot = "qa_typed_backup"
+	root.add_child(typed_backup_writer)
+	typed_backup_writer.coins = 123
+	assert(typed_backup_writer.save_game())
+	typed_backup_writer.coins = 234
+	assert(typed_backup_writer.save_game())
+	var malformed_typed_primary := FileAccess.open("user://qa_typed_backup.json", FileAccess.WRITE)
+	malformed_typed_primary.store_string(JSON.stringify({"save_version": 7, "content_version": 1, "construction_progress": {}, "expedition_run": {"status": "active", "biome_id": "Whisperwood", "cargo": {}, "anchor": [{}, 1, 0]}}))
+	malformed_typed_primary.close()
+	var typed_backup_recovered := SessionScript.new()
+	typed_backup_recovered.save_slot = "qa_typed_backup"
+	root.add_child(typed_backup_recovered)
+	assert(typed_backup_recovered.load_game())
+	assert(typed_backup_recovered.coins == 123)
 	# A future content schema must not be silently rewritten as the current
 	# content version, and a day receipt ahead of its day must be rejected before
 	# it can soft-lock the next sleep transaction.
@@ -229,6 +279,99 @@ func _init() -> void:
 	root.add_child(future_content)
 	assert(not future_content.load_game())
 	assert(future_content.save_blocked)
+	# Fresh saves form a route arc instead of exposing the final Dungeon at the
+	# first click; successful extraction is the authoritative unlock event.
+	var route_chain := SessionScript.new()
+	route_chain.save_slot = "qa_route_chain"
+	root.add_child(route_chain)
+	assert(not route_chain.start_expedition("Sunlit Beach"))
+	assert(route_chain.start_expedition("Whisperwood"))
+	assert(route_chain.commit_expedition_branch("grove"))
+	assert(route_chain.complete_expedition_resource("Whisperglass:chain", "berries", 1, 1))
+	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.finish_expedition().get("berries", 0) == 3)
+	assert(route_chain.route_is_unlocked("Sunlit Beach"))
+	route_chain.energy = 24
+	assert(route_chain.start_expedition("Sunlit Beach"))
+	assert(route_chain.commit_expedition_branch("tidepool"))
+	assert(route_chain.collect_expedition_resource("SunlitBeach:TideglassShell", "shell", 1))
+	assert(not bool(route_chain.expedition_run.get("objective_complete", false)))
+	assert(route_chain.collect_expedition_resource("SunlitBeach:TideglassShell:pool", "shell", 1))
+	assert(bool(route_chain.expedition_run.get("objective_complete", false)))
+	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.finish_expedition().get("shell", 0) == 3)
+	assert(route_chain.route_is_unlocked("Ember Ridge"))
+	route_chain.energy = 24
+	assert(route_chain.start_expedition("Ember Ridge"))
+	assert(route_chain.commit_expedition_branch("quarry"))
+	assert(route_chain.collect_expedition_resource("EmberRidge:quarry", "ore", 1))
+	assert(route_chain.collect_expedition_resource("EmberRidge:quarry:2", "ore", 1))
+	assert(route_chain.collect_expedition_resource("EmberRidge:quarry:3", "ore", 1))
+	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.finish_expedition().get("ore", 0) == 4)
+	assert(route_chain.route_is_unlocked("Ember Ridge"))
+	assert(route_chain.route_is_unlocked("Glass Desert"))
+	route_chain.energy = 24
+	assert(route_chain.start_expedition("Glass Desert"))
+	assert(route_chain.commit_expedition_branch("oasis"))
+	for index in 4:
+		assert(route_chain.collect_expedition_resource("GlassDesert:oasis:%d" % index, "fiber", 1))
+	assert(bool(route_chain.expedition_run.get("objective_complete", false)))
+	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.finish_expedition().get("fiber", 0) >= 3)
+	assert(route_chain.route_is_unlocked("Sunken Dungeon"))
+	var bypass_route := SessionScript.new()
+	bypass_route.save_slot = "qa_route_bypass"
+	root.add_child(bypass_route)
+	assert(bypass_route.start_expedition("Whisperwood"))
+	assert(bypass_route.collect_expedition_resource("Whisperwood:uncommitted", "wood", 1))
+	assert(bypass_route.finish_expedition().get("wood", 0) == 1)
+	assert(not bypass_route.route_is_unlocked("Sunlit Beach"))
+	# Each authored map exposes the same route contract: a committed branch,
+	# an objective owned by that branch, and a capstone reward before extraction.
+	var authored_routes := SessionScript.new()
+	authored_routes.save_slot = "qa_authored_routes"
+	root.add_child(authored_routes)
+	authored_routes.get("unlocked_routes").clear()
+	for route_id in all_routes:
+		authored_routes.get("unlocked_routes").append(route_id)
+	assert(authored_routes.start_expedition("Sunlit Beach"))
+	assert(authored_routes.commit_expedition_branch("tidepool"))
+	assert(authored_routes.collect_expedition_resource("SunlitBeach:tidepool:1", "shell", 1))
+	assert(not bool(authored_routes.expedition_run.get("objective_complete", false)))
+	assert(authored_routes.save_game())
+	var partial_objective_loaded := SessionScript.new()
+	partial_objective_loaded.save_slot = "qa_authored_routes"
+	root.add_child(partial_objective_loaded)
+	assert(partial_objective_loaded.load_game())
+	assert(partial_objective_loaded.expedition_run["route_phase"] == "objective")
+	assert(partial_objective_loaded.expedition_run["objective_progress"] == 1)
+	assert(authored_routes.collect_expedition_resource("SunlitBeach:tidepool:2", "shell", 1))
+	assert(authored_routes.expedition_route_snapshot().get("branch_definition", {}).get("objective_id") == "shell")
+	assert(authored_routes.open_expedition_capstone().get("loot", {}).get("shell", 0) == 1)
+	assert(authored_routes.finish_expedition().get("shell", 0) >= 1)
+	authored_routes.energy = 24
+	assert(authored_routes.start_expedition("Ember Ridge"))
+	assert(authored_routes.commit_expedition_branch("quarry"))
+	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry", "ore", 1))
+	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry:2", "ore", 1))
+	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry:3", "ore", 1))
+	assert(bool(authored_routes.expedition_run.get("objective_complete", false)))
+	assert(not authored_routes.open_expedition_capstone().is_empty())
+	assert(authored_routes.finish_expedition().get("ore", 0) >= 1)
+	authored_routes.energy = 24
+	assert(authored_routes.start_expedition("Glass Desert"))
+	assert(authored_routes.commit_expedition_branch("oasis"))
+	for index in 4:
+		assert(authored_routes.collect_expedition_resource("GlassDesert:oasis:%d" % index, "fiber", 1))
+	assert(not authored_routes.open_expedition_capstone().is_empty())
+	assert(authored_routes.finish_expedition().get("fiber", 0) >= 1)
+	authored_routes.energy = 24
+	assert(authored_routes.start_expedition("Sunken Dungeon"))
+	assert(authored_routes.commit_expedition_branch("vault"))
+	assert(authored_routes.record_discovery("Aether Relic"))
+	assert(not authored_routes.open_expedition_capstone().is_empty())
+	assert(authored_routes.finish_expedition().get("relic", 0) >= 1)
 	var impossible_day_file := FileAccess.open("user://qa_impossible_day.json", FileAccess.WRITE)
 	impossible_day_file.store_string(JSON.stringify({"save_version": 7, "content_version": 1, "day": 5, "last_day_transaction": 6}))
 	impossible_day_file.close()
@@ -327,6 +470,7 @@ func _init() -> void:
 	# after materials are physically delivered to the blueprint and its frame
 	# construction clock completes.
 	systems.structures = {}
+	systems.blueprints.append("Tideglass Compass")
 	systems.inventory["wood"] = 8
 	systems.inventory["plank"] = 2
 	assert(not systems.can_place_structure("rain_cistern", [0, -4]))
@@ -344,6 +488,7 @@ func _init() -> void:
 	assert(int(systems.inventory["wood"]) == 0)
 	assert(int(systems.inventory["plank"]) == 0)
 	assert(not systems.can_place_structure("rain_cistern", [8, 6]))
+	assert(systems.place_structure("rain_cistern", [8, 8]).is_empty())
 	systems.advance_day(systems.day + 1)
 	assert(str(systems.structures[cistern["id"]]["state"]) == "building")
 	systems.advance_day(systems.day + 1)
@@ -371,6 +516,8 @@ func _init() -> void:
 	var storage_session := SessionScript.new()
 	storage_session.save_slot = "qa_storage_shed"
 	root.add_child(storage_session)
+	assert(not storage_session.can_place_structure("storage_shed", [2, 0]))
+	storage_session.blueprints.append("Tideglass Compass")
 	storage_session.inventory["wood"] = 10
 	storage_session.inventory["stone"] = 4
 	storage_session.inventory["plank"] = 3
@@ -443,6 +590,7 @@ func _init() -> void:
 	permissions_loaded.save_slot = "qa_mastery_permissions"
 	root.add_child(permissions_loaded)
 	assert(permissions_loaded.load_game())
+	assert(int(permissions_loaded.equipment["hatchet"]["max_durability"]) == 19)
 	assert(permissions_loaded.has_permission("field_repair"))
 	assert(permissions_loaded.has_permission("market_favor"))
 	assert(permissions_loaded.has_permission("combat_training"))
@@ -487,6 +635,9 @@ func _init() -> void:
 	var dungeon := SessionScript.new()
 	dungeon.save_slot = "qa_dungeon"
 	root.add_child(dungeon)
+	dungeon.get("unlocked_routes").clear()
+	for route_id in all_routes:
+		dungeon.get("unlocked_routes").append(route_id)
 	dungeon.energy = 24
 	dungeon.coins = 50
 	assert(dungeon.start_expedition("Sunken Dungeon"))

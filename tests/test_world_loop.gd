@@ -79,13 +79,54 @@ func _run() -> void:
 	root.add_child(world)
 	await process_frame
 	var session: Node = world.get("session")
+	session.get("unlocked_routes").clear()
+	for route_id in ["Whisperwood", "Sunlit Beach", "Ember Ridge", "Glass Desert", "Sunken Dungeon"]:
+		session.get("unlocked_routes").append(route_id)
+	session.get("blueprints").append("Tideglass Compass")
+	world.call("_copy_session_to_runtime")
 	_assert_player_structure_visuals(world, session)
 	assert(world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow") != null)
+	for route_zone in ["SunlitBeach", "EmberRidge", "GlassDesert", "SunkenDungeon"]:
+		assert(world.get_node_or_null(route_zone + "/MapIdentity") != null)
+		var authored_route := world.get_node_or_null(route_zone + "/ExpeditionRoute") as Node3D
+		assert(authored_route != null)
+		assert(authored_route.get_node_or_null("RoutePressure") != null)
+		assert(authored_route.get_node_or_null("RouteChoiceMarker") != null)
+		assert(authored_route.get_node_or_null("RouteBarrier_Tidepool") != null or authored_route.get_node_or_null("RouteBarrier_Quarry") != null or authored_route.get_node_or_null("RouteBarrier_Oasis") != null or authored_route.get_node_or_null("RouteBarrier_Vault") != null)
+	assert(world.get_node_or_null("Player/Visual/LegLeft") != null)
+	assert(world.get_node_or_null("Player/Visual/ArmRight") != null)
+	world.player.call("play_gather_feedback")
+	var gather_arm := world.get_node("Player/Visual/ArmLeft") as Node3D
+	var gather_pose := gather_arm.rotation.x
+	await physics_frame
+	await physics_frame
+	assert(is_equal_approx(gather_arm.rotation.x, gather_pose))
+	world.player.call("cancel_gather_feedback")
 	var paddock_cow := world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow")
 	var paddock_animation := paddock_cow.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	assert(is_equal_approx(float(paddock_cow.scale.x), 0.27))
 	assert(paddock_animation != null and (paddock_animation.is_playing() or paddock_animation.current_animation == "Armature|Walk"))
 	var paused_day := int(session.get("day"))
+	session.inventory["bread"] = 1
+	session.inventory["water"] = 1
+	session.nutrition = 20
+	session.hydration = 20
+	var paused_bread := int(session.inventory["bread"])
+	var paused_water := int(session.inventory["water"])
+	var paused_xp := int(session.get("xp"))
+	var paused_strength := int(session.get("stats")["Strength"])
+	world.call("_toggle_pause")
+	world.call("_eat_best_food")
+	world.call("_drink_water")
+	world.call("_record_activity")
+	world.call("_allocate_best_stat")
+	world.call("_toggle_furnace")
+	assert(int(session.inventory["bread"]) == paused_bread)
+	assert(int(session.inventory["water"]) == paused_water)
+	assert(int(session.get("xp")) == paused_xp)
+	assert(int(session.get("stats")["Strength"]) == paused_strength)
+	assert(not world.get("furnace_active"))
+	world.call("_toggle_pause")
 	world.call("_toggle_pause")
 	world.call("_sleep")
 	world.call("_contextual_interact")
@@ -148,9 +189,16 @@ func _run() -> void:
 			shell_node = candidate
 			break
 	assert(shell_node != null)
+	var beach_marker := world.get_node_or_null("SunlitBeach/ExpeditionRoute/RouteChoiceMarker")
+	assert(beach_marker != null)
+	world.player.global_position = beach_marker.global_position + Vector3(-0.8, 1.0, 0.0)
+	world.call("_interact")
+	assert(session.get("expedition_run").get("branch_id") == "tidepool")
+	world.player.global_position = shell_node.global_position
 	assert(world.call("collect_resource", shell_node))
 	assert(int(session.get("expedition_run").get("cargo").get("shell", 0)) == 1)
 	assert(int(session.get("inventory").get("shell", 0)) == 0)
+	world.player.global_position = Vector3(0.0, 1.0, 7.5)
 	world.call("_return_home")
 	assert(world.get("current_zone") == "Sanctuary")
 	assert(int(session.get("inventory").get("shell", 0)) == 1)
@@ -170,9 +218,16 @@ func _run() -> void:
 	assert(world.get_node_or_null("Whisperwood/WhisperwoodRoute/Sourced_RockPath_Round_Small_1") != null)
 	var branch_marker := world.get_node_or_null("Whisperwood/WhisperwoodRoute/WhisperwoodBranchChoice")
 	assert(branch_marker != null)
-	world.player.global_position = branch_marker.global_position + Vector3(-0.8, 1.0, 0.0)
+	var grove_barrier := world.get_node_or_null("Whisperwood/WhisperwoodRoute/WhisperwoodBarrier_Grove") as StaticBody3D
+	var clearing_barrier := world.get_node_or_null("Whisperwood/WhisperwoodRoute/WhisperwoodBarrier_Clearing") as StaticBody3D
+	assert(grove_barrier != null and clearing_barrier != null)
+	assert(not grove_barrier.visible and not clearing_barrier.visible)
+	world.player.global_position = branch_marker.global_position + Vector3(0.8, 1.0, 0.0)
 	world.call("_interact")
-	assert(session.get("expedition_run").get("branch_id") == "grove")
+	assert(session.get("expedition_run").get("branch_id") == "clearing")
+	assert(grove_barrier.visible)
+	assert(not clearing_barrier.visible)
+	assert(not (grove_barrier.get_node("BarrierCollision") as CollisionShape3D).disabled)
 	world.player.global_position = tree_node.global_position
 	var forest_wood_before := int(session.get("expedition_run").get("cargo", {}).get("wood", 0))
 	assert(world.call("collect_resource", tree_node))
@@ -198,9 +253,35 @@ func _run() -> void:
 	forest_guardian.call("set", "attack_cooldown", 0.0)
 	world.call("guardian_attack", forest_guardian)
 	assert(int(world.player.get("health")) == dodge_health)
+	session.get("expedition_run")["cargo"] = {"wood": int(session.get("cargo_capacity"))}
+	forest_guardian.call("take_damage", 999)
+	assert(bool(forest_guardian.visible))
+	assert(int(forest_guardian.get("health")) == 1)
+	session.get("expedition_run")["cargo"] = {}
+	session.save_blocked = true
+	forest_guardian.call("take_damage", 999)
+	assert(bool(forest_guardian.visible))
+	assert(int(forest_guardian.get("health")) == 1)
+	session.save_blocked = false
 	forest_guardian.call("take_damage", 999)
 	assert(int(session.get("expedition_run").get("cargo").get("slime_gel", 0)) == 1)
 	assert(int(session.get("inventory").get("slime_gel", 0)) == 0)
+	world.player.global_position = Vector3(0.0, 1.0, 7.5)
+	world.call("_return_home")
+	assert(world.get("current_zone") == "Sanctuary")
+	# Objective landmarks stay protected until the player commits to their
+	# branch; otherwise a pre-fork harvest could permanently soft-lock a run.
+	session.energy = 24
+	_enter_route(world, "Sunlit Beach")
+	var tidepool_shell: Node = null
+	for candidate in get_nodes_in_group("resource_node"):
+		if candidate.get_parent().name == "SunlitBeach" and str(candidate.get_meta("route_branch", "")) == "tidepool":
+			tidepool_shell = candidate
+			break
+	assert(tidepool_shell != null)
+	world.player.global_position = tidepool_shell.global_position
+	assert(not world.call("collect_resource", tidepool_shell))
+	assert(not world.call("is_resource_depleted", tidepool_shell))
 	world.player.global_position = Vector3(0.0, 1.0, 7.5)
 	world.call("_return_home")
 	assert(world.get("current_zone") == "Sanctuary")
@@ -231,7 +312,13 @@ func _run() -> void:
 			relic_node = candidate
 			break
 	assert(relic_node != null)
+	var dungeon_marker := world.get_node_or_null("SunkenDungeon/ExpeditionRoute/RouteChoiceMarker")
+	assert(dungeon_marker != null)
+	world.player.global_position = dungeon_marker.global_position + Vector3(-0.8, 1.0, 0.0)
+	world.call("_interact")
+	assert(session.get("expedition_run").get("branch_id") == "vault")
 	assert(world.call("collect_resource", relic_node))
+	world.player.global_position = Vector3(0.0, 1.0, 7.5)
 	world.call("_return_home")
 	assert(int(session.get("inventory").get("relic", 0)) == 1)
 	# Scene-level faint/recovery: the persisted pack, not the scene node's
@@ -250,6 +337,18 @@ func _run() -> void:
 	assert(world.call("collect_resource", recovery_tree))
 	assert(world.call("collect_resource", recovery_tree))
 	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == 2)
+	# A failed persistence transaction must restore the pre-damage active run,
+	# including positive health, instead of leaving a zero-health soft lock.
+	session.health = 1
+	world.player.set("health", 1)
+	var pre_failed_faint_run: Dictionary = session.get("expedition_run").duplicate(true)
+	session.save_blocked = true
+	world.call("player_took_damage", 9)
+	assert(world.get("current_zone") == "Whisperwood")
+	assert(bool(session.call("has_active_expedition")))
+	assert(int(session.get("health")) == 1)
+	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == int(pre_failed_faint_run.get("cargo", {}).get("wood", 0)))
+	session.save_blocked = false
 	world.player.set("health", 1)
 	world.call("player_fainted")
 	assert(world.get("current_zone") == "Sanctuary")
