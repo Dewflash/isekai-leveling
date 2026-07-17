@@ -2111,6 +2111,8 @@ func _update_hud() -> void:
 			status_label.text = "Nearby: %s  |  Press E" % nearby_name
 		else:
 			status_label.text = "Gather close to nodes. Press E to interact."
+	if hud_bag_panel != null:
+		hud_bag_panel.visible = utilities_open
 	if interact_button != null:
 		interact_button.text = "Confirm placement" if placement_mode else "Interact"
 		interact_button.disabled = get_tree().paused
@@ -2191,6 +2193,13 @@ func _update_hud() -> void:
 		save_button.visible = utilities_open
 	if stat_button != null:
 		stat_button.visible = utilities_open
+	if action_hint != null:
+		if placement_mode:
+			action_hint.text = "Blueprint mode  |  Move to a clear footprint  |  Confirm placement or cancel"
+		elif current_zone == "Sanctuary":
+			action_hint.text = "WASD / joystick to move  |  Walk to a route gate, resource, villager, or build site to reveal the next action"
+		else:
+			action_hint.text = "Follow the beacon  |  Cargo is at risk until extraction  |  Gather, camp once, and choose your fights"
 	if hud_right_box != null:
 		for child in hud_right_box.get_children():
 			if child is Button and child != pause_button:
