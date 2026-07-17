@@ -30,6 +30,7 @@ var sampled_cursor := 0
 var spatial_cursor := 0
 var music_streams: Dictionary = {}
 var current_music := ""
+var music_transition: Tween
 
 const RPG_AUDIO_ROOT := "res://assets/sourced/kenney-rpg-audio/Audio/"
 
@@ -140,8 +141,15 @@ func set_environment(zone: String, surface: String, hour: float, weather: String
 	if music_player != null and music_key != current_music:
 		var stream = music_streams.get(music_key)
 		if stream is AudioStream:
-			music_player.stream = stream
-			music_player.play()
+			if music_transition != null and music_transition.is_valid():
+				music_transition.kill()
+			music_transition = create_tween()
+			music_transition.tween_property(music_player, "volume_db", -60.0, 0.16)
+			music_transition.tween_callback(func() -> void:
+				music_player.stream = stream
+				music_player.play()
+			)
+			music_transition.tween_property(music_player, "volume_db", -18.0, 0.34)
 			current_music = music_key
 
 func play_action(kind: String) -> void:
@@ -168,6 +176,9 @@ func play_action_at(kind: String, world_position: Vector3) -> void:
 	if spatial_players.is_empty():
 		play_action(kind)
 		return
+	sfx_kind = kind
+	sfx_time = 0.24 if kind == "hit" else (0.28 if kind in ["discovery", "quest", "camp"] else (0.18 if kind.begins_with("step") else 0.16))
+	phases["sfx"] = 0.0
 	var sampled_key := kind
 	if kind.begins_with("step") and not sampled_streams.has(kind):
 		sampled_key = "step"

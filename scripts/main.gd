@@ -3087,7 +3087,11 @@ func _construction_interact(structure_node: Node3D) -> void:
 			_show_toast("Bring %d %s to the scaffold (%d / %d delivered)." % [required - supplied, str(material_id).capitalize(), supplied, required], 2.6)
 			return
 		var before_delivery: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-		var delivered_structure: Dictionary = session.call("deliver_structure_material", instance_id, str(material_id), 1)
+		# One interaction carries the available stack to the site. The world still
+		# shows a physical delivery tween, but a 12-log frame is not twelve UI
+		# chores; the remaining material order is the next meaningful decision.
+		var delivery_amount := mini(required - supplied, inventory_amount)
+		var delivered_structure: Dictionary = session.call("deliver_structure_material", instance_id, str(material_id), delivery_amount)
 		if delivered_structure.is_empty():
 			_show_toast("That material could not be delivered.", 2.0)
 			return
@@ -3106,7 +3110,7 @@ func _construction_interact(structure_node: Node3D) -> void:
 		if new_state == "building":
 			_show_toast("Scaffold complete. Sleep to finish the %s frame." % _structure_display_name(kind), 3.0)
 		else:
-			_show_toast("Delivered 1 %s. The scaffold now shows the material on site." % str(material_id).capitalize(), 2.0)
+			_show_toast("Delivered %d %s. The scaffold now shows the material on site." % [delivery_amount, str(material_id).capitalize()], 2.0)
 		return
 
 func collect_resource(node: Node) -> bool:
