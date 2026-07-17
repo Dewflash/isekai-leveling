@@ -117,6 +117,7 @@ var livestock_button: Button
 var repair_button: Button
 var structure_button: Button
 var blueprint_button: Button
+var rotate_button: Button
 var stat_button: Button
 var recipe_button: Button
 var dodge_button: Button
@@ -139,6 +140,7 @@ var pending_attack_target: Node = null
 var attack_action_elapsed := 0.0
 var placement_mode := false
 var placement_structure_id := "rain_cistern"
+var placement_rotation_quarter_turns := 0
 var settlement_visuals := {}
 
 var palette := {
@@ -259,6 +261,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_repair_tools()
 	elif event.is_action_pressed("build"):
 		_toggle_structure_placement()
+	elif event.is_action_pressed("rotate_build"):
+		_rotate_structure_placement()
 	elif event.is_action_pressed("cycle_structure"):
 		_cycle_structure_selection()
 	elif event.is_action_pressed("station"):
@@ -290,6 +294,7 @@ func _ensure_input_actions() -> void:
 		"cycle_recipe": [KEY_Q],
 		"repair": [KEY_V],
 		"build": [KEY_B],
+		"rotate_build": [KEY_X],
 		"cycle_structure": [KEY_N],
 		"station": [KEY_C],
 		"stats": [KEY_L],
@@ -303,6 +308,7 @@ func _ensure_input_actions() -> void:
 		"cycle_food": [JOY_BUTTON_LEFT_SHOULDER],
 		"cycle_recipe": [JOY_BUTTON_RIGHT_SHOULDER],
 		"build": [JOY_BUTTON_Y],
+		"rotate_build": [JOY_BUTTON_RIGHT_STICK],
 		"pause": [JOY_BUTTON_START],
 	}
 	var joy_motion_actions := {
@@ -1396,6 +1402,8 @@ func _build_hud() -> void:
 	right_box.add_child(structure_button)
 	blueprint_button = _button("Blueprint: Rain Cistern  [N]", _cycle_structure_selection)
 	right_box.add_child(blueprint_button)
+	rotate_button = _button("Rotate Blueprint  [X]", _rotate_structure_placement)
+	right_box.add_child(rotate_button)
 	build_button = _button("Build Workshop", _workshop_contextual_action)
 	right_box.add_child(build_button)
 	utilities_button = _button("Open Ledger", _toggle_utilities)
@@ -2970,6 +2978,9 @@ func _update_hud() -> void:
 	if blueprint_button != null:
 		blueprint_button.visible = current_zone == "Sanctuary" and (utilities_open or context_node != null)
 		blueprint_button.text = "Blueprint: %s  [N]" % _structure_display_name(placement_structure_id)
+	if rotate_button != null:
+		rotate_button.visible = current_zone == "Sanctuary" and placement_mode
+		rotate_button.text = "Rotate Blueprint  [X]  %d°" % (placement_rotation_quarter_turns * 90)
 	if build_button != null:
 		var workshop_context := current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
 		build_button.visible = workshop_context
@@ -2994,7 +3005,7 @@ func _update_hud() -> void:
 		stat_button.visible = utilities_open
 	if action_hint != null:
 		if placement_mode:
-			action_hint.text = "Blueprint mode  |  Move to a clear footprint  |  Confirm placement or cancel"
+			action_hint.text = "Blueprint mode  |  Move to a clear footprint  |  Rotate [X]  |  Confirm placement or cancel"
 		elif current_zone == "Sanctuary":
 			action_hint.text = "WASD / joystick to move  |  Walk to a route gate, resource, villager, or build site to reveal the next action"
 		else:
@@ -3922,6 +3933,7 @@ func _toggle_structure_placement() -> void:
 		return
 	if placement_mode:
 		placement_mode = false
+		placement_rotation_quarter_turns = 0
 		if build_marker != null:
 			build_marker.visible = false
 		_show_toast("Placement cancelled.", 1.4)
@@ -3930,14 +3942,26 @@ func _toggle_structure_placement() -> void:
 		var requirement := str(session.call("structure_blueprint_requirement", placement_structure_id)) if session.has_method("structure_blueprint_requirement") else "a new discovery"
 		_show_toast("Blueprint locked. Decode %s at the Archive first." % requirement, 2.8)
 		return
-	for existing_id in session.get("structures"):
-		var existing: Dictionary = session.get("structures").get(existing_id, {})
-		if str(existing.get("kind", "")) == placement_structure_id and str(existing.get("state", "")) != "removed":
-			_show_toast("A %s is already part of this Sanctuary." % _structure_display_name(placement_structure_id), 2.0)
-			return
+	var unique_structure := true
+	if session.has_method("structure_is_unique"):
+		unique_structure = bool(session.call("structure_is_unique", placement_structure_id))
+	if unique_structure:
+		for existing_id in session.get("structures"):
+			var existing: Dictionary = session.get("structures").get(existing_id, {})
+			if str(existing.get("kind", "")) == placement_structure_id and str(existing.get("state", "")) != "removed":
+				_show_toast("A %s is already part of this Sanctuary." % _structure_display_name(placement_structure_id), 2.0)
+				return
+	placement_rotation_quarter_turns = 0
 	placement_mode = true
 	_update_structure_preview()
 	_show_toast("Place the %s blueprint on a clear grid cell. Press E to confirm or B to cancel." % _structure_display_name(placement_structure_id), 3.0)
+
+func _rotate_structure_placement() -> void:
+	if get_tree().paused or not placement_mode:
+		return
+	placement_rotation_quarter_turns = posmod(placement_rotation_quarter_turns + 1, 4)
+	_update_structure_preview()
+	_show_toast("Blueprint rotated to %d°. Press E to place." % (placement_rotation_quarter_turns * 90), 1.2)
 
 func _preview_structure_cell() -> Vector2i:
 	var direction := player.get("last_direction") as Vector3
@@ -3945,11 +3969,19 @@ func _preview_structure_cell() -> Vector2i:
 		direction = Vector3(0.0, 0.0, -1.0)
 	return SettlementGrid.world_to_cell(player.global_position + direction.normalized() * 3.0)
 
-func _structure_preview_valid(cell: Vector2i) -> bool:
-	if session == null or not session.call("can_place_structure", placement_structure_id, [cell.x, cell.y]):
-		return false
+func _preview_structure_footprint() -> Vector2i:
 	var footprint_data: Array = ContentRegistry.structure_definition(placement_structure_id).get("footprint", [1, 1])
 	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+	return Vector2i(footprint.y, footprint.x) if posmod(placement_rotation_quarter_turns, 2) == 1 else footprint
+
+func _unrotated_structure_footprint(structure_id: String) -> Vector2i:
+	var footprint_data: Array = ContentRegistry.structure_definition(structure_id).get("footprint", [1, 1])
+	return Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+
+func _structure_preview_valid(cell: Vector2i) -> bool:
+	if session == null or not session.call("can_place_structure", placement_structure_id, [cell.x, cell.y], placement_rotation_quarter_turns):
+		return false
+	var footprint := _preview_structure_footprint()
 	for occupied_cell in SettlementGrid.cells_for(cell, footprint):
 		if SettlementGrid.cell_to_world(occupied_cell).distance_to(player.global_position) < 1.5:
 			return false
@@ -3975,15 +4007,16 @@ func _update_structure_preview() -> void:
 		build_marker.add_child(ghost_label)
 		add_child(build_marker)
 	var cell := _preview_structure_cell()
-	var footprint_data: Array = ContentRegistry.structure_definition(placement_structure_id).get("footprint", [1, 1])
-	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+	var footprint := _preview_structure_footprint()
 	var ghost_mesh := build_marker.get_node_or_null("GhostFootprint") as MeshInstance3D
 	if ghost_mesh != null:
 		var footprint_box := ghost_mesh.mesh as BoxMesh
 		if footprint_box != null:
-			footprint_box.size = Vector3(float(footprint.x), 0.08, float(footprint.y))
+			var authored_footprint := _unrotated_structure_footprint(placement_structure_id)
+			footprint_box.size = Vector3(float(authored_footprint.x), 0.08, float(authored_footprint.y))
 	build_marker.visible = true
 	build_marker.global_position = SettlementGrid.footprint_center_to_world(cell, footprint)
+	build_marker.rotation.y = float(placement_rotation_quarter_turns) * PI * 0.5
 	var valid := _structure_preview_valid(cell)
 	if ghost_mesh != null:
 		ghost_mesh.material_override = _material(palette["leaf"] if valid else palette["danger"], 0.3, true, true)
@@ -3999,7 +4032,7 @@ func _place_structure() -> void:
 		_show_toast("That footprint is blocked. Find a clear patch of Sanctuary.", 2.0)
 		return
 	var before_placement: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	var placed: Dictionary = session.call("place_structure", placement_structure_id, [cell.x, cell.y])
+	var placed: Dictionary = session.call("place_structure", placement_structure_id, [cell.x, cell.y], placement_rotation_quarter_turns)
 	if placed.is_empty():
 		_show_toast("That blueprint cannot be placed on this footprint.", 2.5)
 		return
@@ -4042,10 +4075,13 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	structure.set_meta("construction_id", instance_id)
 	var kind := str(data.get("kind", "rain_cistern"))
 	structure.set_meta("structure_kind", kind)
-	var footprint_data: Array = ContentRegistry.structure_definition(kind).get("footprint", [1, 1])
-	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
-	var footprint_width := maxf(1.8, float(footprint.x) - 0.2)
-	var footprint_depth := maxf(1.8, float(footprint.y) - 0.2)
+	var authored_footprint := _unrotated_structure_footprint(kind)
+	var footprint := authored_footprint
+	var rotation_quarter_turns := posmod(int(data.get("rotation", 0)), 4)
+	if rotation_quarter_turns % 2 == 1:
+		footprint = Vector2i(footprint.y, footprint.x)
+	var footprint_width := maxf(1.8, float(authored_footprint.x) - 0.2)
+	var footprint_depth := maxf(1.8, float(authored_footprint.y) - 0.2)
 	var structure_height := 2.05
 	if kind in ["rain_cistern", "livestock_pen"]:
 		structure_height = 1.65
@@ -4054,6 +4090,7 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	elif kind == "storage_shed":
 		structure_height = 1.78
 	structure.position = SettlementGrid.footprint_center_to_world(Vector2i(int(cell_data[0]), int(cell_data[1])), footprint)
+	structure.rotation.y = float(rotation_quarter_turns) * PI * 0.5
 	sanctuary_zone.add_child(structure)
 	var base := MeshInstance3D.new()
 	base.name = "CisternBase"

@@ -873,10 +873,20 @@ func restore_sanctuary_resources() -> void:
 	sanctuary_contact_progress.clear()
 	state_changed.emit()
 
-func _structure_cells(structure_id: String, origin: Vector2i) -> Array[Vector2i]:
+func _structure_is_unique(structure_id: String) -> bool:
+	return bool(ContentRegistry.structure_definition(structure_id).get("unique", true))
+
+func structure_is_unique(structure_id: String) -> bool:
+	return ContentRegistry.STRUCTURES.has(structure_id) and _structure_is_unique(structure_id)
+
+func _structure_footprint(structure_id: String, rotation_quarter_turns := 0) -> Vector2i:
 	var definition := ContentRegistry.structure_definition(structure_id)
 	var footprint_data: Array = definition.get("footprint", [1, 1])
-	return SettlementGrid.cells_for(origin, Vector2i(int(footprint_data[0]), int(footprint_data[1])))
+	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+	return Vector2i(footprint.y, footprint.x) if posmod(rotation_quarter_turns, 2) == 1 else footprint
+
+func _structure_cells(structure_id: String, origin: Vector2i, rotation_quarter_turns := 0) -> Array[Vector2i]:
+	return SettlementGrid.cells_for(origin, _structure_footprint(structure_id, rotation_quarter_turns))
 
 func structure_blueprint_requirement(structure_id: String) -> String:
 	return str(ContentRegistry.structure_definition(structure_id).get("requires_blueprint", ""))
@@ -887,13 +897,14 @@ func has_structure_blueprint(structure_id: String) -> bool:
 	var requirement := structure_blueprint_requirement(structure_id)
 	return requirement.is_empty() or blueprints.has(requirement)
 
-func can_place_structure(structure_id: String, cell: Array) -> bool:
+func can_place_structure(structure_id: String, cell: Array, rotation_quarter_turns := 0) -> bool:
 	if not ContentRegistry.STRUCTURES.has(structure_id) or cell.size() < 2:
 		return false
 	if not has_structure_blueprint(structure_id):
 		return false
 	var origin := Vector2i(int(cell[0]), int(cell[1]))
-	var candidate_cells := _structure_cells(structure_id, origin)
+	var normalized_rotation := posmod(rotation_quarter_turns, 4)
+	var candidate_cells := _structure_cells(structure_id, origin, normalized_rotation)
 	if not SettlementGrid.inside_bounds(candidate_cells):
 		return false
 	for candidate_cell in candidate_cells:
@@ -903,12 +914,12 @@ func can_place_structure(structure_id: String, cell: Array) -> bool:
 		var existing: Dictionary = structures.get(existing_id, {})
 		if str(existing.get("state", "removed")) == "removed":
 			continue
-		if str(existing.get("kind", "")) == structure_id:
+		if str(existing.get("kind", "")) == structure_id and _structure_is_unique(structure_id):
 			return false
 		var existing_origin_data: Array = existing.get("cell", [])
 		if existing_origin_data.size() < 2:
 			continue
-		var existing_cells := _structure_cells(str(existing.get("kind", "")), Vector2i(int(existing_origin_data[0]), int(existing_origin_data[1])))
+		var existing_cells := _structure_cells(str(existing.get("kind", "")), Vector2i(int(existing_origin_data[0]), int(existing_origin_data[1])), int(existing.get("rotation", 0)))
 		for candidate_cell in candidate_cells:
 			if existing_cells.has(candidate_cell):
 				return false
@@ -923,8 +934,8 @@ func _fixed_cell_occupied(cell: Vector2i) -> bool:
 			return true
 	return false
 
-func place_structure(structure_id: String, cell: Array) -> Dictionary:
-	if not can_place_structure(structure_id, cell):
+func place_structure(structure_id: String, cell: Array, rotation_quarter_turns := 0) -> Dictionary:
+	if not can_place_structure(structure_id, cell, rotation_quarter_turns):
 		return {}
 	var definition := ContentRegistry.structure_definition(structure_id)
 	var cost: Dictionary = definition.get("cost", {})
@@ -932,7 +943,7 @@ func place_structure(structure_id: String, cell: Array) -> Dictionary:
 	var delivered_materials := {}
 	for material_id in cost:
 		delivered_materials[str(material_id)] = 0
-	structures[structure_id_instance] = {"id": structure_id_instance, "kind": structure_id, "cell": [int(cell[0]), int(cell[1])], "state": "blueprint", "remaining_hours": 0.0, "total_hours": float(definition.get("hours", 24.0)), "delivered_materials": delivered_materials}
+	structures[structure_id_instance] = {"id": structure_id_instance, "kind": structure_id, "cell": [int(cell[0]), int(cell[1])], "rotation": posmod(rotation_quarter_turns, 4), "state": "blueprint", "remaining_hours": 0.0, "total_hours": float(definition.get("hours", 24.0)), "delivered_materials": delivered_materials}
 	state_changed.emit()
 	return structures[structure_id_instance].duplicate(true)
 
@@ -1507,6 +1518,8 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 			if not ContentRegistry.STRUCTURES.has(kind) or not (structure_cell is Array) or structure_cell.size() != 2 or structure_state not in ["blueprint", "building", "operational"]:
 				return false
 			if not _valid_integer(structure_cell[0], SettlementGrid.MIN_X, SettlementGrid.MAX_X) or not _valid_integer(structure_cell[1], SettlementGrid.MIN_Z, SettlementGrid.MAX_Z):
+				return false
+			if structure.has("rotation") and not _valid_integer(structure.get("rotation", 0), 0, 3):
 				return false
 			if not _valid_integer(structure.get("remaining_hours", 0), 0, 100000):
 				return false

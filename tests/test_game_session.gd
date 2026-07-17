@@ -601,6 +601,9 @@ func _init() -> void:
 	storage_session.advance_day(storage_session.day + 1)
 	assert(str(storage_session.structures[storage_blueprint["id"]]["state"]) == "operational")
 	assert(storage_session.cargo_capacity == 16)
+	assert(storage_session.can_place_structure("storage_shed", [10, 7], 1))
+	var rotated_storage: Dictionary = storage_session.place_structure("storage_shed", [10, 7], 1)
+	assert(int(rotated_storage.get("rotation", -1)) == 1)
 	assert(storage_session.start_expedition("Whisperwood"))
 	for cargo_index in 16:
 		assert(storage_session.collect_expedition_resource("storage-cargo-%d" % cargo_index, "wood", 1))

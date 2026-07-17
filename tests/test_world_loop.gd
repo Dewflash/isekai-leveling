@@ -22,13 +22,18 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	var workshop_id := "qa_visual_workshop"
 	var storage_id := "qa_visual_storage"
 	var workshop_data := {"id": workshop_id, "kind": "workshop", "cell": [20, 20], "state": "operational", "remaining_hours": 0.0, "delivered_materials": {}}
-	var storage_data := {"id": storage_id, "kind": "storage_shed", "cell": [24, 20], "state": "operational", "remaining_hours": 0.0, "delivered_materials": {}}
+	var storage_data := {"id": storage_id, "kind": "storage_shed", "cell": [24, 20], "rotation": 1, "state": "operational", "remaining_hours": 0.0, "delivered_materials": {}}
 	world.call("_spawn_structure_visual", workshop_id, workshop_data)
 	world.call("_spawn_structure_visual", storage_id, storage_data)
 	var visuals: Dictionary = world.get("settlement_visuals")
 	var workshop_visual := visuals.get(workshop_id) as Node3D
 	var storage_visual := visuals.get(storage_id) as Node3D
 	assert(workshop_visual != null and storage_visual != null)
+	assert(is_equal_approx(storage_visual.rotation.y, PI * 0.5))
+	var storage_base := storage_visual.get_node("CisternBase") as MeshInstance3D
+	assert(storage_base != null)
+	var storage_base_mesh := storage_base.mesh as BoxMesh
+	assert(storage_base_mesh != null and is_equal_approx(storage_base_mesh.size.x, 2.8) and is_equal_approx(storage_base_mesh.size.z, 1.8))
 	assert(workshop_visual.get_node_or_null("StructureUtility/WorkshopForge/WorkshopChimney") != null)
 	assert(workshop_visual.get_node_or_null("StructureUtility/WorkshopHammerPivot") != null)
 	assert(storage_visual.get_node_or_null("StructureUtility/StorageCargo/LargeCrate") != null)
@@ -101,7 +106,7 @@ func _run() -> void:
 		assert(authored_route.get_node_or_null("RoutePressure/PressureBlocker/PressureCollision") != null)
 		assert(authored_route.get_node_or_null("RouteChoiceMarker") != null)
 		assert(authored_route.get_node_or_null("RouteBarrier_Tidepool") != null or authored_route.get_node_or_null("RouteBarrier_Quarry") != null or authored_route.get_node_or_null("RouteBarrier_Oasis") != null or authored_route.get_node_or_null("RouteBarrier_Vault") != null)
-	for action in ["move_left", "move_right", "move_up", "move_down", "interact", "attack", "dodge", "pause"]:
+	for action in ["move_left", "move_right", "move_up", "move_down", "interact", "attack", "dodge", "rotate_build", "pause"]:
 		assert(InputMap.has_action(action))
 	var left_stick_bound := false
 	for input_event in InputMap.action_get_events("move_left"):
