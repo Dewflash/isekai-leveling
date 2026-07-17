@@ -223,6 +223,14 @@ func _init() -> void:
 	assert(not semantic.load_game())
 	assert(semantic.max_health == 100)
 	assert(semantic.health == 100)
+	# A runtime state that would be rejected on load must never be committed by
+	# save_game in the first place.
+	var invalid_save := SessionScript.new()
+	invalid_save.save_slot = "qa_invalid_save"
+	root.add_child(invalid_save)
+	invalid_save.health = 0
+	assert(not invalid_save.save_game())
+	assert(not FileAccess.file_exists("user://qa_invalid_save.json"))
 	# A malformed primary must not overwrite the last known-good backup on the
 	# next save after recovery.
 	var backup_guard := SessionScript.new()
@@ -276,6 +284,24 @@ func _init() -> void:
 	root.add_child(future_content)
 	assert(not future_content.load_game())
 	assert(future_content.save_blocked)
+	# Legacy paid construction records used to arrive as a fully supplied
+	# blueprint. Migration must move them into a finishable frame state rather
+	# than leaving an invisible, permanently pending job.
+	var legacy_writer := SessionScript.new()
+	legacy_writer.save_slot = "qa_legacy_blueprint"
+	root.add_child(legacy_writer)
+	var legacy_payload: Dictionary = legacy_writer.call("_to_dict")
+	legacy_payload["save_version"] = 6
+	legacy_payload["structures"] = {"legacy_archive": {"id": "legacy_archive", "kind": "archive", "cell": [6, 8], "state": "blueprint", "remaining_hours": 0.0}}
+	var legacy_file := FileAccess.open("user://qa_legacy_blueprint.json", FileAccess.WRITE)
+	legacy_file.store_string(JSON.stringify(legacy_payload))
+	legacy_file.close()
+	var legacy_loaded := SessionScript.new()
+	legacy_loaded.save_slot = "qa_legacy_blueprint"
+	root.add_child(legacy_loaded)
+	assert(legacy_loaded.load_game())
+	assert(str(legacy_loaded.structures["legacy_archive"]["state"]) == "building")
+	assert(float(legacy_loaded.structures["legacy_archive"]["remaining_hours"]) > 0.0)
 	# Fresh saves form a route arc instead of exposing the final Dungeon at the
 	# first click; successful extraction is the authoritative unlock event.
 	var route_chain := SessionScript.new()
@@ -288,6 +314,14 @@ func _init() -> void:
 	assert(not route_chain.open_expedition_capstone().is_empty())
 	assert(route_chain.finish_expedition().get("berries", 0) == 3)
 	assert(route_chain.route_is_unlocked("Sunlit Beach"))
+	var wide_anchor := SessionScript.new()
+	wide_anchor.save_slot = "qa_wide_anchor"
+	root.add_child(wide_anchor)
+	assert(wide_anchor.start_expedition("Whisperwood"))
+	var wide_run_id := str(wide_anchor.expedition_run.get("run_id", ""))
+	assert(wide_anchor.update_expedition_anchor(wide_run_id, [19.0, 1.0, 14.0]))
+	assert(is_equal_approx(float(wide_anchor.expedition_run["anchor"][0]), 19.0))
+	assert(is_equal_approx(float(wide_anchor.expedition_run["anchor"][2]), 14.0))
 	route_chain.energy = 24
 	assert(route_chain.start_expedition("Sunlit Beach"))
 	assert(route_chain.commit_expedition_branch("tidepool"))
@@ -508,6 +542,34 @@ func _init() -> void:
 		placed_builder.advance_day(placed_builder.day + 1)
 	assert(str(placed_builder.structures[workshop_blueprint["id"]]["state"]) == "operational")
 	assert(bool(placed_builder.built["workshop"]))
+	# Fresh-save progression must not deadlock at the first research building:
+	# the Archive is the bootstrap research desk, while discoveries gate later
+	# buildings such as the livestock pen.
+	var bootstrap_graph := SessionScript.new()
+	bootstrap_graph.save_slot = "qa_bootstrap_graph"
+	root.add_child(bootstrap_graph)
+	assert(bootstrap_graph.blueprints.is_empty())
+	assert(bootstrap_graph.has_structure_blueprint("archive"))
+	assert(not bootstrap_graph.has_structure_blueprint("livestock_pen"))
+	bootstrap_graph.inventory["wood"] = 8
+	bootstrap_graph.inventory["stone"] = 8
+	bootstrap_graph.inventory["plank"] = 3
+	var archive_blueprint: Dictionary = bootstrap_graph.place_structure("archive", [6, 8])
+	assert(archive_blueprint["state"] == "blueprint")
+	for material_id in {"wood": 8, "stone": 8, "plank": 3}:
+		var archive_frame: Dictionary = bootstrap_graph.deliver_structure_material(str(archive_blueprint["id"]), str(material_id), int({"wood": 8, "stone": 8, "plank": 3}[material_id]))
+		assert(not archive_frame.is_empty())
+	assert(str(bootstrap_graph.structures[archive_blueprint["id"]]["state"]) == "building")
+	for archive_day in 3:
+		bootstrap_graph.advance_day(bootstrap_graph.day + 1)
+	assert(str(bootstrap_graph.structures[archive_blueprint["id"]]["state"]) == "operational")
+	assert(bool(bootstrap_graph.built["library"]))
+	assert(bootstrap_graph.record_discovery("Whisperglass"))
+	assert(bootstrap_graph.research_discovery("Whisperglass"))
+	bootstrap_graph.advance_day(bootstrap_graph.day + 1)
+	assert(bootstrap_graph.claim_research())
+	assert(bootstrap_graph.blueprints.has("Whisperglass Tonic"))
+	assert(bootstrap_graph.has_structure_blueprint("livestock_pen"))
 	# A finished Storage Shed is a real expedition upgrade, not a decorative
 	# prop: it expands the satchel and lets the player bring a longer outing home.
 	var storage_session := SessionScript.new()

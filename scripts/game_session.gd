@@ -16,6 +16,8 @@ const SAVE_PATH := "user://prodewty_save.json"
 const BACKUP_PATH := "user://prodewty_save.backup.json"
 const TEMP_PATH := "user://prodewty_save.tmp.json"
 const BASE_CARGO_CAPACITY := 12
+const EXPEDITION_ANCHOR_LIMIT_X := 20.0
+const EXPEDITION_ANCHOR_LIMIT_Z := 15.0
 
 var day := 1
 var hour := 10.0
@@ -1071,7 +1073,7 @@ func update_expedition_anchor(run_id: String, position: Array) -> bool:
 	for value in position.slice(0, 3):
 		if not (value is int or value is float) or not is_finite(float(value)):
 			return false
-	var anchor := [clampf(float(position[0]), -14.0, 14.0), 1.0, clampf(float(position[2]), -10.0, 10.0)]
+	var anchor := [clampf(float(position[0]), -EXPEDITION_ANCHOR_LIMIT_X, EXPEDITION_ANCHOR_LIMIT_X), 1.0, clampf(float(position[2]), -EXPEDITION_ANCHOR_LIMIT_Z, EXPEDITION_ANCHOR_LIMIT_Z)]
 	expedition_run["anchor"] = anchor
 	state_changed.emit()
 	return true
@@ -1249,7 +1251,8 @@ func save_game() -> bool:
 	file.flush()
 	file.close()
 	var candidate := _read_json(temp_path)
-	if candidate.is_empty() or int(candidate.get("save_version", 0)) != SAVE_VERSION:
+	if candidate.is_empty() or int(candidate.get("save_version", 0)) != SAVE_VERSION or not _save_shape_is_supported(candidate):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 		return false
 	if FileAccess.file_exists(save_path):
 		var previous_payload := _read_json(save_path)
@@ -1362,6 +1365,12 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 					for material_id in old_cost:
 						assumed_delivered[str(material_id)] = int(old_cost[material_id])
 					old_structure["delivered_materials"] = assumed_delivered
+					# Before v7, a paid construction job could be serialized as a
+					# blueprint even though its materials were already consumed. Move
+					# that legacy state into the timed frame stage so it can finish.
+					if str(old_structure.get("state", "")) == "blueprint":
+						old_structure["state"] = "building"
+						old_structure["remaining_hours"] = float(old_definition.get("hours", 24.0))
 				if not old_structure.has("total_hours"):
 					old_structure["total_hours"] = float(old_structure.get("remaining_hours", old_definition.get("hours", 24.0)))
 				if str(old_structure.get("state", "")) == "operational":

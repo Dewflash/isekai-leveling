@@ -130,6 +130,7 @@ var sun_light: DirectionalLight3D
 var animated_water: Array[MeshInstance3D] = []
 var animated_beacons: Array[MeshInstance3D] = []
 var hazard_timer := 0.0
+var hazard_shelter_active := false
 var anchor_timer := 0.0
 var resource_action_node: Node = null
 var resource_action_elapsed := 0.0
@@ -170,6 +171,7 @@ func _ready() -> void:
 	if not configured_save_slot.is_empty():
 		session.save_slot = configured_save_slot
 	add_child(session)
+	_ensure_input_actions()
 	_copy_session_to_runtime()
 	session.state_changed.connect(_on_session_changed)
 	session.feedback_requested.connect(_on_session_feedback)
@@ -229,43 +231,125 @@ func _process(delta: float) -> void:
 	_update_expedition_hazard(delta)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if get_tree().paused and event.keycode != KEY_ESCAPE:
-			return
-		if event.keycode == KEY_E:
-			_contextual_interact()
-		elif event.keycode == KEY_SPACE:
-			_player_attack(player)
-		elif event.keycode == KEY_SHIFT:
-			_player_dodge()
-		elif event.keycode == KEY_R:
-			_sleep()
-		elif event.keycode == KEY_T:
-			_toggle_weather()
-		elif event.keycode == KEY_F:
-			farm_plot_interact(farm_plot)
-		elif event.keycode == KEY_G:
-			_eat_best_food()
-		elif event.keycode == KEY_H:
-			_drink_water()
-		elif event.keycode == KEY_Y:
-			_cycle_food_selection()
-		elif event.keycode == KEY_Q:
-			_cycle_recipe_selection()
-		elif event.keycode == KEY_V:
-			_repair_tools()
-		elif event.keycode == KEY_B:
-			_toggle_structure_placement()
-		elif event.keycode == KEY_N:
-			_cycle_structure_selection()
-		elif event.keycode == KEY_C:
-			station_interact(workshop)
-		elif event.keycode == KEY_L:
-			_allocate_best_stat()
-		elif event.keycode == KEY_P:
-			_record_activity()
-		elif event.keycode == KEY_ESCAPE:
-			_toggle_pause()
+	if event is InputEventKey and event.echo:
+		return
+	if get_tree().paused and not event.is_action_pressed("pause"):
+		return
+	if event.is_action_pressed("interact"):
+		_contextual_interact()
+	elif event.is_action_pressed("attack"):
+		_player_attack(player)
+	elif event.is_action_pressed("dodge"):
+		_player_dodge()
+	elif event.is_action_pressed("sleep"):
+		_sleep()
+	elif event.is_action_pressed("weather"):
+		_toggle_weather()
+	elif event.is_action_pressed("farm"):
+		farm_plot_interact(farm_plot)
+	elif event.is_action_pressed("eat"):
+		_eat_best_food()
+	elif event.is_action_pressed("drink"):
+		_drink_water()
+	elif event.is_action_pressed("cycle_food"):
+		_cycle_food_selection()
+	elif event.is_action_pressed("cycle_recipe"):
+		_cycle_recipe_selection()
+	elif event.is_action_pressed("repair"):
+		_repair_tools()
+	elif event.is_action_pressed("build"):
+		_toggle_structure_placement()
+	elif event.is_action_pressed("cycle_structure"):
+		_cycle_structure_selection()
+	elif event.is_action_pressed("station"):
+		station_interact(workshop)
+	elif event.is_action_pressed("stats"):
+		_allocate_best_stat()
+	elif event.is_action_pressed("activity"):
+		_record_activity()
+	elif event.is_action_pressed("pause"):
+		_toggle_pause()
+
+func _ensure_input_actions() -> void:
+	# Input actions keep keyboard, controller, and future accessibility bindings
+	# on the same path. The virtual joystick still overrides this vector on touch.
+	var key_actions := {
+		"move_left": [KEY_A, KEY_LEFT],
+		"move_right": [KEY_D, KEY_RIGHT],
+		"move_up": [KEY_W, KEY_UP],
+		"move_down": [KEY_S, KEY_DOWN],
+		"interact": [KEY_E],
+		"attack": [KEY_SPACE],
+		"dodge": [KEY_SHIFT],
+		"sleep": [KEY_R],
+		"weather": [KEY_T],
+		"farm": [KEY_F],
+		"eat": [KEY_G],
+		"drink": [KEY_H],
+		"cycle_food": [KEY_Y],
+		"cycle_recipe": [KEY_Q],
+		"repair": [KEY_V],
+		"build": [KEY_B],
+		"cycle_structure": [KEY_N],
+		"station": [KEY_C],
+		"stats": [KEY_L],
+		"activity": [KEY_P],
+		"pause": [KEY_ESCAPE],
+	}
+	var joy_actions := {
+		"interact": [JOY_BUTTON_A],
+		"attack": [JOY_BUTTON_X],
+		"dodge": [JOY_BUTTON_B],
+		"cycle_food": [JOY_BUTTON_LEFT_SHOULDER],
+		"cycle_recipe": [JOY_BUTTON_RIGHT_SHOULDER],
+		"build": [JOY_BUTTON_Y],
+		"pause": [JOY_BUTTON_START],
+	}
+	var joy_motion_actions := {
+		"move_left": {"axis": JOY_AXIS_LEFT_X, "value": -1.0},
+		"move_right": {"axis": JOY_AXIS_LEFT_X, "value": 1.0},
+		"move_up": {"axis": JOY_AXIS_LEFT_Y, "value": -1.0},
+		"move_down": {"axis": JOY_AXIS_LEFT_Y, "value": 1.0},
+	}
+	for action in key_actions:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action, 0.2)
+		for keycode in key_actions[action]:
+			var key_event := InputEventKey.new()
+			key_event.physical_keycode = int(keycode)
+			if not _input_map_has_key(action, int(keycode)):
+				InputMap.action_add_event(action, key_event)
+		for button in joy_actions.get(action, []):
+			var joy_event := InputEventJoypadButton.new()
+			joy_event.button_index = int(button)
+			if not _input_map_has_joy_button(action, int(button)):
+				InputMap.action_add_event(action, joy_event)
+		for motion in [joy_motion_actions.get(action, {})]:
+			if motion.is_empty():
+				continue
+			var motion_event := InputEventJoypadMotion.new()
+			motion_event.axis = int(motion.get("axis", 0))
+			motion_event.axis_value = float(motion.get("value", 0.0))
+			if not _input_map_has_joy_motion(action, motion_event.axis, motion_event.axis_value):
+				InputMap.action_add_event(action, motion_event)
+
+func _input_map_has_key(action: String, keycode: int) -> bool:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey and int(event.physical_keycode) == keycode:
+			return true
+	return false
+
+func _input_map_has_joy_button(action: String, button_index: int) -> bool:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadButton and int(event.button_index) == button_index:
+			return true
+	return false
+
+func _input_map_has_joy_motion(action: String, axis: int, axis_value: float) -> bool:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadMotion and int(event.axis) == axis and is_equal_approx(float(event.axis_value), axis_value):
+			return true
+	return false
 
 func _build_lighting() -> void:
 	var environment_node := WorldEnvironment.new()
@@ -747,6 +831,7 @@ func _create_map_identity(parent: Node3D, route_id: String, accent: Color) -> vo
 				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/Rock_Medium_3.gltf", 0.34, position)
 		"Glass Desert":
 			title.text = "GLASS DESERT\nCHASE THE SHADE"
+			_create_desert_shade_shelter(identity)
 			for position in [Vector3(-10.0, 0.08, -2.0), Vector3(11.0, 0.08, 5.5), Vector3(0.0, 0.08, 7.0)]:
 				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/DeadTree_4.gltf", 0.52, position)
 			for index in 5:
@@ -773,6 +858,49 @@ func _create_map_identity(parent: Node3D, route_id: String, accent: Color) -> vo
 				animated_beacons.append(torch)
 			for position in [Vector3(-10.5, 0.08, 0.8), Vector3(10.5, 0.08, -0.8), Vector3(-6.2, 0.08, 6.2), Vector3(6.2, 0.08, 6.2)]:
 				_add_sourced_model(identity, "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Wide.gltf", 0.38, position)
+
+func _create_desert_shade_shelter(parent: Node3D) -> void:
+	# A shelter is a navigable place, not a status-effect label. Its Area3D is
+	# also used by the hazard loop, so the player can read the relief spatially
+	# and use it as a real pause point while deciding whether to push on.
+	var shade := Area3D.new()
+	shade.name = "ShadeVolume"
+	shade.position = Vector3(-1.5, 0.0, 2.8)
+	shade.set_meta("shelter_kind", "desert_shade")
+	shade.set_meta("radius", 3.2)
+	parent.add_child(shade)
+	var collision := CollisionShape3D.new()
+	collision.name = "ShadeCollision"
+	var shade_shape := BoxShape3D.new()
+	shade_shape.size = Vector3(5.8, 2.8, 4.6)
+	collision.shape = shade_shape
+	collision.position.y = 1.35
+	shade.add_child(collision)
+	var canopy := MeshInstance3D.new()
+	canopy.name = "CanvasCanopy"
+	var canopy_mesh := BoxMesh.new()
+	canopy_mesh.size = Vector3(5.8, 0.18, 4.6)
+	canopy.mesh = canopy_mesh
+	canopy.material_override = _material(Color("#6d5b55"), 0.9)
+	canopy.position.y = 2.55
+	shade.add_child(canopy)
+	for side in [-1.0, 1.0]:
+		for depth in [-1.0, 1.0]:
+			var post := MeshInstance3D.new()
+			post.name = "ShadePost_%s_%s" % [side, depth]
+			var post_mesh := CylinderMesh.new()
+			post_mesh.top_radius = 0.10
+			post_mesh.bottom_radius = 0.14
+			post_mesh.height = 2.45
+			post_mesh.radial_segments = 7
+			post.mesh = post_mesh
+			post.material_override = _material(palette["wood_dark"], 0.96)
+			post.position = Vector3(side * 2.55, 1.22, depth * 1.95)
+			shade.add_child(post)
+	var shade_label := _label3d("OASIS SHADE\nHEAT PRESSURE PAUSED", 0.15, palette["cream"])
+	shade_label.name = "ShadeLabel"
+	shade_label.position = Vector3(0.0, 3.05, 0.0)
+	shade.add_child(shade_label)
 
 func _create_route_pressure_visual(parent: Node3D, route_id: String, accent: Color) -> void:
 	var pressure := Node3D.new()
@@ -2534,18 +2662,29 @@ func _update_lighting() -> void:
 func _update_expedition_hazard(delta: float) -> void:
 	if current_zone == "Sanctuary" or session == null or not session.call("has_active_expedition"):
 		hazard_timer = 0.0
+		hazard_shelter_active = false
 		return
 	var run: Dictionary = session.get("expedition_run")
 	if not bool(run.get("stake_active", false)):
 		hazard_timer = 0.0
+		hazard_shelter_active = false
 		return
-	hazard_timer += delta
 	var tick_interval := 18.0
 	match current_zone:
 		"Sunlit Beach": tick_interval = 18.0
 		"Ember Ridge": tick_interval = 16.0
 		"Glass Desert": tick_interval = 12.0
 		"Sunken Dungeon": tick_interval = 10.0
+	if _is_player_in_route_shelter():
+		hazard_timer = 0.0
+		if not hazard_shelter_active:
+			_show_toast("Shade found. Heat pressure is paused while you plan your next move.", 2.6)
+		hazard_shelter_active = true
+		return
+	if hazard_shelter_active:
+		_show_toast("Back into the heat. Keep the shade in sight.", 1.8)
+		hazard_shelter_active = false
+	hazard_timer += delta
 	if hazard_timer < tick_interval:
 		return
 	hazard_timer -= tick_interval
@@ -2565,6 +2704,19 @@ func _update_expedition_hazard(delta: float) -> void:
 			session.call("restore_state", before_stake)
 		_copy_session_to_runtime()
 		return
+
+func _is_player_in_route_shelter() -> bool:
+	if current_zone != "Glass Desert" or player == null or desert_zone == null:
+		return false
+	var shade := desert_zone.get_node_or_null("MapIdentity/ShadeVolume") as Area3D
+	if shade == null or not shade.is_visible_in_tree():
+		return false
+	for body in shade.get_overlapping_bodies():
+		if body == player:
+			return true
+	var player_flat := Vector2(player.global_position.x, player.global_position.z)
+	var shade_flat := Vector2(shade.global_position.x, shade.global_position.z)
+	return player_flat.distance_to(shade_flat) <= float(shade.get_meta("radius", 3.2))
 
 func _update_audio_context() -> void:
 	if audio_director == null or player == null:
@@ -2665,6 +2817,8 @@ func _update_hud() -> void:
 			elif label_value != null:
 				nearby_name = str(label_value)
 			status_label.text = "Nearby: %s  |  Press E" % nearby_name
+		elif _is_player_in_route_shelter():
+			status_label.text = "Shade shelter: heat pressure paused  |  Plan your return"
 		else:
 			status_label.text = "Gather close to nodes. Press E to interact."
 	if hud_bag_panel != null:
@@ -2776,6 +2930,8 @@ func _update_hud() -> void:
 				var objective_progress := int(route_state.get("objective_progress", 0))
 				var objective_text := "CAPSTONE READY" if bool(route_state.get("objective_complete", false)) else ("OBJECTIVE %d/%d  |  %s" % [objective_progress, objective_target, str(route_definition.get("summary", "Gather supplies and read the terrain."))] if objective_target > 0 else str(route_definition.get("summary", "Gather supplies and read the terrain.")))
 				expedition_hint = "%s  |  %s  |  Extract at the beacon" % [branch_text, objective_text]
+				if _is_player_in_route_shelter():
+					expedition_hint += "  |  Shade pauses heat pressure"
 			action_hint.text = expedition_hint
 	if hud_right_box != null:
 		for child in hud_right_box.get_children():
@@ -4798,6 +4954,7 @@ func player_made_noise(position: Vector3, intensity: float) -> void:
 func recover_loot(pack_id: String) -> bool:
 	if session == null or pack_id.is_empty():
 		return false
+	var before_recovery: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 	var loot: Dictionary = {}
 	if session.has_method("claim_recovery_pack_to_expedition") and session.call("has_active_expedition"):
 		loot = session.call("claim_recovery_pack_to_expedition", pack_id, current_zone)
@@ -4808,7 +4965,15 @@ func recover_loot(pack_id: String) -> bool:
 		return false
 	recovery_loot = {}
 	_sync_expedition_cargo()
-	session.call("save_game")
+	if not bool(session.call("save_game")):
+		if not before_recovery.is_empty():
+			session.call("restore_state", before_recovery)
+		_copy_session_to_runtime()
+		_sync_expedition_cargo()
+		_clear_recovery_nodes()
+		_restore_recovery_pack()
+		_show_toast("The recovery pack could not be secured. Nothing was taken.", 3.0)
+		return false
 	_show_toast("Recovery pack opened. The recovered cargo is still at risk until extraction.", 2.8)
 	return true
 

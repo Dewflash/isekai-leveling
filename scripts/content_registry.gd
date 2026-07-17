@@ -110,7 +110,10 @@ const STRUCTURES := {
 	# gathered raw materials. Planks are produced by the finished Workshop and
 	# become the gate for later district upgrades, preventing a fresh-save loop.
 	"workshop": {"footprint": [3, 3], "cost": {"wood": 12, "stone": 8}, "hours": 36.0, "summary": "A player-placed workshop for turning raw supplies into useful goods."},
-	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "requires_blueprint": "Whisperglass Tonic", "summary": "A player-placed archive for researching discoveries."},
+	# The Archive is the first research gate, so it must be reachable before
+	# any researched blueprint exists. Its discoveries unlock the later district
+	# buildings rather than gating the desk that performs the research.
+	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "summary": "A player-placed archive for researching discoveries."},
 	"livestock_pen": {"footprint": [4, 3], "cost": {"wood": 10, "fiber": 6, "plank": 2}, "hours": 24.0, "requires_blueprint": "Whisperglass Tonic", "summary": "A player-placed pen that gives livestock a safe home."},
 	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "requires_blueprint": "Tideglass Compass", "cargo_bonus": 4, "summary": "A sturdy stockpile that expands expedition satchel capacity by 4."},
 }

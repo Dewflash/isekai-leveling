@@ -27,16 +27,20 @@ func _physics_process(delta: float) -> void:
 	invulnerable_time = maxf(0.0, invulnerable_time - delta)
 	hurt_time = maxf(0.0, hurt_time - delta)
 	action_pose_time = maxf(0.0, action_pose_time - delta)
-	var keyboard := Vector2.ZERO
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		keyboard.x -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		keyboard.x += 1.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		keyboard.y -= 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		keyboard.y += 1.0
-	var input_vector := keyboard
+	var input_vector := Vector2.ZERO
+	if InputMap.has_action("move_left") and InputMap.has_action("move_right") and InputMap.has_action("move_up") and InputMap.has_action("move_down"):
+		input_vector = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	else:
+		# Keep the character usable when this script is previewed outside Main,
+		# before the world's input map bootstrap has run.
+		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+			input_vector.x -= 1.0
+		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+			input_vector.x += 1.0
+		if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+			input_vector.y -= 1.0
+		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+			input_vector.y += 1.0
 	if joystick_vector.length() > 0.05:
 		input_vector = joystick_vector
 	if input_vector.length() > 1.0:

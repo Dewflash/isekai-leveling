@@ -94,6 +94,35 @@ func _run() -> void:
 		assert(authored_route.get_node_or_null("RoutePressure/PressureBlocker/PressureCollision") != null)
 		assert(authored_route.get_node_or_null("RouteChoiceMarker") != null)
 		assert(authored_route.get_node_or_null("RouteBarrier_Tidepool") != null or authored_route.get_node_or_null("RouteBarrier_Quarry") != null or authored_route.get_node_or_null("RouteBarrier_Oasis") != null or authored_route.get_node_or_null("RouteBarrier_Vault") != null)
+	for action in ["move_left", "move_right", "move_up", "move_down", "interact", "attack", "dodge", "pause"]:
+		assert(InputMap.has_action(action))
+	var left_stick_bound := false
+	for input_event in InputMap.action_get_events("move_left"):
+		if input_event is InputEventJoypadMotion:
+			left_stick_bound = true
+	assert(left_stick_bound)
+	var shade := world.get_node_or_null("GlassDesert/MapIdentity/ShadeVolume") as Area3D
+	assert(shade != null)
+	assert(shade.get_node_or_null("ShadeCollision") != null)
+	session.expedition_run = {"status": "active", "run_id": "qa_shade", "biome_id": "Glass Desert", "cargo": {}, "depleted_ids": [], "camp_used": false, "started_day": 1, "anchor": [0.0, 1.0, 7.5], "stake_active": true}
+	world.call("_set_zone", "Glass Desert")
+	world.player.global_position = shade.global_position + Vector3(0.0, 1.0, 0.0)
+	world.set("hazard_timer", 0.0)
+	world.call("_update_expedition_hazard", 20.0)
+	assert(is_equal_approx(float(world.get("hazard_timer")), 0.0))
+	# Recovery is transactional too: a disk failure must leave both the cargo
+	# and the physical pack available for another attempt.
+	session.recovery_pack = {"pack_id": "qa_pack", "zone_id": "Glass Desert", "loot": {"wood": 1}, "position": [0.0, 1.0, 0.0], "expires_day": 99}
+	world.call("_spawn_recovery_pack", {"wood": 1}, Vector3(0.0, 1.0, 0.0), "Glass Desert", "qa_pack")
+	session.save_blocked = true
+	assert(not bool(world.call("recover_loot", "qa_pack")))
+	assert(not session.recovery_pack.is_empty())
+	assert(session.expedition_run.get("cargo", {}).is_empty())
+	session.save_blocked = false
+	session.recovery_pack = {}
+	world.call("_clear_recovery_nodes")
+	session.expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
+	world.call("_set_zone", "Sanctuary")
 	assert(world.get_node_or_null("Player/Visual/LegLeft") != null)
 	assert(world.get_node_or_null("Player/Visual/ArmRight") != null)
 	world.player.call("play_gather_feedback")
