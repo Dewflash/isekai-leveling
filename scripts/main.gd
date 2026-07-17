@@ -538,6 +538,7 @@ func _create_dungeon_landmarks(parent: Node3D) -> void:
 
 func _build_player() -> void:
 	player = PlayerScript.new() as CharacterBody3D
+	player.process_mode = Node.PROCESS_MODE_PAUSABLE
 	player.name = "Player"
 	player.set("world", self)
 	player.position = Vector3(0.0, 1.0, 4.0)
@@ -1421,6 +1422,7 @@ func _create_guardian(parent: Node3D, position: Vector3, guardian_id := "forest_
 	if definition.is_empty():
 		return null
 	var guardian := GuardianScript.new() as CharacterBody3D
+	guardian.process_mode = Node.PROCESS_MODE_PAUSABLE
 	guardian.name = guardian_id
 	guardian.set("world", self)
 	guardian.set("target", player)
@@ -1533,6 +1535,7 @@ func _create_livestock_pen(parent: Node3D, position: Vector3) -> void:
 	label.position = Vector3(0.0, 1.85, 0.0)
 	livestock_pen.add_child(label)
 	var animal := LivestockAnimalScript.new() as Node3D
+	animal.process_mode = Node.PROCESS_MODE_PAUSABLE
 	animal.name = "Clover"
 	animal.set("world", self)
 	animal.set("animal_id", "clover")
@@ -1542,6 +1545,7 @@ func _create_livestock_pen(parent: Node3D, position: Vector3) -> void:
 	if cow_scene != null:
 		var sourced_cow := cow_scene.instantiate() as Node3D
 		if sourced_cow != null:
+			sourced_cow.process_mode = Node.PROCESS_MODE_PAUSABLE
 			sourced_cow.name = "SourcedPaddockCow"
 			sourced_cow.position = Vector3(1.05, 0.0, 0.28)
 			sourced_cow.scale = Vector3.ONE * 0.62
@@ -2181,6 +2185,10 @@ func _update_hud() -> void:
 		save_button.visible = utilities_open
 	if stat_button != null:
 		stat_button.visible = utilities_open
+	if hud_right_box != null:
+		for child in hud_right_box.get_children():
+			if child is Button and child != pause_button:
+				(child as Button).disabled = get_tree().paused
 
 func _update_interaction_marker(delta: float) -> void:
 	if interaction_marker == null or player == null:
