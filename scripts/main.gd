@@ -729,7 +729,7 @@ func _build_hud() -> void:
 	right_box.add_child(food_button)
 	water_button = _button("Drink Water  [H]", _drink_water)
 	right_box.add_child(water_button)
-	livestock_button = _button("Livestock Pen", func() -> void: _livestock_interact(livestock_pen))
+	livestock_button = _button("Livestock Pen", _livestock_contextual_action)
 	right_box.add_child(livestock_button)
 	repair_button = _button("Repair Tools  [V]", _repair_tools)
 	right_box.add_child(repair_button)
@@ -739,7 +739,7 @@ func _build_hud() -> void:
 	right_box.add_child(structure_button)
 	blueprint_button = _button("Blueprint: Rain Cistern  [N]", _cycle_structure_selection)
 	right_box.add_child(blueprint_button)
-	build_button = _button("Build Workshop", _build_workshop)
+	build_button = _button("Build Workshop", _workshop_contextual_action)
 	right_box.add_child(build_button)
 	utilities_button = _button("Open Ledger", _toggle_utilities)
 	right_box.add_child(utilities_button)
@@ -2154,13 +2154,14 @@ func _update_hud() -> void:
 		water_button.visible = current_zone == "Sanctuary"
 		water_button.text = "Drink Water  [H]  (%d)" % int(inventory.get("water", 0))
 	if livestock_button != null:
-		livestock_button.visible = current_zone == "Sanctuary" and context_node == livestock_pen
+		var livestock_context := current_zone == "Sanctuary" and (context_node == livestock_pen or _is_player_structure_kind(context_node, "livestock_pen"))
+		livestock_button.visible = livestock_context
 		var pen_built := session != null and bool(session.get("built").get("livestock_pen", false))
 		livestock_button.text = "Collect / Feed Clover" if pen_built else "Place Livestock Pen Blueprint"
 	if repair_button != null:
-		repair_button.visible = current_zone == "Sanctuary" and context_node == workshop
+		repair_button.visible = current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
 	if recipe_button != null:
-		recipe_button.visible = current_zone == "Sanctuary" and context_node == workshop and session != null and bool(session.get("built").get("workshop", false))
+		recipe_button.visible = current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop")) and session != null and bool(session.get("built").get("workshop", false))
 		recipe_button.text = "Recipe: %s  [Q]" % selected_recipe.capitalize()
 	if structure_button != null:
 		structure_button.visible = current_zone == "Sanctuary"
@@ -2169,11 +2170,16 @@ func _update_hud() -> void:
 		blueprint_button.visible = current_zone == "Sanctuary"
 		blueprint_button.text = "Blueprint: %s  [N]" % _structure_display_name(placement_structure_id)
 	if build_button != null:
-		build_button.visible = current_zone == "Sanctuary" and context_node == workshop
+		var workshop_context := current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
+		build_button.visible = workshop_context
 		var construction_state := "none"
 		if session != null:
 			construction_state = str(session.get("construction_job").get("status", "none"))
-		build_button.text = "Workshop Built" if session != null and bool(session.get("built").get("workshop", false)) else ("Finish Workshop" if construction_state == "ready" else ("Building... Sleep to advance" if construction_state == "building" else "Place Workshop Blueprint"))
+		if _is_player_structure_kind(context_node, "workshop"):
+			var placed_state: Dictionary = session.get("structures").get(str(context_node.get_meta("construction_id")), {}) if session != null else {}
+			build_button.text = "Use Workshop" if str(placed_state.get("state", "")) == "operational" else ("Deliver Workshop Materials" if str(placed_state.get("state", "")) == "blueprint" else "Workshop frame in progress")
+		else:
+			build_button.text = "Workshop Built" if session != null and bool(session.get("built").get("workshop", false)) else ("Finish Workshop" if construction_state == "ready" else ("Building... Sleep to advance" if construction_state == "building" else "Place Workshop Blueprint"))
 	if smelt_button != null:
 		smelt_button.visible = current_zone == "Sanctuary" and furnace != null and player.global_position.distance_to(furnace.global_position) < 5.0
 	if utilities_button != null:
@@ -2251,6 +2257,24 @@ func _interact() -> void:
 		return
 	if nearest.has_method("interact"):
 		nearest.call("interact", player)
+
+func _is_player_structure_kind(node: Node, kind: String) -> bool:
+	return node != null and node.has_meta("construction_id") and str(node.get_meta("structure_kind", "")) == kind
+
+func _workshop_contextual_action() -> void:
+	if get_tree().paused:
+		return
+	var context_node := _nearest_interactable()
+	if _is_player_structure_kind(context_node, "workshop"):
+		_construction_interact(context_node as Node3D)
+	else:
+		_build_workshop()
+
+func _livestock_contextual_action() -> void:
+	if get_tree().paused:
+		return
+	var context_node := _nearest_interactable()
+	_livestock_interact(context_node if context_node != null else livestock_pen)
 
 func _contextual_interact() -> void:
 	if get_tree().paused:
