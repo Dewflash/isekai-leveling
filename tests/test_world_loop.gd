@@ -91,6 +91,7 @@ func _run() -> void:
 		var authored_route := world.get_node_or_null(route_zone + "/ExpeditionRoute") as Node3D
 		assert(authored_route != null)
 		assert(authored_route.get_node_or_null("RoutePressure") != null)
+		assert(authored_route.get_node_or_null("RoutePressure/PressureBlocker/PressureCollision") != null)
 		assert(authored_route.get_node_or_null("RouteChoiceMarker") != null)
 		assert(authored_route.get_node_or_null("RouteBarrier_Tidepool") != null or authored_route.get_node_or_null("RouteBarrier_Quarry") != null or authored_route.get_node_or_null("RouteBarrier_Oasis") != null or authored_route.get_node_or_null("RouteBarrier_Vault") != null)
 	assert(world.get_node_or_null("Player/Visual/LegLeft") != null)

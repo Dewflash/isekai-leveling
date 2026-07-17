@@ -298,7 +298,7 @@ func _build_world() -> void:
 	sanctuary_zone = Node3D.new()
 	sanctuary_zone.name = "Sanctuary"
 	add_child(sanctuary_zone)
-	_create_floor(sanctuary_zone, Vector3(0.0, -0.25, 0.0), Vector2(32.0, 24.0), palette["grass"], "SanctuaryGround")
+	_create_floor(sanctuary_zone, Vector3(0.0, -0.25, 0.0), Vector2(40.0, 30.0), palette["grass"], "SanctuaryGround")
 	_create_path(sanctuary_zone, Vector3(0.0, 0.02, 1.0), Vector3(3.0, 0.08, 24.0), palette["stone"])
 	_create_path(sanctuary_zone, Vector3(5.5, 0.02, -1.5), Vector3(12.0, 0.08, 2.2), palette["stone"])
 	for route_id in ContentRegistry.ROUTE_SOCKETS:
@@ -331,7 +331,7 @@ func _build_world() -> void:
 	forest_zone = Node3D.new()
 	forest_zone.name = "Whisperwood"
 	add_child(forest_zone)
-	_create_floor(forest_zone, Vector3(0.0, -0.25, 0.0), Vector2(32.0, 24.0), palette["grass_dark"], "WhisperwoodGround")
+	_create_floor(forest_zone, Vector3(0.0, -0.25, 0.0), Vector2(44.0, 32.0), palette["grass_dark"], "WhisperwoodGround")
 	_create_path(forest_zone, Vector3(0.0, 0.02, 0.0), Vector3(3.0, 0.08, 24.0), palette["wood"])
 	for position in [Vector3(-10, 0, -8), Vector3(-7, 0, 7), Vector3(10, 0, 7), Vector3(11, 0, -5), Vector3(-12, 0, 0), Vector3(5, 0, -8), Vector3(-3, 0, 8)]:
 		_create_tree(forest_zone, position, 1.15, "wood", 2)
@@ -386,7 +386,7 @@ func _create_expedition_zone(zone_name: String, ground_color: Color, path_color:
 	var zone := Node3D.new()
 	zone.name = zone_name.replace(" ", "")
 	add_child(zone)
-	_create_floor(zone, Vector3(0.0, -0.25, 0.0), Vector2(32.0, 24.0), ground_color, zone_name + "Ground")
+	_create_floor(zone, Vector3(0.0, -0.25, 0.0), Vector2(44.0, 32.0), ground_color, zone_name + "Ground")
 	_create_path(zone, Vector3(0.0, 0.02, 0.0), Vector3(3.0, 0.08, 24.0), path_color)
 	var banner := _label3d(zone_name.to_upper(), 0.26, palette["cream"])
 	banner.position = Vector3(0.0, 3.0, -8.5)
@@ -403,6 +403,7 @@ func _create_expedition_zone(zone_name: String, ground_color: Color, path_color:
 		"Glass Desert": _create_desert_landmarks(zone)
 		"Sunken Dungeon": _create_dungeon_landmarks(zone)
 	_create_map_identity(zone, zone_name, accent)
+	_dress_expedition_edges(zone, zone_name)
 	_create_expedition_route_landmarks(zone, zone_name, accent)
 	return zone
 
@@ -675,6 +676,32 @@ func _create_dungeon_landmarks(parent: Node3D) -> void:
 	altar.position = Vector3(0.0, 0.24, -6.0)
 	parent.add_child(altar)
 
+func _dress_expedition_edges(parent: Node3D, route_id: String) -> void:
+	var edge_positions := [
+		Vector3(-18.0, 0.08, -12.0), Vector3(-11.0, 0.08, -14.0),
+		Vector3(0.0, 0.08, -14.0), Vector3(11.0, 0.08, -14.0),
+		Vector3(18.0, 0.08, -10.0), Vector3(18.0, 0.08, 10.0),
+		Vector3(9.0, 0.08, 14.0), Vector3(-4.0, 0.08, 14.0),
+		Vector3(-16.0, 0.08, 11.0), Vector3(-19.0, 0.08, 1.0),
+	]
+	var asset := "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Wide.gltf"
+	var scale_value := 0.34
+	match route_id:
+		"Sunlit Beach":
+			asset = "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Wide.gltf"
+			scale_value = 0.3
+		"Ember Ridge":
+			asset = "res://assets/quaternius-stylized-nature/glTF/Rock_Medium_2.gltf"
+			scale_value = 0.42
+		"Glass Desert":
+			asset = "res://assets/quaternius-stylized-nature/glTF/DeadTree_5.gltf"
+			scale_value = 0.46
+		"Sunken Dungeon":
+			asset = "res://assets/quaternius-stylized-nature/glTF/DeadTree_5.gltf"
+			scale_value = 0.42
+	for index in edge_positions.size():
+		_add_sourced_model(parent, asset, scale_value + float(index % 2) * 0.06, edge_positions[index])
+
 func _create_map_identity(parent: Node3D, route_id: String, accent: Color) -> void:
 	# These authored silhouettes make each destination readable before the HUD
 	# tells the player where they are. They are deliberately assembled from the
@@ -765,6 +792,39 @@ func _create_route_pressure_visual(parent: Node3D, route_id: String, accent: Col
 	label.name = "PressureLabel"
 	label.position = Vector3(0.0, 0.95, 0.0)
 	pressure.add_child(label)
+	var blocker := StaticBody3D.new()
+	blocker.name = "PressureBlocker"
+	blocker.position = Vector3(0.0, 0.62, 5.9)
+	blocker.visible = false
+	var blocker_mesh := BoxMesh.new()
+	var blocker_color := accent.darkened(0.18)
+	match route_id:
+		"Sunlit Beach":
+			blocker_mesh.size = Vector3(3.8, 1.0, 0.72)
+			blocker_color = Color("#4babb4")
+		"Ember Ridge":
+			blocker_mesh.size = Vector3(3.3, 1.6, 0.9)
+			blocker_color = Color("#6d6262")
+		"Glass Desert":
+			blocker_mesh.size = Vector3(3.6, 1.1, 0.62)
+			blocker_color = Color("#c98f63")
+		"Sunken Dungeon":
+			blocker_mesh.size = Vector3(4.0, 1.3, 0.9)
+			blocker_color = Color("#456477")
+	var blocker_visual := MeshInstance3D.new()
+	blocker_visual.name = "PressureBarrierVisual"
+	blocker_visual.mesh = blocker_mesh
+	blocker_visual.material_override = _material(blocker_color, 0.62, false, true)
+	blocker_visual.position.y = 0.0
+	blocker.add_child(blocker_visual)
+	var blocker_collision := CollisionShape3D.new()
+	blocker_collision.name = "PressureCollision"
+	var blocker_shape := BoxShape3D.new()
+	blocker_shape.size = blocker_mesh.size
+	blocker_collision.shape = blocker_shape
+	blocker_collision.disabled = true
+	blocker.add_child(blocker_collision)
+	pressure.add_child(blocker)
 	pressure.set_meta("route_id", route_id)
 
 func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent: Color) -> void:
@@ -850,6 +910,12 @@ func _refresh_expedition_routes() -> void:
 		if pressure != null:
 			var pressure_active := active and bool(run.get("stake_active", false))
 			pressure.visible = pressure_active
+			var pressure_blocker := pressure.get_node_or_null("PressureBlocker") as StaticBody3D
+			if pressure_blocker != null:
+				pressure_blocker.visible = pressure_active
+				var pressure_collision := pressure_blocker.get_node_or_null("PressureCollision") as CollisionShape3D
+				if pressure_collision != null:
+					pressure_collision.disabled = not pressure_active
 			var pressure_label := pressure.get_node_or_null("PressureLabel") as Label3D
 			if pressure_label != null:
 				var pressure_copy := {
@@ -1007,7 +1073,7 @@ func _build_player() -> void:
 	camera = Camera3D.new()
 	camera.name = "IsometricCamera"
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 22.0
+	camera.size = 18.0
 	camera.current = true
 	add_child(camera)
 	interaction_marker = MeshInstance3D.new()

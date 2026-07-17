@@ -15,6 +15,8 @@ var walk_time := 0.0
 var hurt_time := 0.0
 var gather_active := false
 var action_pose_time := 0.0
+const WORLD_LIMIT_X := 20.0
+const WORLD_LIMIT_Z := 15.0
 
 func _ready() -> void:
 	visual = get_node_or_null("Visual")
@@ -81,8 +83,8 @@ func _physics_process(delta: float) -> void:
 					if limb != null:
 						limb.rotation.x = move_toward(limb.rotation.x, 0.0, delta * 4.0)
 	move_and_slide()
-	global_position.x = clampf(global_position.x, -14.0, 14.0)
-	global_position.z = clampf(global_position.z, -10.0, 10.0)
+	global_position.x = clampf(global_position.x, -WORLD_LIMIT_X, WORLD_LIMIT_X)
+	global_position.z = clampf(global_position.z, -WORLD_LIMIT_Z, WORLD_LIMIT_Z)
 	global_position.y = 1.0
 	if world != null and world.has_method("player_moved"):
 		world.player_moved(direction.length() > 0.05)
@@ -107,8 +109,8 @@ func start_dodge() -> bool:
 	invulnerable_time = 0.3
 	var travel := last_direction.normalized() * 2.2
 	move_and_collide(travel)
-	global_position.x = clampf(global_position.x, -14.0, 14.0)
-	global_position.z = clampf(global_position.z, -10.0, 10.0)
+	global_position.x = clampf(global_position.x, -WORLD_LIMIT_X, WORLD_LIMIT_X)
+	global_position.z = clampf(global_position.z, -WORLD_LIMIT_Z, WORLD_LIMIT_Z)
 	if visual != null:
 		var original := visual.scale
 		var tween := create_tween()
