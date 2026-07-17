@@ -15,6 +15,7 @@ const CONTENT_VERSION := 1
 const SAVE_PATH := "user://prodewty_save.json"
 const BACKUP_PATH := "user://prodewty_save.backup.json"
 const TEMP_PATH := "user://prodewty_save.tmp.json"
+const BASE_CARGO_CAPACITY := 12
 
 var day := 1
 var hour := 10.0
@@ -338,6 +339,9 @@ func start_workshop_job(recipe_id: String) -> Dictionary:
 	if str(station_job.get("kind", "none")) != "none":
 		return {}
 	var recipe := ContentRegistry.workshop_recipe(recipe_id)
+	var required_feature := str(recipe.get("requires_feature", ""))
+	if not required_feature.is_empty() and not unlocked_features.has(required_feature):
+		return {}
 	if recipe.is_empty() or not pay_items(recipe.get("cost", {})):
 		return {}
 	station_job = {"kind": recipe_id, "remaining_hours": float(recipe.get("hours", 12.0)), "total_hours": float(recipe.get("hours", 12.0)), "output_id": recipe_id, "output": int(recipe.get("output", 0))}
@@ -946,6 +950,19 @@ func _activate_structure_kind(kind: String) -> void:
 		"workshop": built["workshop"] = true
 		"archive": built["library"] = true
 		"livestock_pen": built["livestock_pen"] = true
+	_recalculate_structure_effects()
+
+func _recalculate_structure_effects() -> void:
+	var derived_capacity := BASE_CARGO_CAPACITY
+	for structure_id in structures:
+		var structure: Dictionary = structures.get(structure_id, {})
+		if str(structure.get("state", "")) != "operational":
+			continue
+		var definition := ContentRegistry.structure_definition(str(structure.get("kind", "")))
+		derived_capacity += int(definition.get("cargo_bonus", 0))
+	# Capacity has no downgrade path yet; retaining a larger loaded value keeps
+	# old saves and in-progress expeditions safe while derived upgrades apply.
+	cargo_capacity = maxi(cargo_capacity, derived_capacity)
 
 func save_game() -> bool:
 	if save_blocked:

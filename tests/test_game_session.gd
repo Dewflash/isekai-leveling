@@ -358,6 +358,40 @@ func _init() -> void:
 		placed_builder.advance_day(placed_builder.day + 1)
 	assert(str(placed_builder.structures[workshop_blueprint["id"]]["state"]) == "operational")
 	assert(bool(placed_builder.built["workshop"]))
+	# A finished Storage Shed is a real expedition upgrade, not a decorative
+	# prop: it expands the satchel and lets the player bring a longer outing home.
+	var storage_session := SessionScript.new()
+	storage_session.save_slot = "qa_storage_shed"
+	root.add_child(storage_session)
+	storage_session.inventory["wood"] = 10
+	storage_session.inventory["stone"] = 4
+	storage_session.inventory["plank"] = 3
+	var storage_blueprint: Dictionary = storage_session.place_structure("storage_shed", [2, 0])
+	assert(storage_blueprint["state"] == "blueprint")
+	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "wood", 10)["state"] == "blueprint")
+	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "stone", 4)["state"] == "blueprint")
+	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "plank", 3)["state"] == "building")
+	storage_session.advance_day(storage_session.day + 1)
+	assert(str(storage_session.structures[storage_blueprint["id"]]["state"]) == "building")
+	storage_session.advance_day(storage_session.day + 1)
+	assert(str(storage_session.structures[storage_blueprint["id"]]["state"]) == "operational")
+	assert(storage_session.cargo_capacity == 16)
+	assert(storage_session.start_expedition("Whisperwood"))
+	for cargo_index in 16:
+		assert(storage_session.collect_expedition_resource("storage-cargo-%d" % cargo_index, "wood", 1))
+	assert(not storage_session.collect_expedition_resource("storage-cargo-overflow", "wood", 1))
+	# Research is the authority for the tonic recipe; hiding the button alone is
+	# not enough because commands can be called by other input paths.
+	var locked_recipe := SessionScript.new()
+	locked_recipe.save_slot = "qa_locked_recipe"
+	root.add_child(locked_recipe)
+	locked_recipe.built["workshop"] = true
+	locked_recipe.inventory["berries"] = 1
+	locked_recipe.inventory["water"] = 1
+	locked_recipe.inventory["slime_gel"] = 1
+	assert(locked_recipe.start_workshop_job("tonic").is_empty())
+	locked_recipe.unlocked_features.append("tonic_recipe")
+	assert(not locked_recipe.start_workshop_job("tonic").is_empty())
 	# The Dungeon is a coin-gated fixed challenge and does not consume travel energy.
 	var dungeon := SessionScript.new()
 	dungeon.save_slot = "qa_dungeon"

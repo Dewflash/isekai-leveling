@@ -2310,6 +2310,9 @@ func _construction_interact(structure_node: Node3D) -> void:
 		if kind == "livestock_pen":
 			_livestock_interact(structure_node)
 			return
+		if kind == "storage_shed":
+			_show_toast("Storage Shed operational. Expedition satchel capacity: %d." % int(session.get("cargo_capacity")), 2.8)
+			return
 		_show_toast("%s operational. %s" % [_structure_display_name(kind), str(ContentRegistry.structure_definition(kind).get("summary", "The building is ready."))], 2.8)
 		return
 	if state == "building":

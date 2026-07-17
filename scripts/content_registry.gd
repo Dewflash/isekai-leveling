@@ -50,7 +50,7 @@ const WORKSHOP_RECIPES := {
 	"plank": {"cost": {"wood": 3, "stone": 1}, "hours": 12.0, "output": 4, "summary": "3 Wood + 1 Stone → 4 Planks"},
 	"bread": {"cost": {"wheat": 1, "water": 1}, "hours": 12.0, "output": 2, "summary": "1 Wheat + 1 Water → 2 Bread"},
 	"omelette": {"cost": {"egg": 1, "water": 1}, "hours": 12.0, "output": 2, "summary": "1 Egg + 1 Water → 2 Omelettes"},
-	"tonic": {"cost": {"berries": 1, "water": 1, "slime_gel": 1}, "hours": 12.0, "output": 1, "summary": "1 Berry + 1 Water + 1 Slime Gel → 1 Tonic"},
+	"tonic": {"cost": {"berries": 1, "water": 1, "slime_gel": 1}, "hours": 12.0, "output": 1, "requires_feature": "tonic_recipe", "summary": "1 Berry + 1 Water + 1 Slime Gel → 1 Tonic"},
 }
 
 const TRADE_OFFERS := [
@@ -65,7 +65,7 @@ const STRUCTURES := {
 	"workshop": {"footprint": [3, 3], "cost": {"wood": 12, "stone": 8, "plank": 4}, "hours": 36.0, "summary": "A player-placed workshop for turning supplies into useful goods."},
 	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "summary": "A player-placed archive for researching discoveries."},
 	"livestock_pen": {"footprint": [4, 3], "cost": {"wood": 10, "fiber": 6, "plank": 2}, "hours": 24.0, "summary": "A player-placed pen that gives livestock a safe home."},
-	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "summary": "A sturdy player-placed shed for future storage upgrades."},
+	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "cargo_bonus": 4, "summary": "A sturdy stockpile that expands expedition satchel capacity by 4."},
 }
 
 static func expedition_cost(expedition_id: String) -> int:
