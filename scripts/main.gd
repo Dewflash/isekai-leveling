@@ -290,13 +290,22 @@ func _build_world() -> void:
 	_create_floor(sanctuary_zone, Vector3(0.0, -0.25, 0.0), Vector2(32.0, 24.0), palette["grass"], "SanctuaryGround")
 	_create_path(sanctuary_zone, Vector3(0.0, 0.02, 1.0), Vector3(3.0, 0.08, 24.0), palette["stone"])
 	_create_path(sanctuary_zone, Vector3(5.5, 0.02, -1.5), Vector3(12.0, 0.08, 2.2), palette["stone"])
+	_create_path(sanctuary_zone, Vector3(-7.2, 0.02, -5.7), Vector3(9.0, 0.08, 1.0), palette["stone"])
+	_create_path(sanctuary_zone, Vector3(-7.2, 0.02, 1.9), Vector3(9.0, 0.08, 1.0), palette["stone"])
+	_create_path(sanctuary_zone, Vector3(-6.8, 0.02, 6.0), Vector3(8.0, 0.08, 1.0), palette["stone"])
+	_create_path(sanctuary_zone, Vector3(9.2, 0.02, -5.4), Vector3(6.0, 0.08, 1.0), palette["stone"])
+	_create_path(sanctuary_zone, Vector3(9.2, 0.02, 2.0), Vector3(6.0, 0.08, 1.0), palette["stone"])
 	_create_building(sanctuary_zone, Vector3(0.0, 0.0, -4.0), "Hearth", palette["wood"], palette["wood_dark"], "wood")
 	_create_guide_npc(sanctuary_zone, Vector3(2.7, 0.0, -2.3))
 	_create_building(sanctuary_zone, Vector3(-7.5, 0.0, -1.5), "Wanderer's Bazaar", palette["sand"], palette["wood_dark"], "sand")
 	_create_trade_stall(sanctuary_zone, Vector3(-6.0, 0.0, -0.1))
 	_create_notice_board(sanctuary_zone, Vector3(-8.2, 0.0, 1.5))
 	_create_pond(sanctuary_zone, Vector3(7.0, 0.08, 5.0))
-	_create_explorer_tent(sanctuary_zone, Vector3(10.0, 0.0, -7.0))
+	_create_route_gate(sanctuary_zone, "Whisperwood", Vector3(-11.0, 0.0, -5.7), Color("#6fb4a1"))
+	_create_route_gate(sanctuary_zone, "Sunlit Beach", Vector3(-11.0, 0.0, 1.9), Color("#6bc1d0"))
+	_create_route_gate(sanctuary_zone, "Ember Ridge", Vector3(-10.2, 0.0, 6.0), Color("#e28c61"))
+	_create_route_gate(sanctuary_zone, "Glass Desert", Vector3(11.0, 0.0, -5.4), Color("#edbb6f"))
+	_create_route_gate(sanctuary_zone, "Sunken Dungeon", Vector3(11.0, 0.0, 2.0), Color("#a88ce0"))
 	_create_farm_plot(sanctuary_zone, Vector3(-5.5, 0.0, 4.0))
 	_create_livestock_pen(sanctuary_zone, Vector3(-0.2, 0.0, 7.0))
 	_create_workshop(sanctuary_zone, Vector3(6.2, 0.0, -5.6))
@@ -1031,6 +1040,43 @@ func _create_explorer_tent(parent: Node3D, position: Vector3) -> void:
 	var sign := _label3d("FOREST GATE", 0.22, palette["cream"])
 	sign.position = Vector3(0, 2.8, 0)
 	tent.add_child(sign)
+
+func _create_route_gate(parent: Node3D, destination: String, position: Vector3, accent: Color) -> void:
+	var gate := StationScript.new() as Node3D
+	gate.name = destination.replace(" ", "") + "RouteGate"
+	gate.set("world", self)
+	gate.set("station_id", "route")
+	gate.add_to_group("interactable")
+	gate.add_to_group("route_gate")
+	gate.set_meta("destination_id", destination)
+	gate.position = position
+	parent.add_child(gate)
+	for post_position in [Vector3(-0.9, 1.15, 0.0), Vector3(0.9, 1.15, 0.0)]:
+		var post := MeshInstance3D.new()
+		var post_mesh := BoxMesh.new()
+		post_mesh.size = Vector3(0.24, 2.3, 0.24)
+		post.mesh = post_mesh
+		post.material_override = _material(palette["wood_dark"], 0.96)
+		post.position = post_position
+		gate.add_child(post)
+	var lintel := MeshInstance3D.new()
+	var lintel_mesh := BoxMesh.new()
+	lintel_mesh.size = Vector3(2.15, 0.26, 0.3)
+	lintel.mesh = lintel_mesh
+	lintel.material_override = _material(palette["wood"], 0.96)
+	lintel.position.y = 2.22
+	gate.add_child(lintel)
+	var route_marker := MeshInstance3D.new()
+	route_marker.name = "RouteMarker"
+	route_marker.mesh = _sphere_mesh(0.24, 0.48, 8, 5)
+	route_marker.material_override = _material(accent, 0.35, false, true)
+	route_marker.position = Vector3(0.0, 1.75, -0.16)
+	gate.add_child(route_marker)
+	animated_beacons.append(route_marker)
+	var route_label := _label3d(destination.to_upper() + "\nROUTE", 0.15, palette["cream"])
+	route_label.name = "RouteLabel"
+	route_label.position.y = 2.75
+	gate.add_child(route_label)
 
 func _create_tree(parent: Node3D, position: Vector3, size: float, resource_id: String, amount: int) -> Node3D:
 	var tree := ResourceNodeScript.new() as Node3D
@@ -1950,6 +1996,8 @@ func _update_hud() -> void:
 				nearby_name = "Clover's Livestock Pen"
 			elif str(nearest.get("station_id")) == "camp":
 				nearby_name = "Expedition Camp"
+			elif nearest.has_meta("destination_id"):
+				nearby_name = "%s Route Gate" % str(nearest.get_meta("destination_id"))
 			elif label_value != null:
 				nearby_name = str(label_value)
 			status_label.text = "Nearby: %s  |  Press E" % nearby_name
@@ -1957,17 +2005,17 @@ func _update_hud() -> void:
 			status_label.text = "Gather close to nodes. Press E to interact."
 	if smelt_button != null:
 		smelt_button.text = "Stop Furnace" if furnace_active else "Start Furnace"
+	var context_node := _nearest_interactable()
 	if explore_button != null:
-		explore_button.visible = current_zone == "Sanctuary"
-		explore_button.text = "Explore %s" % selected_expedition
+		var nearby_route: bool = context_node != null and context_node.has_meta("destination_id")
+		explore_button.visible = current_zone == "Sanctuary" and nearby_route
+		explore_button.text = "Enter %s" % str(context_node.get_meta("destination_id")) if nearby_route else "Walk to a route gate"
 	if destination_button != null:
-		destination_button.visible = current_zone == "Sanctuary"
-		destination_button.text = "Destination: %s" % selected_expedition
+		destination_button.visible = false
 	if return_button != null:
 		return_button.visible = current_zone != "Sanctuary"
 	if dodge_button != null:
 		dodge_button.visible = current_zone != "Sanctuary"
-	var context_node := _nearest_interactable()
 	if farm_button != null:
 		farm_button.visible = current_zone == "Sanctuary" and context_node == farm_plot
 	if food_button != null:
@@ -2310,6 +2358,9 @@ func station_interact(station: Node) -> void:
 		return
 	if station_id == "notice":
 		_notice_board_interact()
+		return
+	if station_id == "route":
+		_route_gate_interact(station)
 		return
 	if station_id == "camp":
 		_camp_interact()
@@ -2882,9 +2933,37 @@ func _cycle_expedition() -> void:
 func _expedition_cost(destination: String) -> int:
 	return ContentRegistry.expedition_cost(destination)
 
-func _enter_selected_expedition() -> void:
+func _nearest_route_gate() -> Node:
+	var nearest: Node = null
+	var nearest_distance := 2.35
+	for candidate in get_tree().get_nodes_in_group("route_gate"):
+		if not is_instance_valid(candidate) or not candidate.is_visible_in_tree():
+			continue
+		var gate := candidate as Node3D
+		if gate == null or player == null:
+			continue
+		var distance := player.global_position.distance_to(gate.global_position)
+		if distance < nearest_distance:
+			nearest = candidate
+			nearest_distance = distance
+	return nearest
+
+func _route_gate_interact(station: Node) -> void:
+	if current_zone != "Sanctuary" or station == null:
+		return
+	if player == null or player.global_position.distance_to(station.global_position) > 2.35:
+		_show_toast("Walk up to the route gate before leaving the Sanctuary.", 2.2)
+		return
+	_enter_selected_expedition(station)
+
+func _enter_selected_expedition(route_gate: Node = null) -> void:
 	if current_zone != "Sanctuary":
 		return
+	var gate := route_gate if route_gate != null else _nearest_route_gate()
+	if gate == null or not gate.has_meta("destination_id"):
+		_show_toast("Choose a destination by walking to one of the five route gates.", 2.8)
+		return
+	selected_expedition = str(gate.get_meta("destination_id"))
 	if session == null or not session.call("start_expedition", selected_expedition):
 		var entry_cost := ContentRegistry.expedition_entry_coins(selected_expedition)
 		_show_toast("You need %d coins and enough energy for this route. Rest or trade before leaving." % entry_cost if entry_cost > 0 else "You need a full breath before another expedition. Rest at the Hearth.", 2.8)

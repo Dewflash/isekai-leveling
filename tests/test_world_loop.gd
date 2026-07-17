@@ -2,6 +2,19 @@ extends SceneTree
 
 const MainScene = preload("res://main.tscn")
 
+func _enter_route(world: Node, destination: String) -> void:
+	var gate: Node = null
+	for candidate in get_nodes_in_group("route_gate"):
+		if str(candidate.get_meta("destination_id", "")) == destination:
+			gate = candidate
+			break
+	assert(gate != null)
+	world.call("_set_zone", "Sanctuary")
+	assert(get_nodes_in_group("route_gate").size() == 5)
+	world.player.global_position = gate.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_interact")
+	assert(world.get("current_zone") == destination)
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -57,9 +70,7 @@ func _run() -> void:
 	assert(str(session.get("structures")[placed_id].get("state")) == "building")
 	assert(int(session.get("inventory").get("wood", -1)) == 0)
 	assert(int(session.get("inventory").get("plank", -1)) == 0)
-	world.selected_expedition = "Sunlit Beach"
-	world.call("_set_zone", "Sanctuary")
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Sunlit Beach")
 	assert(world.get("current_zone") == "Sunlit Beach")
 	var shell_node: Node = null
 	for candidate in get_nodes_in_group("resource_node"):
@@ -73,9 +84,8 @@ func _run() -> void:
 	world.call("_return_home")
 	assert(world.get("current_zone") == "Sanctuary")
 	assert(int(session.get("inventory").get("shell", 0)) == 1)
-	world.selected_expedition = "Whisperwood"
 	session.energy = 24
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Whisperwood")
 	var tree_node: Node = null
 	for candidate in get_nodes_in_group("resource_node"):
 		var tree_body := candidate.get_node_or_null("TreeCollision")
@@ -116,9 +126,8 @@ func _run() -> void:
 	assert(int(session.get("inventory").get("slime_gel", 0)) == 0)
 	world.player.global_position = Vector3(0.0, 1.0, 7.5)
 	world.call("_return_home")
-	world.selected_expedition = "Glass Desert"
 	session.energy = 24
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Glass Desert")
 	assert(world.get("current_zone") == "Glass Desert")
 	assert(world.get_node_or_null("GlassDesert/Sourced_DeadTree_2") != null)
 	world.call("_camp_interact")
@@ -128,9 +137,8 @@ func _run() -> void:
 	assert(int(session.get("energy")) == camp_energy)
 	world.call("_return_home")
 	assert(world.get("current_zone") == "Sanctuary")
-	world.selected_expedition = "Sunken Dungeon"
 	session.energy = 24
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Sunken Dungeon")
 	assert(world.get("current_zone") == "Sunken Dungeon")
 	assert(world.get_node_or_null("SunkenDungeon/Sourced_DeadTree_3") != null)
 	var relic_node: Node = null
@@ -147,8 +155,7 @@ func _run() -> void:
 	# original biome.
 	session.energy = 24
 	var banked_wood_before_faint := int(session.inventory.get("wood", 0))
-	world.selected_expedition = "Whisperwood"
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Whisperwood")
 	var recovery_tree: Node = null
 	for candidate in get_nodes_in_group("resource_node"):
 		if candidate.get_parent().name == "Whisperwood" and str(candidate.get("resource_id")) == "wood" and candidate.is_visible_in_tree():
@@ -170,8 +177,7 @@ func _run() -> void:
 			break
 	assert(recovery_pack_node != null)
 	session.energy = 24
-	world.selected_expedition = "Whisperwood"
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Whisperwood")
 	world.player.global_position = recovery_pack_node.global_position
 	recovery_pack_node.call("interact", world.player)
 	assert(session.get("recovery_pack").is_empty())
@@ -196,8 +202,7 @@ func _run() -> void:
 	assert(int(session.get("coins")) == 28)
 	# An active expedition stores its last world position, not just its biome.
 	session.energy = 24
-	world.selected_expedition = "Whisperwood"
-	world.call("_enter_selected_expedition")
+	_enter_route(world, "Whisperwood")
 	world.player.global_position = Vector3(4.0, 1.0, -3.0)
 	world.call("_sync_expedition_anchor")
 	var anchor: Array = session.get("expedition_run").get("anchor")

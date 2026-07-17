@@ -6,7 +6,7 @@ Updated: 2026-07-18, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote state: empty repository, no commits yet
+- Remote state: pushed checkpoint on `main`
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -45,8 +45,13 @@ Updated: 2026-07-18, Asia/Singapore
   gathering wind-up with movement cancellation, food/hydration choices, explicit
   recipe selection, and a day-based Clover livestock loop (feed → sleep → egg)
 - Grid-backed Sanctuary placement: a Rain Cistern can be previewed on a valid
-  footprint, paid for once, persisted as scaffolding, completed over sleep, and
-  then produces extra water each day
+  footprint, persisted as a player-authored blueprint, supplied with visible
+  Wood/Plank deliveries, completed as a scaffold over sleep, and then produces
+  extra water each day
+- Five physical Sanctuary route gates now identify and approach-gate the five
+  expedition maps; the destination selector is no longer a global teleport
+- Saved sanctuary reference image and acceptance notes now distinguish visual
+  direction from player-owned building layout
 - Expedition extraction now requires returning to the entry beacon; defeated
   guardian IDs persist inside active runs so reloads cannot duplicate rewards
 - Whisperwood trees now take two interruptible contacts; partial contact
@@ -87,8 +92,9 @@ Updated: 2026-07-18, Asia/Singapore
   malformed primary.
 - World integration test: passed for sourced-tree presence, Sunlit Beach cargo
   banking, Glass Desert camp use, return-to-home, Ember/Dungeon transitions,
-  Sanctuary fishing/trading, interruptible gathering, Sanctuary placement,
-  beacon-only extraction, expedition anchor persistence, and zone transitions.
+  Sanctuary fishing/trading, interruptible gathering, Sanctuary placement and
+  material delivery, five route gates, beacon-only extraction, expedition
+  anchor persistence, and zone transitions.
 - Visible game launch from the target checkout: headless smoke is clean apart
   from Godot's macOS certificate warning; desktop screenshot capture is not
   available in the current Codex session.
@@ -123,8 +129,11 @@ Updated: 2026-07-18, Asia/Singapore
    now in the route; the path and encounter still need authored presentation.
 2. Replace the remaining desktop-style HUD stack with safe-area contextual
    actions and explicit recipe/food/expedition sheets.
-3. Harden the command/state boundary and migrate durable world mutations out of
+3. Generalize the staged blueprint/material/scaffold pipeline to Workshop,
+   Archive, livestock, storage, and future shelter structures so the player
+   authors the useful Sanctuary layout rather than only placing a cistern.
+4. Harden the command/state boundary and migrate durable world mutations out of
    presentation code.
-4. Replace the temporary manual effort logger with the chosen Prodewty data
+5. Replace the temporary manual effort logger with the chosen Prodewty data
    bridge without changing the receipt contract, then do device-specific export
    and hands-on gameplay QA.

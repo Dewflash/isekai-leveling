@@ -32,8 +32,10 @@ are contextual interactions rather than extra UI clutter.
 ## What to play
 
 1. Speak to Mira and read the Notice Board.
-2. Cycle the destination button and enter Whisperwood, Beach, Ember Ridge,
-   Glass Desert, or the Sunken Dungeon.
+2. Walk to one of the five physical route gates around the Sanctuary and press
+   `E` (or the contextual touch action) to enter Whisperwood, Sunlit Beach,
+   Ember Ridge, Glass Desert, or the Sunken Dungeon. Destination choice is
+   made at the world gate rather than through a global teleport button.
 3. Gather, fight, and watch the `CARGO` line: expedition loot is not banked
    until you return. Whisperwood trees take two grounded contacts, so moving
    away between chops leaves the partial route state intact rather than paying
