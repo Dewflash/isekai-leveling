@@ -348,12 +348,12 @@ func _init() -> void:
 	root.add_child(placed_builder)
 	placed_builder.inventory["wood"] = 12
 	placed_builder.inventory["stone"] = 8
-	placed_builder.inventory["plank"] = 4
 	var workshop_blueprint: Dictionary = placed_builder.place_structure("workshop", [2, 0])
 	assert(workshop_blueprint["state"] == "blueprint")
 	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "wood", 12)["state"] == "blueprint")
-	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "stone", 8)["state"] == "blueprint")
-	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "plank", 4)["state"] == "building")
+	# A fresh player can reach the first Workshop without pre-existing Planks;
+	# Planks are a downstream product of this operational station.
+	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "stone", 8)["state"] == "building")
 	for build_day in 3:
 		placed_builder.advance_day(placed_builder.day + 1)
 	assert(str(placed_builder.structures[workshop_blueprint["id"]]["state"]) == "operational")

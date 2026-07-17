@@ -18,6 +18,55 @@ func _enter_route(world: Node, destination: String) -> void:
 	world.call("_interact")
 	assert(world.get("current_zone") == destination)
 
+func _assert_player_structure_visuals(world: Node, session: Node) -> void:
+	var workshop_id := "qa_visual_workshop"
+	var storage_id := "qa_visual_storage"
+	var workshop_data := {"id": workshop_id, "kind": "workshop", "cell": [20, 20], "state": "operational", "remaining_hours": 0.0, "delivered_materials": {}}
+	var storage_data := {"id": storage_id, "kind": "storage_shed", "cell": [24, 20], "state": "operational", "remaining_hours": 0.0, "delivered_materials": {}}
+	world.call("_spawn_structure_visual", workshop_id, workshop_data)
+	world.call("_spawn_structure_visual", storage_id, storage_data)
+	var visuals: Dictionary = world.get("settlement_visuals")
+	var workshop_visual := visuals.get(workshop_id) as Node3D
+	var storage_visual := visuals.get(storage_id) as Node3D
+	assert(workshop_visual != null and storage_visual != null)
+	assert(workshop_visual.get_node_or_null("StructureUtility/WorkshopForge/WorkshopChimney") != null)
+	assert(workshop_visual.get_node_or_null("StructureUtility/WorkshopHammerPivot") != null)
+	assert(storage_visual.get_node_or_null("StructureUtility/StorageCargo/LargeCrate") != null)
+	var pulley := storage_visual.get_node_or_null("StructureUtility/StorageLoadingFrame/StoragePulleyWheel") as MeshInstance3D
+	assert(pulley != null)
+	var workshop_roof := workshop_visual.get_node("CisternRoof") as MeshInstance3D
+	var storage_roof := storage_visual.get_node("CisternRoof") as MeshInstance3D
+	var workshop_roof_material := workshop_roof.material_override as StandardMaterial3D
+	var storage_roof_material := storage_roof.material_override as StandardMaterial3D
+	assert(workshop_roof_material.albedo_color != storage_roof_material.albedo_color)
+	assert((workshop_visual.get_node("GabledRoof") as Node3D).visible)
+	assert((workshop_visual.get_node("TimberFrame") as Node3D).visible)
+	var storage_label := storage_visual.get_node("StructureLabel") as Label3D
+	assert(storage_label.text.contains("SATCHEL +4"))
+	var pulley_rotation := pulley.rotation.z
+	world.call("_update_player_structure_motion", 0.25)
+	assert(not is_equal_approx(pulley.rotation.z, pulley_rotation))
+
+	var original_job: Dictionary = session.get("station_job").duplicate(true)
+	session.set("station_job", {"kind": "plank", "remaining_hours": 12.0, "total_hours": 12.0, "output_id": "plank", "output": 2})
+	world.call("_refresh_structure_visual", workshop_id, workshop_data)
+	world.call("_update_player_structure_motion", 0.25)
+	var smoke := workshop_visual.get_node("StructureUtility/WorkshopSmoke") as Node3D
+	var workshop_label := workshop_visual.get_node("StructureLabel") as Label3D
+	assert(smoke.visible)
+	assert(workshop_label.text.contains("WORKING 12h"))
+	session.set("station_job", {"kind": "plank", "remaining_hours": 0.0, "total_hours": 12.0, "output_id": "plank", "output": 2})
+	world.call("_refresh_structure_visual", workshop_id, workshop_data)
+	world.call("_update_player_structure_motion", 0.0)
+	assert(not smoke.visible)
+	assert(workshop_label.text.contains("ORDER READY"))
+	session.set("station_job", original_job)
+	for visual_id in [workshop_id, storage_id]:
+		var visual := visuals.get(visual_id) as Node3D
+		if visual != null:
+			visual.queue_free()
+		visuals.erase(visual_id)
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -30,9 +79,11 @@ func _run() -> void:
 	root.add_child(world)
 	await process_frame
 	var session: Node = world.get("session")
+	_assert_player_structure_visuals(world, session)
 	assert(world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow") != null)
 	var paddock_cow := world.get_node_or_null("Sanctuary/CloverLivestockPen/SourcedPaddockCow")
 	var paddock_animation := paddock_cow.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	assert(is_equal_approx(float(paddock_cow.scale.x), 0.27))
 	assert(paddock_animation != null and (paddock_animation.is_playing() or paddock_animation.current_animation == "Armature|Walk"))
 	var paused_day := int(session.get("day"))
 	world.call("_toggle_pause")

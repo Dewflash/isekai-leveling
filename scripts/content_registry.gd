@@ -71,7 +71,10 @@ const TRADE_OFFERS := [
 
 const STRUCTURES := {
 	"rain_cistern": {"footprint": [2, 2], "cost": {"wood": 8, "plank": 2}, "hours": 24.0, "summary": "Collects two extra water at each new day."},
-	"workshop": {"footprint": [3, 3], "cost": {"wood": 12, "stone": 8, "plank": 4}, "hours": 36.0, "summary": "A player-placed workshop for turning supplies into useful goods."},
+	# Tier-zero bootstrap: the first Workshop is deliberately buildable from
+	# gathered raw materials. Planks are produced by the finished Workshop and
+	# become the gate for later district upgrades, preventing a fresh-save loop.
+	"workshop": {"footprint": [3, 3], "cost": {"wood": 12, "stone": 8}, "hours": 36.0, "summary": "A player-placed workshop for turning raw supplies into useful goods."},
 	"archive": {"footprint": [3, 2], "cost": {"wood": 8, "stone": 8, "plank": 3}, "hours": 30.0, "summary": "A player-placed archive for researching discoveries."},
 	"livestock_pen": {"footprint": [4, 3], "cost": {"wood": 10, "fiber": 6, "plank": 2}, "hours": 24.0, "summary": "A player-placed pen that gives livestock a safe home."},
 	"storage_shed": {"footprint": [3, 2], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "cargo_bonus": 4, "summary": "A sturdy stockpile that expands expedition satchel capacity by 4."},

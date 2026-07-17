@@ -209,6 +209,7 @@ func _process(delta: float) -> void:
 	_update_time(delta)
 	_update_tree_sway()
 	_update_world_motion(delta)
+	_update_player_structure_motion(delta)
 	_update_resource_action(delta)
 	_update_attack_action(delta)
 	_update_structure_preview()
@@ -1547,13 +1548,16 @@ func _create_livestock_pen(parent: Node3D, position: Vector3) -> void:
 		if sourced_cow != null:
 			sourced_cow.process_mode = Node.PROCESS_MODE_PAUSABLE
 			sourced_cow.name = "SourcedPaddockCow"
-			sourced_cow.position = Vector3(1.05, 0.0, 0.28)
-			sourced_cow.scale = Vector3.ONE * 0.62
+			sourced_cow.position = Vector3(1.05, 0.02, 0.28)
+			# The FBX source is authored much larger than the player-facing paddock
+			# scale. Keep the actor human-world sized instead of letting it read as
+			# a giant mascot walking through a toy pen.
+			sourced_cow.scale = Vector3.ONE * 0.27
 			livestock_pen.add_child(sourced_cow)
 			var cow_animation := sourced_cow.find_child("AnimationPlayer", true, false) as AnimationPlayer
 			if cow_animation != null:
 				var preferred_clip := ""
-				for candidate_clip in ["Walk", "Armature|Walk", "Idle", "Armature|Idle"]:
+				for candidate_clip in ["Idle", "Armature|Idle", "Walk", "Armature|Walk"]:
 					if cow_animation.has_animation(candidate_clip):
 						preferred_clip = candidate_clip
 						break
@@ -1790,6 +1794,8 @@ func _label3d(text: String, font_size: float, color: Color) -> Label3D:
 	label.modulate = color
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
+	label.add_to_group("world_label")
+	label.visible = false
 	return label
 
 func _panel(position: Vector2, size: Vector2, color: Color) -> Panel:
@@ -1918,6 +1924,7 @@ func _copy_session_to_runtime() -> void:
 
 func _on_session_changed() -> void:
 	_copy_session_to_runtime()
+	_refresh_structure_visuals()
 
 func _on_session_feedback(kind: String, payload: Dictionary) -> void:
 	if kind == "activity":
@@ -2123,6 +2130,7 @@ func _update_hud() -> void:
 	if smelt_button != null:
 		smelt_button.text = "Stop Furnace" if furnace_active else "Start Furnace"
 	var context_node := _nearest_interactable()
+	_update_world_label_visibility(context_node)
 	if explore_button != null:
 		var nearby_route: bool = context_node != null and context_node.has_meta("destination_id")
 		explore_button.visible = current_zone == "Sanctuary" and nearby_route
@@ -2255,6 +2263,29 @@ func _nearest_interactable() -> Node:
 			nearest = candidate
 			nearest_distance = distance
 	return nearest
+
+func _world_label_anchor(label: Label3D) -> Node3D:
+	var cursor: Node = label.get_parent()
+	while cursor != null:
+		var candidate := cursor as Node3D
+		if candidate != null and candidate.is_in_group("interactable"):
+			return candidate
+		cursor = cursor.get_parent()
+	return label.get_parent() as Node3D
+
+func _update_world_label_visibility(focus: Node) -> void:
+	if player == null:
+		return
+	for label_node in get_tree().get_nodes_in_group("world_label"):
+		var label := label_node as Label3D
+		if label == null:
+			continue
+		var anchor := _world_label_anchor(label)
+		if anchor == null or not anchor.is_visible_in_tree():
+			label.visible = false
+			continue
+		var nearby := player.global_position.distance_to(anchor.global_position) <= 3.6
+		label.visible = anchor == focus or nearby
 
 func _interact() -> void:
 	if get_tree().paused:
@@ -2836,7 +2867,7 @@ func _guide_interact() -> void:
 		return
 	var built: Dictionary = session.get("built")
 	if not bool(built.get("workshop", false)):
-		_show_toast("Mira: gather 6 Wood and 4 Stone, then raise the Workshop. Every expedition starts at the route board.", 4.0)
+		_show_toast("Mira: gather 12 Wood and 8 Stone, then raise the Workshop. Every expedition starts at the route board.", 4.0)
 	elif not bool(built.get("library", false)):
 		_show_toast("Mira: bring a new discovery home, then open the Archive beside the Hearth. Knowledge is a resource too.", 4.0)
 	else:
@@ -2851,7 +2882,7 @@ func _build_workshop() -> void:
 	if str(session.get("construction_job").get("status", "none")) == "none":
 		placement_structure_id = "workshop"
 		_toggle_structure_placement()
-		_show_toast("Choose a clear place for the Workshop. Deliver 12 Wood, 8 Stone, and 4 Planks at the blueprint.", 3.2)
+		_show_toast("Choose a clear place for the Workshop. Deliver 12 Wood and 8 Stone at the blueprint.", 3.2)
 		return
 	var construction_state := str(session.get("construction_job").get("status", "none"))
 	if construction_state == "ready":
@@ -3051,7 +3082,13 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
 	var footprint_width := maxf(1.8, float(footprint.x) - 0.2)
 	var footprint_depth := maxf(1.8, float(footprint.y) - 0.2)
-	var structure_height := 1.65 if kind in ["rain_cistern", "livestock_pen"] else 2.05
+	var structure_height := 2.05
+	if kind in ["rain_cistern", "livestock_pen"]:
+		structure_height = 1.65
+	elif kind == "workshop":
+		structure_height = 2.18
+	elif kind == "storage_shed":
+		structure_height = 1.78
 	structure.position = SettlementGrid.footprint_center_to_world(Vector2i(int(cell_data[0]), int(cell_data[1])), footprint)
 	sanctuary_zone.add_child(structure)
 	var base := MeshInstance3D.new()
@@ -3059,7 +3096,7 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var base_mesh := BoxMesh.new()
 	base_mesh.size = Vector3(footprint_width, 0.22, footprint_depth)
 	base.mesh = base_mesh
-	base.material_override = _material(palette["stone"], 0.96)
+	base.material_override = _material(_structure_base_color(kind), 0.96)
 	base.position.y = 0.11
 	structure.add_child(base)
 	var scaffold := Node3D.new()
@@ -3109,16 +3146,35 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var roof_mesh := PrismMesh.new()
 	roof_mesh.size = Vector3(footprint_width + 0.2, 0.22, footprint_depth + 0.2)
 	roof.mesh = roof_mesh
-	roof.material_override = _material(palette["wood"], 0.9)
+	roof.material_override = _material(_structure_roof_color(kind), 0.86)
 	roof.position.y = structure_height + 0.28
 	structure.add_child(roof)
+	var gabled_roof := Node3D.new()
+	gabled_roof.name = "GabledRoof"
+	gabled_roof.visible = false
+	structure.add_child(gabled_roof)
+	if kind in ["workshop", "storage_shed", "archive"]:
+		var roof_panel_size := Vector3(footprint_width + 0.28, 0.16, footprint_depth * 0.60)
+		var roof_y := structure_height + 0.48
+		_structure_box(gabled_roof, "RoofPanelLeft", roof_panel_size, Vector3(0.0, roof_y, -footprint_depth * 0.22), _structure_roof_color(kind), Vector3(-27.0, 0.0, 0.0))
+		_structure_box(gabled_roof, "RoofPanelRight", roof_panel_size, Vector3(0.0, roof_y, footprint_depth * 0.22), _structure_roof_color(kind), Vector3(27.0, 0.0, 0.0))
+		_structure_box(gabled_roof, "RoofRidge", Vector3(footprint_width + 0.34, 0.18, 0.20), Vector3(0.0, structure_height + 0.82, 0.0), palette["wood_dark"])
+	var timber_frame := Node3D.new()
+	timber_frame.name = "TimberFrame"
+	timber_frame.visible = false
+	structure.add_child(timber_frame)
+	if kind in ["workshop", "storage_shed", "archive"]:
+		for corner in [-1.0, 1.0]:
+			_structure_box(timber_frame, "FrontPost_%s" % corner, Vector3(0.14, structure_height, 0.14), Vector3(corner * footprint_width * 0.40, 0.11 + structure_height * 0.5, footprint_depth * 0.43), palette["wood_dark"])
+			_structure_box(timber_frame, "BackPost_%s" % corner, Vector3(0.14, structure_height, 0.14), Vector3(corner * footprint_width * 0.40, 0.11 + structure_height * 0.5, -footprint_depth * 0.43), palette["wood_dark"])
+		_structure_box(timber_frame, "FrontBeam", Vector3(footprint_width * 0.82, 0.14, 0.14), Vector3(0.0, 0.11 + structure_height * 0.88, footprint_depth * 0.43), palette["wood_dark"])
 	var label := _label3d(_structure_display_name(kind).to_upper(), 0.17, palette["cream"])
 	label.name = "StructureLabel"
-	label.position.y = structure_height + 0.65
+	label.position.y = structure_height + (0.92 if kind == "workshop" else 0.68)
 	structure.add_child(label)
 	var finished_walls := Node3D.new()
 	finished_walls.name = "FinishedWalls"
-	var wall_color: Color = palette["stone"] if kind == "archive" else palette["wood"]
+	var wall_color := _structure_wall_color(kind)
 	for wall_data in [
 		[Vector3(0.0, 0.11 + structure_height * 0.5, -footprint_depth * 0.46), Vector3(footprint_width * 0.86, structure_height, 0.12)],
 		[Vector3(-footprint_width * 0.43, 0.11 + structure_height * 0.5, 0.0), Vector3(0.12, structure_height, footprint_depth * 0.86)],
@@ -3135,7 +3191,7 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var utility := Node3D.new()
 	utility.name = "StructureUtility"
 	structure.add_child(utility)
-	_create_structure_utility_visual(utility, kind, footprint_width, footprint_depth)
+	_create_structure_utility_visual(utility, kind, footprint_width, footprint_depth, structure_height)
 	var body := StaticBody3D.new()
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -3147,21 +3203,56 @@ func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	settlement_visuals[instance_id] = structure
 	_refresh_structure_visual(instance_id, data)
 
-func _create_structure_utility_visual(parent: Node3D, kind: String, width: float, depth: float) -> void:
+func _structure_base_color(kind: String) -> Color:
+	match kind:
+		"workshop": return Color("#737d78")
+		"storage_shed": return Color("#9d9b83")
+	return palette["stone"]
+
+func _structure_wall_color(kind: String) -> Color:
+	match kind:
+		"archive": return palette["stone"]
+		"workshop": return Color("#745846")
+		"storage_shed": return Color("#b18052")
+	return palette["wood"]
+
+func _structure_roof_color(kind: String) -> Color:
+	match kind:
+		"workshop": return Color("#456b69")
+		"storage_shed": return Color("#788452")
+		"archive": return Color("#6c7772")
+	return palette["wood"]
+
+func _structure_box(parent: Node3D, node_name: String, size: Vector3, local_position: Vector3, color: Color, local_rotation_degrees := Vector3.ZERO, emissive := false) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = node_name
+	var box_mesh := BoxMesh.new()
+	box_mesh.size = size
+	mesh_instance.mesh = box_mesh
+	mesh_instance.material_override = _material(color, 0.9, false, emissive)
+	mesh_instance.position = local_position
+	mesh_instance.rotation_degrees = local_rotation_degrees
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+func _structure_cylinder(parent: Node3D, node_name: String, radius: float, height: float, local_position: Vector3, color: Color, radial_segments := 8) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = node_name
+	var cylinder_mesh := CylinderMesh.new()
+	cylinder_mesh.top_radius = radius
+	cylinder_mesh.bottom_radius = radius
+	cylinder_mesh.height = height
+	cylinder_mesh.radial_segments = radial_segments
+	mesh_instance.mesh = cylinder_mesh
+	mesh_instance.material_override = _material(color, 0.88)
+	mesh_instance.position = local_position
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+func _create_structure_utility_visual(parent: Node3D, kind: String, width: float, depth: float, height: float) -> void:
 	match kind:
 		"workshop":
-			var bench := MeshInstance3D.new()
-			var bench_mesh := BoxMesh.new()
-			bench_mesh.size = Vector3(minf(width * 0.7, 2.2), 0.32, 0.58)
-			bench.mesh = bench_mesh
-			bench.material_override = _material(palette["wood_dark"], 0.96)
-			bench.position = Vector3(0.0, 0.5, depth * 0.1)
-			parent.add_child(bench)
-			var anvil := MeshInstance3D.new()
-			anvil.mesh = _sphere_mesh(0.22, 0.42, 8, 4)
-			anvil.material_override = _material(palette["stone"], 0.98)
-			anvil.position = Vector3(-width * 0.25, 0.78, depth * 0.1)
-			parent.add_child(anvil)
+			_create_player_workshop_visual(parent, width, depth, height)
 		"archive":
 			for side in [-1.0, 1.0]:
 				var shelf := MeshInstance3D.new()
@@ -3187,13 +3278,230 @@ func _create_structure_utility_visual(parent: Node3D, kind: String, width: float
 			trough.position = Vector3(0.0, 0.34, -depth * 0.18)
 			parent.add_child(trough)
 		"storage_shed":
-			var crate := MeshInstance3D.new()
-			var crate_mesh := BoxMesh.new()
-			crate_mesh.size = Vector3(width * 0.34, 0.68, depth * 0.42)
-			crate.mesh = crate_mesh
-			crate.material_override = _material(palette["wood"], 0.96)
-			crate.position = Vector3(0.0, 0.46, 0.0)
-			parent.add_child(crate)
+			_create_storage_shed_visual(parent, width, depth, height)
+
+func _create_player_workshop_visual(parent: Node3D, width: float, depth: float, height: float) -> void:
+	var bench := Node3D.new()
+	bench.name = "WorkshopBench"
+	parent.add_child(bench)
+	_structure_box(bench, "BenchTop", Vector3(width * 0.52, 0.18, 0.56), Vector3(-width * 0.12, 0.68, depth * 0.14), palette["wood_dark"])
+	for side in [-1.0, 1.0]:
+		_structure_box(bench, "BenchLeg_%s" % str(side), Vector3(0.12, 0.58, 0.12), Vector3(-width * 0.12 + side * width * 0.2, 0.34, depth * 0.14), palette["wood"])
+
+	var anvil := Node3D.new()
+	anvil.name = "WorkshopAnvil"
+	parent.add_child(anvil)
+	var anvil_x := -width * 0.24
+	var anvil_z := depth * 0.12
+	_structure_box(anvil, "AnvilFoot", Vector3(0.34, 0.12, 0.34), Vector3(anvil_x, 0.32, anvil_z), Color("#4e5a5d"))
+	_structure_box(anvil, "AnvilWaist", Vector3(0.20, 0.34, 0.22), Vector3(anvil_x, 0.52, anvil_z), Color("#617074"))
+	_structure_box(anvil, "AnvilTop", Vector3(0.58, 0.18, 0.28), Vector3(anvil_x - 0.05, 0.77, anvil_z), Color("#6f8082"))
+
+	var hammer_pivot := Node3D.new()
+	hammer_pivot.name = "WorkshopHammerPivot"
+	hammer_pivot.position = Vector3(anvil_x + 0.06, 0.82, anvil_z)
+	hammer_pivot.rotation_degrees.z = -28.0
+	parent.add_child(hammer_pivot)
+	_structure_box(hammer_pivot, "HammerHandle", Vector3(0.07, 0.62, 0.07), Vector3(0.0, 0.29, 0.0), Color("#c09158"))
+	_structure_box(hammer_pivot, "HammerHead", Vector3(0.38, 0.17, 0.18), Vector3(0.0, 0.62, 0.0), Color("#4a565b"))
+
+	var forge := Node3D.new()
+	forge.name = "WorkshopForge"
+	parent.add_child(forge)
+	var forge_x := width * 0.25
+	var forge_z := -depth * 0.15
+	_structure_box(forge, "ForgeBody", Vector3(0.82, 0.62, 0.68), Vector3(forge_x, 0.43, forge_z), Color("#59635f"))
+	_structure_box(forge, "ForgeRim", Vector3(0.92, 0.14, 0.76), Vector3(forge_x, 0.77, forge_z), Color("#3e4b4b"))
+	var forge_glow := MeshInstance3D.new()
+	forge_glow.name = "WorkshopForgeGlow"
+	forge_glow.mesh = _sphere_mesh(0.22, 0.20, 8, 4)
+	forge_glow.material_override = _material(palette["ember"], 0.34, false, true)
+	forge_glow.position = Vector3(forge_x, 0.88, forge_z)
+	forge.add_child(forge_glow)
+	_structure_cylinder(forge, "WorkshopChimney", 0.16, 2.0, Vector3(forge_x + 0.13, 1.78, forge_z - 0.12), Color("#4d5a58"), 8)
+	_structure_cylinder(forge, "WorkshopChimneyCap", 0.23, 0.12, Vector3(forge_x + 0.13, 2.82, forge_z - 0.12), Color("#394646"), 8)
+
+	var smoke := Node3D.new()
+	smoke.name = "WorkshopSmoke"
+	smoke.visible = false
+	parent.add_child(smoke)
+	for index in 3:
+		var puff := MeshInstance3D.new()
+		puff.name = "SmokePuff_%d" % index
+		puff.mesh = _sphere_mesh(0.18 + float(index) * 0.025, 0.28 + float(index) * 0.04, 7, 4)
+		puff.material_override = _material(Color(0.72, 0.78, 0.74, 0.34), 1.0, true)
+		puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var puff_position := Vector3(forge_x + 0.13, 2.96 + float(index) * 0.18, forge_z - 0.12)
+		puff.position = puff_position
+		puff.set_meta("base_position", puff_position)
+		puff.set_meta("phase", float(index) / 3.0)
+		smoke.add_child(puff)
+
+	var drive_wheel := MeshInstance3D.new()
+	drive_wheel.name = "WorkshopDriveWheel"
+	var wheel_mesh := TorusMesh.new()
+	wheel_mesh.inner_radius = 0.26
+	wheel_mesh.outer_radius = 0.36
+	drive_wheel.mesh = wheel_mesh
+	drive_wheel.material_override = _material(Color("#d39a54"), 0.78)
+	drive_wheel.position = Vector3(width * 0.30, 1.28, depth * 0.34)
+	drive_wheel.rotation_degrees.x = 90.0
+	parent.add_child(drive_wheel)
+	for spoke_rotation in [0.0, 45.0, 90.0, 135.0]:
+		_structure_box(drive_wheel, "DriveSpoke_%d" % int(spoke_rotation), Vector3(0.06, 0.62, 0.06), Vector3.ZERO, Color("#d39a54"), Vector3(0.0, 0.0, spoke_rotation))
+
+	var status_lamp := MeshInstance3D.new()
+	status_lamp.name = "WorkshopStatusLamp"
+	status_lamp.mesh = _sphere_mesh(0.11, 0.19, 7, 4)
+	status_lamp.material_override = _material(palette["wood_dark"], 0.82)
+	status_lamp.position = Vector3(-width * 0.34, height * 0.72, depth * 0.42)
+	parent.add_child(status_lamp)
+
+func _add_storage_crate(parent: Node3D, node_name: String, size: Vector3, local_position: Vector3) -> Node3D:
+	var crate := Node3D.new()
+	crate.name = node_name
+	crate.position = local_position
+	parent.add_child(crate)
+	_structure_box(crate, "CrateBody", size, Vector3.ZERO, Color("#b9824f"))
+	for side in [-1.0, 1.0]:
+		_structure_box(crate, "CrateBand_%s" % str(side), Vector3(0.08, size.y * 1.03, size.z * 1.04), Vector3(side * size.x * 0.34, 0.0, 0.0), Color("#6a4a36"))
+	_structure_box(crate, "CrateBraceA", Vector3(0.065, size.y * 0.92, 0.05), Vector3(0.0, 0.0, size.z * 0.52), Color("#6a4a36"), Vector3(0.0, 0.0, 36.0))
+	_structure_box(crate, "CrateBraceB", Vector3(0.065, size.y * 0.92, 0.05), Vector3(0.0, 0.0, size.z * 0.52), Color("#6a4a36"), Vector3(0.0, 0.0, -36.0))
+	return crate
+
+func _create_storage_shed_visual(parent: Node3D, width: float, depth: float, height: float) -> void:
+	var cargo := Node3D.new()
+	cargo.name = "StorageCargo"
+	parent.add_child(cargo)
+	_add_storage_crate(cargo, "LargeCrate", Vector3(0.78, 0.58, 0.58), Vector3(-width * 0.21, 0.40, -depth * 0.05))
+	_add_storage_crate(cargo, "SmallCrate", Vector3(0.62, 0.46, 0.50), Vector3(width * 0.20, 0.34, depth * 0.05))
+	_add_storage_crate(cargo, "TopCrate", Vector3(0.56, 0.42, 0.46), Vector3(-width * 0.21, 0.92, -depth * 0.05))
+	_structure_cylinder(cargo, "SupplyBarrel", 0.25, 0.76, Vector3(width * 0.33, 0.49, -depth * 0.22), Color("#8d603d"), 10)
+	_structure_box(cargo, "BarrelBandTop", Vector3(0.53, 0.07, 0.53), Vector3(width * 0.33, 0.70, -depth * 0.22), Color("#4d5957"))
+	_structure_box(cargo, "BarrelBandBottom", Vector3(0.53, 0.07, 0.53), Vector3(width * 0.33, 0.27, -depth * 0.22), Color("#4d5957"))
+
+	var door := Node3D.new()
+	door.name = "StorageDoor"
+	parent.add_child(door)
+	_structure_box(door, "DoorSlab", Vector3(width * 0.58, height * 0.72, 0.08), Vector3(0.0, height * 0.43, -depth * 0.42), Color("#795239"))
+	_structure_box(door, "DoorBraceA", Vector3(0.10, height * 0.64, 0.06), Vector3(0.0, height * 0.43, -depth * 0.36), Color("#c0925b"), Vector3(0.0, 0.0, 42.0))
+	_structure_box(door, "DoorBraceB", Vector3(0.10, height * 0.64, 0.06), Vector3(0.0, height * 0.43, -depth * 0.36), Color("#c0925b"), Vector3(0.0, 0.0, -42.0))
+
+	var loading_frame := Node3D.new()
+	loading_frame.name = "StorageLoadingFrame"
+	parent.add_child(loading_frame)
+	var loading_z := depth * 0.43
+	for side in [-1.0, 1.0]:
+		_structure_box(loading_frame, "LoadingPost_%s" % str(side), Vector3(0.13, height * 0.86, 0.13), Vector3(side * width * 0.35, height * 0.48, loading_z), palette["wood_dark"])
+	_structure_box(loading_frame, "LoadingBeam", Vector3(width * 0.82, 0.16, 0.16), Vector3(0.0, height * 0.91, loading_z), palette["wood_dark"])
+	var awning := MeshInstance3D.new()
+	awning.name = "StorageAwning"
+	var awning_mesh := PrismMesh.new()
+	awning_mesh.size = Vector3(width * 0.88, 0.42, depth * 0.56)
+	awning.mesh = awning_mesh
+	awning.material_override = _material(Color("#98a76b"), 0.88)
+	awning.position = Vector3(0.0, height + 0.02, loading_z - depth * 0.04)
+	loading_frame.add_child(awning)
+
+	var pulley := MeshInstance3D.new()
+	pulley.name = "StoragePulleyWheel"
+	var pulley_mesh := TorusMesh.new()
+	pulley_mesh.inner_radius = 0.15
+	pulley_mesh.outer_radius = 0.23
+	pulley.mesh = pulley_mesh
+	pulley.material_override = _material(Color("#d4ad67"), 0.74)
+	pulley.position = Vector3(0.0, height * 0.84, loading_z + 0.08)
+	pulley.rotation_degrees.x = 90.0
+	loading_frame.add_child(pulley)
+	for spoke_rotation in [0.0, 60.0, 120.0]:
+		_structure_box(pulley, "PulleySpoke_%d" % int(spoke_rotation), Vector3(0.045, 0.36, 0.045), Vector3.ZERO, Color("#d4ad67"), Vector3(0.0, 0.0, spoke_rotation))
+
+	_structure_cylinder(loading_frame, "StoragePulleyRope", 0.018, height * 0.48, Vector3(0.0, height * 0.56, loading_z + 0.08), Color("#d7c69b"), 5)
+	var cargo_sack := MeshInstance3D.new()
+	cargo_sack.name = "StorageCargoSack"
+	cargo_sack.mesh = _sphere_mesh(0.20, 0.44, 8, 5)
+	cargo_sack.material_override = _material(Color("#d8bd80"), 0.96)
+	var sack_position := Vector3(0.0, height * 0.27, loading_z + 0.08)
+	cargo_sack.position = sack_position
+	cargo_sack.set_meta("base_position", sack_position)
+	loading_frame.add_child(cargo_sack)
+
+	var lantern := MeshInstance3D.new()
+	lantern.name = "StorageLanternGlow"
+	lantern.mesh = _sphere_mesh(0.10, 0.24, 7, 4)
+	lantern.material_override = _material(Color("#ffd27a"), 0.32, false, true)
+	lantern.position = Vector3(width * 0.31, height * 0.72, loading_z + 0.10)
+	loading_frame.add_child(lantern)
+
+func _workshop_job_phase() -> String:
+	if session == null:
+		return "idle"
+	var job_value: Variant = session.get("station_job")
+	if not (job_value is Dictionary):
+		return "idle"
+	var job: Dictionary = job_value
+	if str(job.get("kind", "none")) == "none":
+		return "idle"
+	return "working" if float(job.get("remaining_hours", 0.0)) > 0.0 else "ready"
+
+func _operational_structure_label(kind: String, display_name: String, definition: Dictionary) -> String:
+	match kind:
+		"workshop":
+			match _workshop_job_phase():
+				"working":
+					var job: Dictionary = session.get("station_job")
+					return "%s\nWORKING %dh" % [display_name, int(ceil(float(job.get("remaining_hours", 0.0))))]
+				"ready": return "%s\nORDER READY" % display_name
+			return "%s\nTOOLS READY" % display_name
+		"storage_shed":
+			return "%s\nSATCHEL +%d" % [display_name, int(definition.get("cargo_bonus", 0))]
+	return "%s\nOPERATIONAL" % display_name
+
+func _update_player_structure_motion(delta: float) -> void:
+	var now := Time.get_ticks_msec() * 0.001
+	var workshop_phase := _workshop_job_phase()
+	for instance_id in settlement_visuals:
+		var structure: Node3D = settlement_visuals.get(instance_id)
+		if not is_instance_valid(structure) or not structure.is_visible_in_tree() or not bool(structure.get_meta("operational", false)):
+			continue
+		match str(structure.get_meta("structure_kind", "")):
+			"workshop":
+				var working := workshop_phase == "working"
+				var hammer := structure.get_node_or_null("StructureUtility/WorkshopHammerPivot") as Node3D
+				if hammer != null:
+					hammer.rotation.z = deg_to_rad(-28.0 + sin(now * 5.4) * 24.0) if working else lerpf(hammer.rotation.z, deg_to_rad(-28.0), minf(1.0, delta * 7.0))
+				var drive_wheel := structure.get_node_or_null("StructureUtility/WorkshopDriveWheel") as MeshInstance3D
+				if drive_wheel != null and working:
+					drive_wheel.rotation.z = fmod(drive_wheel.rotation.z + delta * 3.4, TAU)
+				var forge_glow := structure.get_node_or_null("StructureUtility/WorkshopForge/WorkshopForgeGlow") as MeshInstance3D
+				if forge_glow != null:
+					var glow_scale := 1.0 + sin(now * (5.8 if working else 2.2)) * (0.10 if working else 0.035)
+					forge_glow.scale = Vector3.ONE * glow_scale
+				var smoke := structure.get_node_or_null("StructureUtility/WorkshopSmoke") as Node3D
+				if smoke != null:
+					smoke.visible = working
+					if working:
+						for puff_node in smoke.get_children():
+							var puff := puff_node as MeshInstance3D
+							if puff == null:
+								continue
+							var phase_offset := float(puff.get_meta("phase", 0.0))
+							var travel := fmod(now * 0.34 + phase_offset, 1.0)
+							var base_position: Vector3 = puff.get_meta("base_position", puff.position)
+							puff.position = base_position + Vector3(sin(now * 1.7 + phase_offset * TAU) * 0.09, travel * 0.72, cos(now * 1.3 + phase_offset * TAU) * 0.04)
+							puff.scale = Vector3.ONE * (0.68 + travel * 0.52)
+			"storage_shed":
+				var pulley := structure.get_node_or_null("StructureUtility/StorageLoadingFrame/StoragePulleyWheel") as MeshInstance3D
+				if pulley != null:
+					pulley.rotation.z = fmod(pulley.rotation.z + delta * 1.15, TAU)
+				var sack := structure.get_node_or_null("StructureUtility/StorageLoadingFrame/StorageCargoSack") as MeshInstance3D
+				if sack != null:
+					var sack_base: Vector3 = sack.get_meta("base_position", sack.position)
+					sack.position = sack_base + Vector3(0.0, sin(now * 1.15) * 0.055, 0.0)
+					sack.rotation.z = sin(now * 0.78) * 0.035
+				var lantern := structure.get_node_or_null("StructureUtility/StorageLoadingFrame/StorageLanternGlow") as MeshInstance3D
+				if lantern != null:
+					lantern.scale = Vector3.ONE * (1.0 + sin(now * 2.1) * 0.055)
 
 func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var structure: Node3D = settlement_visuals.get(instance_id)
@@ -3210,7 +3518,7 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var label := structure.get_node_or_null("StructureLabel") as Label3D
 	if label != null:
 		if state == "operational":
-			label.text = "%s\nOPERATIONAL" % display_name
+			label.text = _operational_structure_label(kind, display_name, definition)
 		elif state == "building":
 			label.text = "%s\nFRAME %dh" % [display_name, int(data.get("remaining_hours", 0.0))]
 		else:
@@ -3223,10 +3531,29 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 		tank.visible = kind == "rain_cistern" and state == "operational"
 	var roof := structure.get_node_or_null("CisternRoof") as MeshInstance3D
 	if roof != null:
-		roof.visible = state == "operational"
+		roof.visible = state == "operational" and not kind in ["workshop", "storage_shed", "archive"]
+	var gabled_roof := structure.get_node_or_null("GabledRoof") as Node3D
+	if gabled_roof != null:
+		gabled_roof.visible = state == "operational" and kind in ["workshop", "storage_shed", "archive"]
+	var timber_frame := structure.get_node_or_null("TimberFrame") as Node3D
+	if timber_frame != null:
+		timber_frame.visible = state == "operational" and kind in ["workshop", "storage_shed", "archive"]
 	var utility := structure.get_node_or_null("StructureUtility") as Node3D
 	if utility != null:
 		utility.visible = kind != "rain_cistern" and state == "operational"
+	structure.set_meta("operational", state == "operational")
+	var workshop_smoke := structure.get_node_or_null("StructureUtility/WorkshopSmoke") as Node3D
+	if workshop_smoke != null:
+		workshop_smoke.visible = state == "operational" and _workshop_job_phase() == "working"
+	var workshop_status_lamp := structure.get_node_or_null("StructureUtility/WorkshopStatusLamp") as MeshInstance3D
+	if workshop_status_lamp != null:
+		var workshop_phase := _workshop_job_phase()
+		var lamp_color: Color = palette["wood_dark"]
+		if workshop_phase == "working":
+			lamp_color = palette["ember"]
+		elif workshop_phase == "ready":
+			lamp_color = palette["leaf"]
+		workshop_status_lamp.material_override = _material(lamp_color, 0.45, false, workshop_phase != "idle")
 	var finished_walls := structure.get_node_or_null("FinishedWalls") as Node3D
 	if finished_walls != null:
 		finished_walls.visible = state == "operational"
@@ -3241,7 +3568,7 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 		delivered_planks.visible = state != "operational" and plank_delivered > 0
 	var base := structure.get_node_or_null("CisternBase") as MeshInstance3D
 	if base != null:
-		base.material_override = _material(palette["stone"] if state != "blueprint" else palette["violet"], 0.96 if state != "blueprint" else 0.48, state == "blueprint", state == "blueprint")
+		base.material_override = _material(_structure_base_color(kind) if state != "blueprint" else palette["violet"], 0.96 if state != "blueprint" else 0.48, state == "blueprint", state == "blueprint")
 
 func _refresh_structure_visuals() -> void:
 	if session == null:

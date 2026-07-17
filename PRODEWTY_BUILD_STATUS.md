@@ -48,10 +48,18 @@ Updated: 2026-07-18, Asia/Singapore
   footprint, persisted as a player-authored blueprint, supplied with visible
   Wood/Plank deliveries, completed as a scaffold over sleep, and then produces
   extra water each day
+- Tier-zero Workshop bootstrap is loop-safe: the first player-owned Workshop
+  consumes gathered Wood and Stone only; Planks are produced after it becomes
+  operational and feed later district upgrades.
 - The same authoritative staged construction registry now covers Workshop,
   Archive, Livestock Pen, and Storage Shed blueprints; material delivery is
   visible on site, operational walls/utilities appear only after the build,
   and permanent starter shells yield to player-placed operational buildings
+- Player-owned Workshop and Storage Shed visuals now have distinct timber
+  framing, gabled roofs, working forge/hammer/smoke or loading-crane/pulley
+  motion, and operational labels that appear contextually instead of covering
+  the whole Sanctuary. The sourced paddock cow is normalized to human-world
+  scale and idles when stationary.
 - Storage Shed operation is now a real progression consequence: each
   operational shed adds four satchel slots, and the finished capacity survives
   save/load. Workshop tonic remains research-gated in the authoritative job
@@ -147,9 +155,9 @@ Updated: 2026-07-18, Asia/Singapore
 
 ## Next actions (the project is not being called finished)
 
-1. Build the authoritative player-owned Workshop gold slice: remove the
-   remaining fixed-shell visual authority, make the placed building the only
-   job surface, and validate a physical walk from Hearth through every route.
+1. Continue the authored Sanctuary pass: retire the remaining fixed-shell
+   authority, add sourced modular props/foliage around the player-owned
+   district, and validate a physical walk from Hearth through every route.
 2. Replace the remaining desktop-style HUD stack with safe-area contextual
    actions and explicit recipe/food/expedition sheets.
 3. Finish the production art pass: replace generic procedural walls/gates with
