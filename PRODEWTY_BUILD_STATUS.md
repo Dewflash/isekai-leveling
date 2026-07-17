@@ -6,7 +6,7 @@ Updated: 2026-07-18, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote state: pending push for the route/construction hardening checkpoint
+- Remote state: pending push for the mastery-permission and visual construction checkpoint
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -52,6 +52,14 @@ Updated: 2026-07-18, Asia/Singapore
   Archive, Livestock Pen, and Storage Shed blueprints; material delivery is
   visible on site, operational walls/utilities appear only after the build,
   and permanent starter shells yield to player-placed operational buildings
+- Storage Shed operation is now a real progression consequence: each
+  operational shed adds four satchel slots, and the finished capacity survives
+  save/load. Workshop tonic remains research-gated in the authoritative job
+  command, not only in the recipe picker.
+- Mastery thresholds now grant persistent permissions with gameplay effects:
+  Crafting 20 unlocks cheaper Field Repair, Trading 20 unlocks 25% Market Favor,
+  and Attacking 20 unlocks +2 Combat Training light-attack damage. Unlocks are
+  emitted as feedback and reconstructed from saved mastery values.
 - Five physical Sanctuary route gates now identify and approach-gate the five
   expedition maps; the destination selector is no longer a global teleport
 - Five route gates, paths, approach pads, and build reservations share one
@@ -101,7 +109,7 @@ Updated: 2026-07-18, Asia/Singapore
   save fallback, malformed save rejection, staged research, quest state,
   durable tools, survival, livestock, grid placement, dungeon coin entry, and
   guardian defeat persistence, multi-contact expedition progress, atomic tool
-  transactions, fixed-world placement, and backup preservation after a
+  transactions, mastery permissions and permission save/load, fixed-world placement, and backup preservation after a
   malformed primary, future-content blocking, impossible-day rejection, and
   scene-level sleep rollback after a forced save failure.
 - World integration test: passed for sourced-tree and animated-cow presence, Sunlit Beach cargo

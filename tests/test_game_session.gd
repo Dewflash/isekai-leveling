@@ -392,6 +392,52 @@ func _init() -> void:
 	assert(locked_recipe.start_workshop_job("tonic").is_empty())
 	locked_recipe.unlocked_features.append("tonic_recipe")
 	assert(not locked_recipe.start_workshop_job("tonic").is_empty())
+	# Mastery crosses into permissions that change authoritative rules, rather
+	# than remaining a display-only number.
+	var permissions := SessionScript.new()
+	permissions.save_slot = "qa_mastery_permissions"
+	root.add_child(permissions)
+	var unlocks: Array[Dictionary] = []
+	permissions.feedback_requested.connect(func(kind: String, payload: Dictionary) -> void:
+		if kind == "mastery_unlock":
+			unlocks.append(payload)
+		)
+	permissions.unlocked_features = []
+	permissions.equipment["hatchet"]["max_durability"] = 19
+	permissions.equipment["hatchet"]["durability"] = 0
+	permissions.inventory["plank"] = 4
+	permissions.masteries["Crafting"] = 0
+	assert(permissions.repair_tool("hatchet"))
+	assert(not permissions.has_permission("field_repair"))
+	permissions.equipment["hatchet"]["durability"] = 0
+	permissions.masteries["Crafting"] = 19
+	permissions.award_mastery("Crafting", 1)
+	assert(permissions.has_permission("field_repair"))
+	assert(unlocks.size() == 1)
+	assert(permissions.unlocked_features.has("field_repair"))
+	permissions.inventory["plank"] = 3
+	permissions.equipment["hatchet"]["durability"] = 0
+	assert(permissions.repair_tool("hatchet"))
+	assert(permissions.inventory["plank"] == 0)
+	permissions.masteries["Trading"] = 19
+	permissions.award_mastery("Trading", 1)
+	assert(permissions.has_permission("market_favor"))
+	permissions.inventory["fish"] = 2
+	permissions.inventory["water"] = 1
+	var favored_trade: Dictionary = permissions.resolve_trade_offer("fish_basket")
+	assert(favored_trade["payout"] == 35)
+	permissions.masteries["Attacking"] = 19
+	permissions.award_mastery("Attacking", 1)
+	assert(permissions.has_permission("combat_training"))
+	assert(permissions.resolve_attack_damage(9) == 11)
+	assert(permissions.save_game())
+	var permissions_loaded := SessionScript.new()
+	permissions_loaded.save_slot = "qa_mastery_permissions"
+	root.add_child(permissions_loaded)
+	assert(permissions_loaded.load_game())
+	assert(permissions_loaded.has_permission("field_repair"))
+	assert(permissions_loaded.has_permission("market_favor"))
+	assert(permissions_loaded.has_permission("combat_training"))
 	# The Dungeon is a coin-gated fixed challenge and does not consume travel energy.
 	var dungeon := SessionScript.new()
 	dungeon.save_slot = "qa_dungeon"

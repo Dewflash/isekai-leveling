@@ -1922,6 +1922,8 @@ func _on_session_changed() -> void:
 func _on_session_feedback(kind: String, payload: Dictionary) -> void:
 	if kind == "activity":
 		_show_toast("Effort logged  |  +%d Activity XP  |  +%d energy" % [int(payload.get("xp", 0)), mini(6, int(payload.get("xp", 0)))], 3.0)
+	elif kind == "mastery_unlock":
+		_show_toast("Permission unlocked: %s  |  %s" % [str(payload.get("label", "Mastery")), str(payload.get("summary", "New capability available."))], 3.6)
 
 func _record_activity() -> void:
 	if session == null:
@@ -2753,14 +2755,11 @@ func _bazaar_interact() -> void:
 	if selected_offer.is_empty():
 		_show_toast("Bazaar wants 2 Fish + 1 Water, 1 Shell + 1 Plank, or 3 Wheat.", 2.8)
 		return
-	var trade_cost: Dictionary = selected_offer.get("cost", {})
-	var payout := int(selected_offer.get("payout", 0))
 	var trade_name := str(selected_offer.get("id", "trade")).replace("_", " ")
-	if not session.call("pay_items", trade_cost):
+	var result: Dictionary = session.call("resolve_trade_offer", str(selected_offer.get("id", "")))
+	if result.is_empty():
 		return
-	session.call("award_coins", payout)
-	session.call("award_mastery", "Trading", 8)
-	session.call("award_xp", 10)
+	var payout := int(result.get("payout", 0))
 	_show_toast("Traded %s  |  +%d Coins  |  Trading mastery +8" % [trade_name, payout], 2.8)
 	session.call("save_game")
 
@@ -3566,6 +3565,8 @@ func _update_attack_action(delta: float) -> void:
 		return
 	player_made_noise(player.global_position, 5.0)
 	var damage := 7 + strength * 2
+	if session != null and session.has_method("resolve_attack_damage"):
+		damage = int(session.call("resolve_attack_damage", damage))
 	target.call("take_damage", damage)
 	camera_shake = 0.06
 	if audio_director != null:

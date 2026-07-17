@@ -155,7 +155,23 @@ func award_mastery(name: String, amount: int) -> void:
 	if not masteries.has(name) or amount <= 0:
 		return
 	masteries[name] = mini(100, int(masteries[name]) + amount)
+	for permission in _sync_mastery_permissions():
+		feedback_requested.emit("mastery_unlock", permission)
 	state_changed.emit()
+
+func _sync_mastery_permissions() -> Array[Dictionary]:
+	var newly_unlocked: Array[Dictionary] = []
+	for mastery_name in ContentRegistry.MASTERY_PERMISSIONS:
+		var definition: Dictionary = ContentRegistry.MASTERY_PERMISSIONS.get(mastery_name, {})
+		var feature := str(definition.get("feature", ""))
+		if feature.is_empty() or int(masteries.get(str(mastery_name), 0)) < int(definition.get("threshold", 100)) or unlocked_features.has(feature):
+			continue
+		unlocked_features.append(feature)
+		newly_unlocked.append({"mastery": str(mastery_name), "feature": feature, "label": str(definition.get("label", feature)), "summary": str(definition.get("summary", "Permission unlocked."))})
+	return newly_unlocked
+
+func has_permission(feature: String) -> bool:
+	return not feature.is_empty() and unlocked_features.has(feature)
 
 func spend_energy(cost: int) -> bool:
 	if cost <= 0:
@@ -235,7 +251,8 @@ func repair_tool(tool_id: String) -> bool:
 	var missing := maximum - int(tool.get("durability", 0))
 	if missing <= 0:
 		return false
-	var cost := {"plank": maxi(1, int(ceil(float(missing) / 6.0)))}
+	var divisor := 8.0 if has_permission("field_repair") else 6.0
+	var cost := {"plank": maxi(1, int(ceil(float(missing) / divisor)))}
 	if not pay_items(cost):
 		return false
 	tool["durability"] = maximum
@@ -347,6 +364,31 @@ func start_workshop_job(recipe_id: String) -> Dictionary:
 	station_job = {"kind": recipe_id, "remaining_hours": float(recipe.get("hours", 12.0)), "total_hours": float(recipe.get("hours", 12.0)), "output_id": recipe_id, "output": int(recipe.get("output", 0))}
 	state_changed.emit()
 	return station_job.duplicate(true)
+
+func resolve_trade_offer(offer_id: String) -> Dictionary:
+	for offer in ContentRegistry.TRADE_OFFERS:
+		if str(offer.get("id", "")) != offer_id:
+			continue
+		var cost: Dictionary = offer.get("cost", {})
+		if not has_items(cost):
+			return {}
+		for item_id in cost:
+			inventory[str(item_id)] = int(inventory.get(str(item_id), 0)) - int(cost[item_id])
+		var base_payout := int(offer.get("payout", 0))
+		var payout := base_payout
+		if has_permission("market_favor"):
+			payout = int(ceil(float(base_payout) * 1.25))
+		coins += payout
+		award_mastery("Trading", 8)
+		award_xp(10)
+		state_changed.emit()
+		return {"offer_id": offer_id, "payout": payout, "base_payout": base_payout, "market_favor": has_permission("market_favor")}
+	return {}
+
+func resolve_attack_damage(base_damage: int) -> int:
+	if base_damage <= 0:
+		return 0
+	return base_damage + (2 if has_permission("combat_training") else 0)
 
 func claim_workshop_job() -> Dictionary:
 	if str(station_job.get("kind", "none")) == "none" or float(station_job.get("remaining_hours", 0.0)) > 0.0:
@@ -1400,3 +1442,4 @@ func _apply_dict(data: Dictionary) -> void:
 		var stored_expedition_contact_progress: Variant = expedition_run.get("contact_progress", {})
 		expedition_run["contact_progress"] = stored_expedition_contact_progress if stored_expedition_contact_progress is Dictionary else {}
 	quest = data.get("quest", quest) if data.get("quest", quest) is Dictionary else quest
+	_sync_mastery_permissions()

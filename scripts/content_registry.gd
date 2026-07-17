@@ -53,6 +53,15 @@ const WORKSHOP_RECIPES := {
 	"tonic": {"cost": {"berries": 1, "water": 1, "slime_gel": 1}, "hours": 12.0, "output": 1, "requires_feature": "tonic_recipe", "summary": "1 Berry + 1 Water + 1 Slime Gel → 1 Tonic"},
 }
 
+## Mastery is more than a scoreboard: crossing a threshold grants a named
+## permission that changes an authoritative rule. The presentation may explain
+## these permissions, but GameSession owns whether they exist.
+const MASTERY_PERMISSIONS := {
+	"Crafting": {"threshold": 20, "feature": "field_repair", "label": "Field Repair", "summary": "Repair tools with less Plank."},
+	"Trading": {"threshold": 20, "feature": "market_favor", "label": "Market Favor", "summary": "Earn 25% more Coins from Bazaar offers."},
+	"Attacking": {"threshold": 20, "feature": "combat_training", "label": "Combat Training", "summary": "+2 damage on light attacks."},
+}
+
 const TRADE_OFFERS := [
 	{"id": "fish_basket", "cost": {"fish": 2, "water": 1}, "payout": 28, "summary": "2 Fish + 1 Water → 28 Coins"},
 	{"id": "tideglass_trinket", "cost": {"shell": 1, "plank": 1}, "payout": 38, "summary": "1 Shell + 1 Plank → 38 Coins"},
