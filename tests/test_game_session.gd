@@ -89,6 +89,14 @@ func _init() -> void:
 	assert(expedition_loaded.finish_expedition()["shell"] == 1)
 	assert(expedition_loaded.inventory["shell"] == 1)
 	assert(expedition_loaded.quest["progress"] == 1)
+	# Survival choices remain available in the field through the same
+	# authoritative inventory commands; they are not Sanctuary-only decoration.
+	expedition_loaded.inventory["bread"] = 1
+	expedition_loaded.energy = 8
+	expedition_loaded.nutrition = 20
+	assert(expedition_loaded.consume_food("bread"))
+	assert(expedition_loaded.energy == 17)
+	assert(expedition_loaded.nutrition == 42)
 	# Expedition cargo is a real constraint: a failed collection is side-effect
 	# free, and guardian rewards use the same satchel budget atomically.
 	var pressure := SessionScript.new()
@@ -438,6 +446,43 @@ func _init() -> void:
 	assert(permissions_loaded.has_permission("field_repair"))
 	assert(permissions_loaded.has_permission("market_favor"))
 	assert(permissions_loaded.has_permission("combat_training"))
+	# Whisperwood now has an authoritative fork/capstone/cache arc. The branch
+	# is committed once, the matching objective opens one cache, and the route
+	# state survives a reload.
+	var grove_route := SessionScript.new()
+	grove_route.save_slot = "qa_grove_route"
+	root.add_child(grove_route)
+	grove_route.energy = 24
+	grove_route.expedition_run = {"status": "none"}
+	assert(grove_route.start_expedition("Whisperwood"))
+	assert(not grove_route.commit_expedition_branch("bogus"))
+	assert(grove_route.commit_expedition_branch("grove"))
+	assert(not grove_route.commit_expedition_branch("clearing"))
+	assert(grove_route.complete_expedition_resource("Whisperglass:route-capstone", "berries", 1, 1))
+	assert(grove_route.record_discovery("Whisperglass"))
+	assert(bool(grove_route.expedition_run["objective_complete"]))
+	var grove_cache: Dictionary = grove_route.open_expedition_cache()
+	assert(grove_cache["loot"]["berries"] == 2)
+	assert(grove_cache["loot"]["fiber"] == 1)
+	assert(bool(grove_route.expedition_run["shortcut_open"]))
+	assert(grove_route.save_game())
+	var grove_loaded := SessionScript.new()
+	grove_loaded.save_slot = "qa_grove_route"
+	root.add_child(grove_loaded)
+	assert(grove_loaded.load_game())
+	assert(grove_loaded.expedition_run["branch_id"] == "grove")
+	assert(bool(grove_loaded.expedition_run["cache_claimed"]))
+	assert(grove_loaded.open_expedition_cache().is_empty())
+	var clearing_route := SessionScript.new()
+	clearing_route.save_slot = "qa_clearing_route"
+	root.add_child(clearing_route)
+	clearing_route.energy = 24
+	clearing_route.expedition_run = {"status": "none"}
+	assert(clearing_route.start_expedition("Whisperwood"))
+	assert(clearing_route.commit_expedition_branch("clearing"))
+	assert(not clearing_route.expedition_run["objective_complete"])
+	assert(not clearing_route.resolve_guardian_defeat("forest_slime").is_empty())
+	assert(bool(clearing_route.expedition_run["objective_complete"]))
 	# The Dungeon is a coin-gated fixed challenge and does not consume travel energy.
 	var dungeon := SessionScript.new()
 	dungeon.save_slot = "qa_dungeon"

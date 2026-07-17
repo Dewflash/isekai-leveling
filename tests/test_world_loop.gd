@@ -168,6 +168,11 @@ func _run() -> void:
 	assert(world.get_node_or_null("Whisperwood/WhisperwoodRoute") != null)
 	assert(world.get_node_or_null("Whisperwood/WhisperwoodRoute/Sourced_Fern_1") != null)
 	assert(world.get_node_or_null("Whisperwood/WhisperwoodRoute/Sourced_RockPath_Round_Small_1") != null)
+	var branch_marker := world.get_node_or_null("Whisperwood/WhisperwoodRoute/WhisperwoodBranchChoice")
+	assert(branch_marker != null)
+	world.player.global_position = branch_marker.global_position + Vector3(-0.8, 1.0, 0.0)
+	world.call("_interact")
+	assert(session.get("expedition_run").get("branch_id") == "grove")
 	world.player.global_position = tree_node.global_position
 	var forest_wood_before := int(session.get("expedition_run").get("cargo", {}).get("wood", 0))
 	assert(world.call("collect_resource", tree_node))

@@ -429,6 +429,31 @@ func _create_whisperwood_landmarks(parent: Node3D) -> void:
 	var clearing_label := _label3d("GUARDIAN CLEARING", 0.16, palette["cream"])
 	clearing_label.position = Vector3(5.0, 0.22, -6.45)
 	route.add_child(clearing_label)
+	var branch_marker := StationScript.new() as Node3D
+	branch_marker.name = "WhisperwoodBranchChoice"
+	branch_marker.set("world", self)
+	branch_marker.set("station_id", "whisper_branch")
+	branch_marker.add_to_group("interactable")
+	branch_marker.set_meta("route_branch_choice", true)
+	branch_marker.position = Vector3(0.0, 0.0, -1.9)
+	route.add_child(branch_marker)
+	for side in [-1.0, 1.0]:
+		_structure_box(branch_marker, "BranchPost_%s" % side, Vector3(0.16, 1.55, 0.16), Vector3(side * 1.25, 0.78, 0.0), palette["wood_dark"])
+	_structure_box(branch_marker, "BranchBeam", Vector3(2.7, 0.16, 0.16), Vector3(0.0, 1.48, 0.0), palette["wood_dark"])
+	var branch_label := _label3d("OLD TRAIL MARKER\nCHOOSE A BRANCH", 0.15, palette["cream"])
+	branch_label.name = "BranchChoiceLabel"
+	branch_label.position = Vector3(0.0, 1.92, 0.0)
+	branch_marker.add_child(branch_label)
+	_create_whisper_cache(route, Vector3(-8.2, 0.0, -4.8), "grove", "FERN GROVE CACHE", Color("#8fcf9a"))
+	_create_whisper_cache(route, Vector3(8.0, 0.0, -5.0), "clearing", "GUARDIAN CACHE", Color("#d58b9c"))
+	var shortcut := Node3D.new()
+	shortcut.name = "WhisperwoodShortcut"
+	shortcut.visible = false
+	route.add_child(shortcut)
+	_create_path(shortcut, Vector3(0.0, 0.05, -5.7), Vector3(2.0, 0.08, 4.6), Color("#b7a073"))
+	var shortcut_label := _label3d("SHORTCUT OPEN", 0.15, palette["cream"])
+	shortcut_label.position = Vector3(0.0, 1.1, -5.7)
+	shortcut.add_child(shortcut_label)
 	for index in 7:
 		var stone_position := Vector3(-7.2 + float(index) * 2.0, 0.1, 1.4 + sin(float(index) * 0.8) * 0.25)
 		_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/RockPath_Round_Small_1.gltf", 0.24, stone_position)
@@ -438,6 +463,60 @@ func _create_whisperwood_landmarks(parent: Node3D) -> void:
 		_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Grass_Common_Tall.gltf", 0.34, position)
 	_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Pine_3.gltf", 0.62, Vector3(-12.0, 0.08, -6.0))
 	_add_sourced_model(route, "res://assets/quaternius-stylized-nature/glTF/Pine_3.gltf", 0.54, Vector3(11.5, 0.08, 1.5))
+
+func _create_whisper_cache(parent: Node3D, position: Vector3, branch_id: String, label_text: String, accent: Color) -> void:
+	var cache := StationScript.new() as Node3D
+	cache.name = "WhisperCache_" + branch_id.capitalize()
+	cache.set("world", self)
+	cache.set("station_id", "whisper_cache")
+	cache.add_to_group("interactable")
+	cache.set_meta("route_branch", branch_id)
+	cache.position = position
+	parent.add_child(cache)
+	_structure_box(cache, "CacheChest", Vector3(1.05, 0.56, 0.68), Vector3(0.0, 0.38, 0.0), palette["wood_dark"])
+	_structure_box(cache, "CacheLid", Vector3(1.12, 0.10, 0.73), Vector3(0.0, 0.70, 0.0), accent)
+	_structure_box(cache, "CacheBand", Vector3(0.10, 0.68, 0.76), Vector3(0.0, 0.40, 0.0), accent)
+	var marker := MeshInstance3D.new()
+	marker.name = "CacheMarker"
+	marker.mesh = _sphere_mesh(0.14, 0.28, 7, 4)
+	marker.material_override = _material(accent, 0.38, false, true)
+	marker.position = Vector3(0.0, 1.1, 0.0)
+	cache.add_child(marker)
+	var label := _label3d(label_text + "\nLOCKED", 0.15, palette["cream"])
+	label.name = "CacheLabel"
+	label.position = Vector3(0.0, 1.42, 0.0)
+	cache.add_child(label)
+
+func _refresh_whisperwood_route() -> void:
+	if forest_zone == null or session == null:
+		return
+	var route := forest_zone.get_node_or_null("WhisperwoodRoute") as Node3D
+	if route == null:
+		return
+	var run: Dictionary = session.get("expedition_run")
+	var active := str(run.get("status", "none")) == "active" and str(run.get("biome_id", "")) == "Whisperwood"
+	var branch_id := str(run.get("branch_id", ""))
+	var objective_complete := bool(run.get("objective_complete", false))
+	var shortcut_open := bool(run.get("shortcut_open", false))
+	var branch_marker := route.get_node_or_null("WhisperwoodBranchChoice") as Node3D
+	if branch_marker != null:
+		branch_marker.visible = active and branch_id.is_empty()
+		var branch_label := branch_marker.get_node_or_null("BranchChoiceLabel") as Label3D
+		if branch_label != null:
+			branch_label.text = "OLD TRAIL MARKER\nCHOOSE A BRANCH" if branch_id.is_empty() else ("GROVE CHOSEN" if branch_id == "grove" else "CLEARING CHOSEN")
+	for cache_node in route.get_children():
+		var cache := cache_node as Node3D
+		if cache == null or str(cache.get("station_id")) != "whisper_cache":
+			continue
+		var cache_branch := str(cache.get_meta("route_branch", ""))
+		var cache_label := cache.get_node_or_null("CacheLabel") as Label3D
+		var available := active and objective_complete and not bool(run.get("cache_claimed", false)) and cache_branch == branch_id
+		cache.visible = not active or cache_branch == branch_id or available
+		if cache_label != null:
+			cache_label.text = ("FERN GROVE CACHE" if cache_branch == "grove" else "GUARDIAN CACHE") + ("\nOPEN CACHE" if available else ("\nCLAIMED" if bool(run.get("cache_claimed", false)) and cache_branch == branch_id else "\nLOCKED"))
+	var shortcut := route.get_node_or_null("WhisperwoodShortcut") as Node3D
+	if shortcut != null:
+		shortcut.visible = active and shortcut_open
 
 func _create_beach_landmarks(parent: Node3D) -> void:
 	var sea := Node3D.new()
@@ -1911,6 +1990,7 @@ func _copy_session_to_runtime() -> void:
 	hydration = int(session.get("hydration"))
 	inventory = session.get("inventory").duplicate(true)
 	_sync_expedition_cargo()
+	_refresh_whisperwood_route()
 	if player != null:
 		player.set("health", health)
 	if farm_plot != null:
@@ -2159,11 +2239,12 @@ func _update_hud() -> void:
 		dodge_button.visible = current_zone != "Sanctuary"
 	if farm_button != null:
 		farm_button.visible = current_zone == "Sanctuary" and context_node == farm_plot
+	var field_supplies_available: bool = session != null and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition"))
 	if food_button != null:
-		food_button.visible = current_zone == "Sanctuary"
+		food_button.visible = current_zone == "Sanctuary" or field_supplies_available
 		food_button.text = "Eat %s  [G]  (%d)" % [selected_food.capitalize(), int(inventory.get(selected_food, 0))]
 	if water_button != null:
-		water_button.visible = current_zone == "Sanctuary"
+		water_button.visible = current_zone == "Sanctuary" or field_supplies_available
 		water_button.text = "Drink Water  [H]  (%d)" % int(inventory.get("water", 0))
 	if livestock_button != null:
 		var livestock_context := current_zone == "Sanctuary" and (context_node == livestock_pen or _is_player_structure_kind(context_node, "livestock_pen"))
@@ -2565,7 +2646,7 @@ func station_interact(station: Node) -> void:
 	if session == null:
 		return
 	var station_id := str(station.get("station_id"))
-	if station_id != "camp" and current_zone != "Sanctuary":
+	if station_id not in ["camp", "whisper_branch", "whisper_cache"] and current_zone != "Sanctuary":
 		return
 	if player.global_position.distance_to(station.global_position) > 2.35:
 		var station_name := "the Workshop"
@@ -2579,6 +2660,10 @@ func station_interact(station: Node) -> void:
 			station_name = "Mira"
 		elif station_id == "livestock":
 			station_name = "Clover's Pen"
+		elif station_id == "whisper_branch":
+			station_name = "the Old Trail Marker"
+		elif station_id == "whisper_cache":
+			station_name = "the route cache"
 		_show_toast("Move closer to %s first." % station_name, 1.8)
 		return
 	if station_id == "notice":
@@ -2589,6 +2674,12 @@ func station_interact(station: Node) -> void:
 		return
 	if station_id == "camp":
 		_camp_interact()
+		return
+	if station_id == "whisper_branch":
+		_whisper_branch_interact(station)
+		return
+	if station_id == "whisper_cache":
+		_whisper_cache_interact(station)
 		return
 	if station_id == "guide":
 		_guide_interact()
@@ -2660,7 +2751,7 @@ func _cycle_food_selection() -> void:
 	_show_toast("No prepared food. Fish, harvest, or cook at the Workshop.", 2.2)
 
 func _eat_best_food() -> void:
-	if current_zone != "Sanctuary" or session == null:
+	if session == null or (current_zone != "Sanctuary" and not session.call("has_active_expedition")):
 		return
 	var food_id := selected_food if int(inventory.get(selected_food, 0)) > 0 else ""
 	if food_id.is_empty():
@@ -2685,7 +2776,7 @@ func _cycle_recipe_selection() -> void:
 	_show_toast("Workshop recipe selected: %s" % selected_recipe.capitalize(), 1.6)
 
 func _drink_water() -> void:
-	if current_zone != "Sanctuary" or session == null:
+	if session == null or (current_zone != "Sanctuary" and not session.call("has_active_expedition")):
 		return
 	if not session.call("drink_water"):
 		_show_toast("Your water pouch is empty, or you are already hydrated.", 2.3)
@@ -2861,6 +2952,44 @@ func _camp_interact() -> void:
 		session.call("save_game")
 	else:
 		_show_toast("This camp has already been used for the current expedition.", 2.2)
+
+func _whisper_branch_interact(_station: Node) -> void:
+	if current_zone != "Whisperwood" or session == null or not session.call("has_active_expedition"):
+		return
+	var run: Dictionary = session.get("expedition_run")
+	if not str(run.get("branch_id", "")).is_empty():
+		_show_toast("This route is committed to the %s." % ("Grove" if str(run.get("branch_id")) == "grove" else "Clearing"), 2.3)
+		return
+	# Spatial choice: stand to the left of the marker for the fern grove or to
+	# the right for the guardian clearing. The decision is stored in the run.
+	var branch_id := "grove" if player.global_position.x <= 0.0 else "clearing"
+	if session.call("commit_expedition_branch", branch_id):
+		_refresh_whisperwood_route()
+		_show_toast("Route committed: %s. The other trail will wait." % ("Whisperglass Grove" if branch_id == "grove" else "Guardian Clearing"), 3.0)
+		session.call("save_game")
+
+func _whisper_cache_interact(station: Node) -> void:
+	if current_zone != "Whisperwood" or session == null or not session.call("has_active_expedition"):
+		return
+	var run: Dictionary = session.get("expedition_run")
+	var cache_branch := str(station.get_meta("route_branch", "")) if station != null else ""
+	if cache_branch != str(run.get("branch_id", "")):
+		_show_toast("That cache belongs to the other trail.", 2.2)
+		return
+	if not bool(run.get("objective_complete", false)):
+		_show_toast("Finish this trail's capstone before opening its cache.", 2.5)
+		return
+	var loot: Dictionary = session.call("open_expedition_cache")
+	if loot.is_empty():
+		_show_toast("The cache needs 2 Energy and enough satchel space.", 2.4)
+		return
+	var loot_text: Array[String] = []
+	for resource_id in loot.get("loot", {}):
+		loot_text.append("+%d %s" % [int(loot["loot"][resource_id]), str(resource_id).replace("_", " ").capitalize()])
+	_sync_expedition_cargo()
+	_refresh_whisperwood_route()
+	_show_toast("Cache opened  |  %s  |  shortcut open" % ", ".join(loot_text), 3.0)
+	session.call("save_game")
 
 func _guide_interact() -> void:
 	if session == null:
@@ -3703,6 +3832,7 @@ func _set_zone(zone: String) -> void:
 	if environment_node != null:
 		environment_node.environment.background_color = _zone_background(zone)
 	_sync_expedition_cargo()
+	_refresh_whisperwood_route()
 
 func _restore_active_expedition_nodes() -> void:
 	if session == null:
@@ -3732,6 +3862,7 @@ func _restore_active_expedition_nodes() -> void:
 	for guardian_node in get_tree().get_nodes_in_group("guardian"):
 		if guardian_node.has_method("set_defeated_from_save"):
 			guardian_node.call("set_defeated_from_save", defeated_guardians.has(str(guardian_node.get("guardian_id"))))
+	_refresh_whisperwood_route()
 
 func _sync_expedition_cargo() -> void:
 	if session == null or not session.has_method("has_active_expedition"):

@@ -44,6 +44,8 @@ Updated: 2026-07-18, Asia/Singapore
 - Connected survival layer: durable hatchet/pickaxe/knife state, interruptible
   gathering wind-up with movement cancellation, food/hydration choices, explicit
   recipe selection, and a day-based Clover livestock loop (feed → sleep → egg)
+- Food and water controls remain available during an active expedition, so
+  field survival choices affect the run instead of being Sanctuary-only UI.
 - Grid-backed Sanctuary placement: a Rain Cistern can be previewed on a valid
   footprint, persisted as a player-authored blueprint, supplied with visible
   Wood/Plank deliveries, completed as a scaffold over sleep, and then produces
@@ -73,6 +75,10 @@ Updated: 2026-07-18, Asia/Singapore
 - Five route gates, paths, approach pads, and build reservations share one
   immutable route-socket definition; all five destinations are tested through
   actual interaction and out-of-range entry is rejected
+- Whisperwood now has a real first-route decision: the physical trail marker
+  commits the player to Grove or Clearing, only the matching capstone completes
+  the objective, and one branch cache spends Energy and opens a shortcut. The
+  branch, capstone, cache, and shortcut state persist with the expedition run.
 - Saved sanctuary reference image and acceptance notes now distinguish visual
   direction from player-owned building layout
 - Expedition extraction now requires returning to the entry beacon; defeated
@@ -125,7 +131,7 @@ Updated: 2026-07-18, Asia/Singapore
   Sanctuary fishing/trading, interruptible gathering, Sanctuary placement and
   material delivery, five route gates, all destinations, out-of-range
   rejection, beacon-only extraction, expedition
-  anchor persistence, and zone transitions.
+  anchor persistence, Whisperwood branch commitment, and zone transitions.
 - Visible game launch from the target checkout: headless smoke is clean apart
   from Godot's macOS certificate warning; desktop screenshot capture is not
   available in the current Codex session.

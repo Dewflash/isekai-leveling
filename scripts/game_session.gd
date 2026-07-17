@@ -507,6 +507,9 @@ func record_discovery(discovery_id: String) -> bool:
 	if discovery_id.is_empty() or discovered.has(discovery_id):
 		return false
 	discovered.append(discovery_id)
+	if has_active_expedition() and str(expedition_run.get("biome_id", "")) == "Whisperwood" and str(expedition_run.get("branch_id", "")) == "grove" and discovery_id == "Whisperglass":
+		expedition_run["objective_complete"] = true
+		expedition_run["route_phase"] = "capstone"
 	award_mastery("Research", 4)
 	feedback_requested.emit("discovery", {"id": discovery_id})
 	state_changed.emit()
@@ -565,12 +568,60 @@ func start_expedition(biome_id: String) -> bool:
 		"camp_used": false,
 		"started_day": day,
 		"anchor": [0.0, 1.0, 7.5],
+		"route_phase": "approach",
+		"branch_id": "",
+		"objective_complete": false,
+		"shortcut_open": false,
+		"cache_claimed": false,
 	}
 	state_changed.emit()
 	return true
 
 func has_active_expedition() -> bool:
 	return str(expedition_run.get("status", "none")) == "active"
+
+func commit_expedition_branch(branch_id: String) -> bool:
+	if not has_active_expedition() or str(expedition_run.get("biome_id", "")) != "Whisperwood" or branch_id not in ["grove", "clearing"]:
+		return false
+	if not str(expedition_run.get("branch_id", "")).is_empty():
+		return false
+	expedition_run["branch_id"] = branch_id
+	expedition_run["route_phase"] = "branch"
+	state_changed.emit()
+	return true
+
+func expedition_route_snapshot() -> Dictionary:
+	return {
+		"route_phase": str(expedition_run.get("route_phase", "approach")),
+		"branch_id": str(expedition_run.get("branch_id", "")),
+		"objective_complete": bool(expedition_run.get("objective_complete", false)),
+		"shortcut_open": bool(expedition_run.get("shortcut_open", false)),
+		"cache_claimed": bool(expedition_run.get("cache_claimed", false)),
+	}
+
+func open_expedition_cache() -> Dictionary:
+	if not has_active_expedition() or str(expedition_run.get("biome_id", "")) != "Whisperwood":
+		return {}
+	var branch_id := str(expedition_run.get("branch_id", ""))
+	if branch_id.is_empty() or not bool(expedition_run.get("objective_complete", false)) or bool(expedition_run.get("cache_claimed", false)):
+		return {}
+	var reward := {"berries": 2, "fiber": 1} if branch_id == "grove" else {"slime_gel": 2}
+	var reward_total := 0
+	for resource_id in reward:
+		reward_total += int(reward[resource_id])
+	if energy < 2 or not can_carry_expedition_amount(reward_total):
+		return {}
+	energy -= 2
+	var cargo: Dictionary = expedition_run.get("cargo", {})
+	for resource_id in reward:
+		cargo[str(resource_id)] = int(cargo.get(str(resource_id), 0)) + int(reward[resource_id])
+	expedition_run["cargo"] = cargo
+	expedition_run["cache_claimed"] = true
+	expedition_run["shortcut_open"] = true
+	expedition_run["route_phase"] = "shortcut"
+	award_xp(8)
+	state_changed.emit()
+	return {"branch_id": branch_id, "loot": reward.duplicate(true), "energy_cost": 2}
 
 func collect_expedition_resource(node_id: String, resource_id: String, amount: int) -> bool:
 	return collect_expedition_resource_with_tool(node_id, resource_id, amount)
@@ -631,6 +682,9 @@ func complete_expedition_resource(node_id: String, resource_id: String, amount: 
 	expedition_run["cargo"] = cargo
 	expedition_run["depleted_ids"] = depleted
 	expedition_run["contact_progress"] = contact_progress
+	if resource_id == "berries" and str(expedition_run.get("biome_id", "")) == "Whisperwood" and str(expedition_run.get("branch_id", "")) == "grove" and node_id.to_lower().contains("whisperglass"):
+		expedition_run["objective_complete"] = true
+		expedition_run["route_phase"] = "capstone"
 	state_changed.emit()
 	return true
 
@@ -785,6 +839,9 @@ func resolve_guardian_defeat(guardian_id: String) -> Dictionary:
 	cargo[reward_id] = int(cargo.get(reward_id, 0)) + reward_amount
 	expedition_run["defeated_guardian_ids"] = defeated
 	expedition_run["cargo"] = cargo
+	if guardian_id == "forest_slime" and str(expedition_run.get("branch_id", "")) == "clearing":
+		expedition_run["objective_complete"] = true
+		expedition_run["route_phase"] = "capstone"
 	award_xp(18)
 	award_mastery("Attacking", 12)
 	state_changed.emit()
@@ -834,7 +891,7 @@ func finish_expedition() -> Dictionary:
 			cargo_count += amount
 	if cargo_count > 0 and not bool(quest.get("claimed", false)):
 		quest["progress"] = mini(int(quest.get("target", 5)), int(quest.get("progress", 0)) + cargo_count)
-	expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
+	expedition_run = _empty_expedition_run()
 	state_changed.emit()
 	return cargo
 
@@ -868,7 +925,7 @@ func fail_expedition(position: Vector3) -> Dictionary:
 	if not lost.is_empty():
 		recovery_pack = {"pack_id": "recovery_%s" % run_id, "zone_id": biome_id, "loot": lost, "position": [position.x, position.y, position.z], "expires_day": day + 1}
 		new_recovery_pack = recovery_pack.duplicate(true)
-	expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
+	expedition_run = _empty_expedition_run()
 	health = max_health
 	state_changed.emit()
 	return new_recovery_pack
@@ -1291,6 +1348,14 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 			return false
 		if expedition_status == "active" and not EXPEDITION_COSTS.has(str(expedition.get("biome_id", ""))):
 			return false
+		var branch_id := str(expedition.get("branch_id", ""))
+		if branch_id not in ["", "grove", "clearing"] or (not branch_id.is_empty() and str(expedition.get("biome_id", "")) != "Whisperwood"):
+			return false
+		if expedition.has("route_phase") and str(expedition.get("route_phase", "approach")) not in ["none", "approach", "branch", "capstone", "shortcut"]:
+			return false
+		for route_flag in ["objective_complete", "shortcut_open", "cache_claimed"]:
+			if expedition.has(route_flag) and not (expedition[route_flag] is bool):
+				return false
 		var cargo: Variant = expedition.get("cargo", {})
 		if not (cargo is Dictionary):
 			return false
@@ -1437,9 +1502,17 @@ func _apply_dict(data: Dictionary) -> void:
 		recovery_pack["pack_id"] = "recovery_legacy_%d" % day
 	expedition_run = data.get("expedition_run", expedition_run) if data.get("expedition_run", expedition_run) is Dictionary else expedition_run
 	if str(expedition_run.get("status", "none")) != "active":
-		expedition_run = {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "anchor": [0.0, 1.0, 7.5]}
+		expedition_run = _empty_expedition_run()
 	else:
 		var stored_expedition_contact_progress: Variant = expedition_run.get("contact_progress", {})
 		expedition_run["contact_progress"] = stored_expedition_contact_progress if stored_expedition_contact_progress is Dictionary else {}
+		expedition_run["route_phase"] = str(expedition_run.get("route_phase", "approach"))
+		expedition_run["branch_id"] = str(expedition_run.get("branch_id", ""))
+		expedition_run["objective_complete"] = bool(expedition_run.get("objective_complete", false))
+		expedition_run["shortcut_open"] = bool(expedition_run.get("shortcut_open", false))
+		expedition_run["cache_claimed"] = bool(expedition_run.get("cache_claimed", false))
 	quest = data.get("quest", quest) if data.get("quest", quest) is Dictionary else quest
 	_sync_mastery_permissions()
+
+func _empty_expedition_run() -> Dictionary:
+	return {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "route_phase": "none", "branch_id": "", "objective_complete": false, "shortcut_open": false, "cache_claimed": false, "anchor": [0.0, 1.0, 7.5]}
