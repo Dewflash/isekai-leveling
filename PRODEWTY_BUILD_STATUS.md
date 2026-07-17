@@ -6,7 +6,7 @@ Updated: 2026-07-18, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote state: pushed through `016e25a` on `codex/visual-workshop-storage-operating`
+- Remote state: pushed through `fc3b4cf` on `codex/visual-workshop-storage-operating`
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -62,6 +62,9 @@ Updated: 2026-07-18, Asia/Singapore
   motion, and operational labels that appear contextually instead of covering
   the whole Sanctuary. The sourced paddock cow is normalized to human-world
   scale and idles when stationary.
+- Sanctuary placement now supports authoritative ninety-degree blueprint
+  rotation with rotated footprint collision checks; Storage Sheds are
+  explicitly repeatable while progression buildings remain unique.
 - Storage Shed operation is now a real progression consequence: each
   operational shed adds four satchel slots, and the finished capacity survives
   save/load. Workshop tonic remains research-gated in the authoritative job

@@ -12,12 +12,13 @@ Updated: 2026-07-18, Asia/Singapore
 ## Git
 
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote is pushed through `016e25a` on `codex/visual-workshop-storage-operating`.
+- Remote is pushed through `fc3b4cf` on `codex/visual-workshop-storage-operating`.
 - Current local additions: `.gitignore`, `project.godot`, `main.tscn`,
   `default_bus_layout.tres`, `scripts/`, `PRODEWTY_BUILD_STATUS.md`,
   `PRODEWTY_GODOT_BUILD_CHARTER.md`, and the sourced CC0 asset subset plus
   manifest.
-- No commit or push has been made.
+- The latest placement checkpoint is committed and pushed; the working tree is
+  clean after verification.
 
 ## Agents and research
 
