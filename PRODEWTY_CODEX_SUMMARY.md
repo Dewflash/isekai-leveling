@@ -12,7 +12,7 @@ Updated: 2026-07-18, Asia/Singapore
 ## Git
 
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote code checkpoint is `da4037d` on `codex/visual-workshop-storage-operating`.
+- Remote code checkpoint is `b806060` on `codex/visual-workshop-storage-operating`.
 - Current local additions: `.gitignore`, `project.godot`, `main.tscn`,
   `default_bus_layout.tres`, `scripts/`, `PRODEWTY_BUILD_STATUS.md`,
   `PRODEWTY_GODOT_BUILD_CHARTER.md`, and the sourced CC0 asset subset plus
@@ -56,6 +56,9 @@ Updated: 2026-07-18, Asia/Singapore
   explicit food/recipe selection, Clover livestock production, grid-backed Rain
   Cistern placement/construction, beacon-only extraction, and persistent active-
   run guardian defeat IDs.
+- Added persistent expedition field bundles: harvest effort depletes the node,
+  the bundle is saved at the source, pickup settles cargo/discovery/route
+  progress, and a full satchel leaves a clearly communicated remainder.
 - Whisperwood trees now require two interruptible contacts; partial contact
   progress is saved inside the active run and restores after reload.
 - Downloaded and wired CC0 Kenney RPG/interface samples; checked in licensed

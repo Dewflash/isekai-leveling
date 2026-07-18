@@ -37,9 +37,10 @@ are contextual interactions rather than extra UI clutter.
    Ember Ridge, Glass Desert, or the Sunken Dungeon. Destination choice is
    made at the world gate rather than through a global teleport button.
 3. Gather, fight, and watch the `CARGO` line: expedition loot is not banked
-   until you return. Whisperwood trees take two grounded contacts, so moving
-   away between chops leaves the partial route state intact rather than paying
-   out cargo early.
+   until you return. Harvested resources now appear as ground bundles that you
+   must walk back to collect. Whisperwood trees take two grounded contacts, so
+   moving away between chops leaves the partial route state intact rather than
+   paying out cargo early.
 4. Use the one-use camp when energy is low. In the Glass Desert, heat also
    drains energy over time.
 5. Return home before fainting. If you faint, the kept half is banked and the

@@ -6,7 +6,7 @@ Updated: 2026-07-18, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote code checkpoint: `da4037d` on `codex/visual-workshop-storage-operating`
+- Remote code checkpoint: `b806060` on `codex/visual-workshop-storage-operating`
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -33,6 +33,10 @@ Updated: 2026-07-18, Asia/Singapore
   the build, start planks, advance the day, and claim output
 - Expedition runs persist their biome, run ID, cargo, depleted node IDs, and
   anchor; reload resumes the run instead of silently returning home
+- Expedition harvesting now leaves a persisted, visible field bundle at the
+  source. Walking to it pays cargo, discovery progress, route quota, XP, and
+  mastery; partial pickup is explicit when the satchel is full, and extraction
+  clearly leaves uncollected ground drops behind.
 - Fainting banks the kept half of odd/even cargo and drops the lost half in the
   biome where the run ended; packs expire on that run's next daily reset
 - One-use expedition camps restore energy; Glass Desert drains energy over time
@@ -149,6 +153,9 @@ Updated: 2026-07-18, Asia/Singapore
   material delivery, five route gates, all destinations, out-of-range
   rejection, beacon-only extraction, expedition
   anchor persistence, Whisperwood branch commitment, and zone transitions.
+- Physical-drop coverage: passed for persisted/reloaded bundles, partial
+  satchel pickup, Tideglass discovery plus shell-quota settlement, and the
+  field-to-extraction handoff.
 - Visible game launch from the target checkout: headless smoke is clean apart
   from Godot's macOS certificate warning; desktop screenshot capture is not
   available in the current Codex session.
@@ -167,11 +174,11 @@ Updated: 2026-07-18, Asia/Singapore
   a fully command-driven domain boundary, typed content registries, and a
   larger migration/failure-test matrix. Those are recorded as the next
   hardening phase rather than being misrepresented as complete.
-- Sol ultra returned a candid game-feel review. Its central finding is retained:
-  the build is a persistence-heavy vertical slice, but moment-to-moment play
-  still needs a stronger authored Forest journey, contextual mobile HUD,
-  physical pickups, and a deeper combat/gathering contact loop. Those are the
-  next quality gates, not claims of completion.
+- Sol ultra returned a candid game-feel review. Its central finding remains:
+  the build is a persistence-heavy vertical slice, and the new physical-drop
+  pass is functional but still needs stronger loot feedback, a fuller authored
+  Forest journey, contextual mobile HUD, and deeper combat/gathering contact
+  polish. Those are the next quality gates, not claims of completion.
 - Web research checked official Quaternius CC0 character, nature, and monster
   packs, the author-published nature mirror, and Godot's scene-import pipeline;
   the validated nature archive is now actually imported and documented.
