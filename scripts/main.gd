@@ -6,6 +6,7 @@ const PlayerScript = preload("res://scripts/player.gd")
 const AudioDirectorScript = preload("res://scripts/audio_director.gd")
 const JoystickScript = preload("res://scripts/virtual_joystick.gd")
 const RecoveryPackScript = preload("res://scripts/recovery_pack.gd")
+const ResourcePickupScript = preload("res://scripts/resource_pickup.gd")
 const SessionScript = preload("res://scripts/game_session.gd")
 const FarmPlotScript = preload("res://scripts/farm_plot.gd")
 const StationScript = preload("res://scripts/crafting_station.gd")
@@ -93,6 +94,7 @@ var forest_nodes: Array[Node3D] = []
 var sway_nodes: Array[Dictionary] = []
 var recovery_loot: Dictionary = {}
 var expedition_loot: Dictionary = {}
+var expedition_pickup_visuals := {}
 var inventory := {"wood": 0, "stone": 0, "fiber": 0, "slime_gel": 0, "ore": 0, "shell": 0}
 var build_progress := 0.0
 var activity_streak := 0
@@ -2735,6 +2737,13 @@ func _update_world_motion(delta: float) -> void:
 		if is_instance_valid(beacon) and beacon.is_visible_in_tree():
 			beacon.rotation.y += delta * (0.8 + float(index % 2) * 0.35)
 			beacon.scale = Vector3.ONE * (1.0 + sin(now * 2.0 + float(index)) * 0.08)
+	for pickup_node in get_tree().get_nodes_in_group("expedition_pickup"):
+		var pickup := pickup_node as Node3D
+		if pickup == null or not pickup.is_visible_in_tree():
+			continue
+		var base_y := float(pickup.get_meta("base_y", pickup.position.y))
+		pickup.position.y = base_y + sin(now * 2.2 + float(pickup.get_instance_id() % 11)) * 0.06
+		pickup.rotation.y += delta * 0.7
 
 func _update_lighting() -> void:
 	if sun_light == null:
@@ -2866,6 +2875,10 @@ func _update_hud() -> void:
 	if session != null and session.has_method("expedition_cargo_used"):
 		cargo_used = int(session.call("expedition_cargo_used"))
 	inventory_label.text = "BANKED\nWood %d  Stone %d  Fiber %d\nOre %d  Shell %d  Gel %d\nFish %d  Wheat %d  Bread %d\nEgg %d  Omelette %d  Tonic %d\nPlank %d  Sun %d  Relic %d\nTOOLS H %d/%d  P %d/%d\nNUTRITION %d  WATER %d\nSATCHEL %d/%d  %s\nCoins %d  XP %d" % [inventory.get("wood", 0), inventory.get("stone", 0), inventory.get("fiber", 0), inventory.get("ore", 0), inventory.get("shell", 0), inventory.get("slime_gel", 0), inventory.get("fish", 0), inventory.get("wheat", 0), inventory.get("bread", 0), inventory.get("egg", 0), inventory.get("omelette", 0), inventory.get("tonic", 0), inventory.get("plank", 0), inventory.get("sunstone", 0), inventory.get("relic", 0), hatchet_state.get("durability", 0), hatchet_state.get("max_durability", 0), pickaxe_state.get("durability", 0), pickaxe_state.get("max_durability", 0), nutrition, hydration, cargo_used, cargo_capacity, cargo_text, coins, xp]
+	if session != null and current_zone != "Sanctuary" and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition")):
+		var field_pickups: Variant = session.get("expedition_run").get("pickups", [])
+		if field_pickups is Array and not field_pickups.is_empty():
+			inventory_label.text += "\nGROUND DROPS %d  |  Pick up before extraction" % field_pickups.size()
 	if mastery_label != null and session != null:
 		var stats: Dictionary = session.get("stats")
 		var mastery: Dictionary = session.get("masteries")
@@ -2899,6 +2912,8 @@ func _update_hud() -> void:
 				nearby_name = "Expedition Camp"
 			elif nearest.has_meta("destination_id"):
 				nearby_name = "%s Route Gate" % str(nearest.get_meta("destination_id"))
+			elif nearest.is_in_group("expedition_pickup"):
+				nearby_name = "%s x%d" % [str(nearest.get("resource_label")), int(nearest.get("amount"))]
 			elif label_value != null:
 				nearby_name = str(label_value)
 			status_label.text = "Nearby: %s  |  Press E" % nearby_name
@@ -3207,13 +3222,12 @@ func collect_resource(node: Node) -> bool:
 	var resource_label: String = str(node.get("resource_label"))
 	var discovery_id: String = str(node.get("discovery_id"))
 	var collected := false
+	var harvested_pickup: Dictionary = {}
+	var before_harvest: Dictionary = {}
 	if not _route_resource_is_available(node):
 		return false
 	if current_zone != "Sanctuary" and not discovery_id.is_empty() and session != null and session.has_method("can_record_expedition_discovery") and not bool(session.call("can_record_expedition_discovery", discovery_id)):
 		_show_toast("That discovery lies on the closed trail. Your committed route cannot reach it.", 2.5)
-		return false
-	if current_zone != "Sanctuary" and session != null and session.has_method("can_carry_expedition_amount") and not session.call("can_carry_expedition_amount", amount):
-		_show_toast("Your expedition satchel is full. Return to the beacon or leave something behind.", 2.6)
 		return false
 	if session != null and not session.call("can_use_tool_for_resource", id):
 		var tool_name := "a tool"
@@ -3252,6 +3266,8 @@ func collect_resource(node: Node) -> bool:
 	else:
 		var node_id := str(node.get("node_id"))
 		var required_contacts := int(node.get("required_contacts"))
+		if session != null and session.has_method("snapshot_state"):
+			before_harvest = session.call("snapshot_state")
 		if required_contacts > 1:
 			if session == null or not session.call("spend_resource_contact", id):
 				return false
@@ -3267,15 +3283,19 @@ func collect_resource(node: Node) -> bool:
 					session.call("award_mastery", "Foraging", 1)
 					session.call("save_game")
 				return true
-			collected = session != null and session.call("complete_expedition_resource", node_id, id, amount, required_contacts)
+			harvested_pickup = session.call("harvest_expedition_resource", node_id, id, amount, required_contacts, [node.global_position.x, node.global_position.y, node.global_position.z], discovery_id, true) if session != null and session.has_method("harvest_expedition_resource") else {}
+			collected = not harvested_pickup.is_empty()
 		else:
-			if session == null or node_id.is_empty() or not session.call("collect_expedition_resource_with_tool", node_id, id, amount):
+			harvested_pickup = session.call("harvest_expedition_resource", node_id, id, amount, 1, [node.global_position.x, node.global_position.y, node.global_position.z], discovery_id) if session != null and session.has_method("harvest_expedition_resource") else {}
+			if harvested_pickup.is_empty():
 				return false
 			collected = true
 		if not collected:
 			return false
 	if not collected:
 		return false
+	if current_zone != "Sanctuary" and not harvested_pickup.is_empty():
+		return _commit_expedition_harvest(node, harvested_pickup, before_harvest, id, amount, resource_label)
 	if node.has_method("complete_depletion"):
 		node.call("complete_depletion")
 	var mastery_name := "Mining" if id in ["stone", "ore", "sunstone"] else "Foraging"
@@ -3296,6 +3316,82 @@ func collect_resource(node: Node) -> bool:
 		player_made_noise(node.global_position, 7.0 if id in ["ore", "stone"] else 5.0)
 	if session != null:
 		session.call("save_game")
+	return true
+
+func _commit_expedition_harvest(node: Node, pickup: Dictionary, before_harvest: Dictionary, resource_id: String, amount: int, resource_label: String) -> bool:
+	var node_3d := node as Node3D
+	if session == null or pickup.is_empty() or node_3d == null:
+		return false
+	var pickup_id := str(pickup.get("pickup_id", ""))
+	if pickup_id.is_empty():
+		return false
+	_spawn_expedition_pickup(pickup)
+	if not bool(session.call("save_game")):
+		if not before_harvest.is_empty():
+			session.call("restore_state", before_harvest)
+		_clear_expedition_pickup_visuals()
+		_copy_session_to_runtime()
+		_refresh_expedition_pickups()
+		if node != null and node.has_method("restore"):
+			node.call("restore")
+			var restored_run: Variant = before_harvest.get("expedition_run", {})
+			if restored_run is Dictionary:
+				var restored_contacts: Variant = restored_run.get("contact_progress", {})
+				var restored_contacts_done := int(restored_contacts.get(str(node.get("node_id")), 0)) if restored_contacts is Dictionary else 0
+				if node.get("contacts") != null and restored_contacts_done > 0:
+					node.set("contacts", restored_contacts_done)
+		_show_toast("The harvest could not be secured. Nothing was taken from the route.", 3.0)
+		return false
+	if node != null and node.has_method("complete_depletion"):
+		node.call("complete_depletion")
+	if audio_director != null:
+		audio_director.call("play_action_at", "gather_" + resource_id, node_3d.global_position)
+	_spawn_feedback_burst(node_3d.global_position, palette["leaf"] if resource_id not in ["stone", "ore", "sunstone"] else palette["stone"])
+	player_made_noise(node_3d.global_position, 7.0 if resource_id in ["ore", "stone"] else 5.0)
+	_show_toast("Harvested %d %s. The bundle is on the ground; pick it up before you leave." % [amount, resource_label], 3.0)
+	return not pickup_id.is_empty()
+
+func collect_expedition_pickup(pickup_node: Node) -> bool:
+	if pickup_node == null or session == null or current_zone == "Sanctuary":
+		return false
+	var pickup_id := str(pickup_node.get("pickup_id"))
+	var before_pickup: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	var already_discovered := false
+	var discovery_id := str(pickup_node.get("discovery_id"))
+	if not discovery_id.is_empty():
+		already_discovered = session.get("discovered").has(discovery_id)
+	var resolution: Dictionary = session.call("collect_expedition_pickup", pickup_id) if session.has_method("collect_expedition_pickup") else {}
+	if resolution.is_empty():
+		var stranded_amount := maxi(1, int(pickup_node.get("amount")))
+		_show_toast("Your satchel is full. %d bundle item%s stay on the ground; extraction ends this run." % [stranded_amount, "" if stranded_amount == 1 else "s"], 3.0)
+		return false
+	var resource_id := str(resolution.get("resource_id", ""))
+	var amount := int(resolution.get("amount", 0))
+	var mastery_name := "Mining" if resource_id in ["stone", "ore", "sunstone"] else "Foraging"
+	session.call("award_xp", amount * 2)
+	session.call("award_mastery", mastery_name, amount * 3)
+	if not bool(session.call("save_game")):
+		if not before_pickup.is_empty():
+			session.call("restore_state", before_pickup)
+		_copy_session_to_runtime()
+		_sync_expedition_cargo()
+		_refresh_expedition_pickups()
+		_show_toast("The pickup could not be secured. The bundle remains on the route.", 3.0)
+		return false
+	_copy_session_to_runtime()
+	_sync_expedition_cargo()
+	var remaining := int(resolution.get("remaining", 0))
+	if remaining <= 0:
+		expedition_pickup_visuals.erase(pickup_id)
+		pickup_node.queue_free()
+	else:
+		pickup_node.call("set_amount", remaining)
+	if not discovery_id.is_empty() and not already_discovered:
+		_show_toast("Discovery: %s  |  Return to the Archive to understand it." % discovery_id, 3.2)
+	else:
+		_show_toast("+%d %s  |  %s mastery +%d" % [amount, str(resolution.get("resource_label", resource_id.capitalize())), mastery_name, amount * 3], 2.2)
+	if audio_director != null:
+		audio_director.call("play_action_at", "pickup", pickup_node.global_position)
 	return true
 
 func _route_resource_is_available(node: Node) -> bool:
@@ -3769,8 +3865,9 @@ func _whisper_cache_interact(station: Node) -> void:
 	var loot_text: Array[String] = []
 	for resource_id in loot.get("loot", {}):
 		loot_text.append("+%d %s" % [int(loot["loot"][resource_id]), str(resource_id).replace("_", " ").capitalize()])
-	_sync_expedition_cargo()
-	_refresh_whisperwood_route()
+		_sync_expedition_cargo()
+		_refresh_whisperwood_route()
+	_refresh_expedition_pickups()
 	_refresh_expedition_routes()
 	if not bool(session.call("save_game")):
 		if not before_cache.is_empty():
@@ -4708,7 +4805,14 @@ func _return_home() -> void:
 		return
 	_sync_expedition_anchor()
 	var before_extract: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
+	var stranded_pickups := 0
 	if session != null and session.has_method("finish_expedition"):
+		var active_run_before_finish: Dictionary = session.get("expedition_run") if session.get("expedition_run") is Dictionary else {}
+		var pending_drops: Variant = active_run_before_finish.get("pickups", [])
+		if pending_drops is Array:
+			for pending_drop in pending_drops:
+				if pending_drop is Dictionary and int(pending_drop.get("amount", 0)) > 0:
+					stranded_pickups += 1
 		session.call("finish_expedition")
 		if not bool(session.call("save_game")):
 			if not before_extract.is_empty():
@@ -4719,7 +4823,10 @@ func _return_home() -> void:
 	_set_zone("Sanctuary")
 	_copy_session_to_runtime()
 	expedition_loot = {}
-	_show_toast("The Sanctuary is safe. Expedition cargo is banked.", 2.5)
+	var extraction_message := "The Sanctuary is safe. Expedition cargo is banked."
+	if stranded_pickups > 0:
+		extraction_message += " %d ground drop%s left behind." % [stranded_pickups, "" if stranded_pickups == 1 else "s"]
+	_show_toast(extraction_message, 3.0)
 
 func _set_zone_collisions(root: Node, active: bool) -> void:
 	if root == null:
@@ -4754,6 +4861,7 @@ func _set_zone(zone: String) -> void:
 		environment_node.environment.background_color = _zone_background(zone)
 	_sync_expedition_cargo()
 	_refresh_whisperwood_route()
+	_refresh_expedition_pickups()
 
 func _restore_active_expedition_nodes() -> void:
 	if session == null:
@@ -4784,6 +4892,112 @@ func _restore_active_expedition_nodes() -> void:
 		if guardian_node.has_method("set_defeated_from_save"):
 			guardian_node.call("set_defeated_from_save", defeated_guardians.has(str(guardian_node.get("guardian_id"))))
 	_refresh_whisperwood_route()
+	_refresh_expedition_pickups()
+
+func _clear_expedition_pickup_visuals() -> void:
+	for pickup_id in expedition_pickup_visuals:
+		var pickup := expedition_pickup_visuals[pickup_id] as Node3D
+		if pickup != null and is_instance_valid(pickup):
+			pickup.visible = false
+			pickup.remove_from_group("interactable")
+			pickup.queue_free()
+	expedition_pickup_visuals.clear()
+
+func _pickup_material(resource_id: String) -> Color:
+	match resource_id:
+		"wood": return palette["wood"]
+		"stone", "ore": return palette["stone"] if resource_id == "stone" else palette["ember"]
+		"fiber": return palette["leaf"]
+		"berries": return Color("#b86da9")
+		"shell": return Color("#e8c9b2")
+		"sunstone": return Color("#f0ba68")
+		"relic": return Color("#bda6ff")
+	return palette["cream"]
+
+func _spawn_expedition_pickup(data: Dictionary) -> void:
+	var pickup_id := str(data.get("pickup_id", ""))
+	if pickup_id.is_empty() or expedition_pickup_visuals.has(pickup_id):
+		return
+	var zone_id := str(session.get("expedition_run").get("biome_id", current_zone)) if session != null else current_zone
+	if current_zone != zone_id:
+		return
+	var parent_zone: Node3D = null
+	for candidate in world_zones:
+		if candidate.name == zone_id.replace(" ", ""):
+			parent_zone = candidate
+			break
+	if parent_zone == null:
+		return
+	var position_data: Variant = data.get("position", [0.0, 1.0, 0.0])
+	if not (position_data is Array) or position_data.size() < 3:
+		return
+	var pickup := ResourcePickupScript.new() as Node3D
+	pickup.name = "FieldPickup_%s" % pickup_id.replace(":", "_")
+	pickup.set("world", self)
+	pickup.set("pickup_id", pickup_id)
+	pickup.set("node_id", str(data.get("node_id", "")))
+	pickup.set("resource_id", str(data.get("resource_id", "wood")))
+	var pickup_label := str(data.get("resource_label", data.get("resource_id", "Material")))
+	pickup.set("resource_label", pickup_label.capitalize())
+	pickup.set("discovery_id", str(data.get("discovery_id", "")))
+	pickup.set("amount", int(data.get("amount", 1)))
+	pickup.position = Vector3(float(position_data[0]), 0.92, float(position_data[2]))
+	pickup.set_meta("base_y", pickup.position.y)
+	pickup.add_to_group("interactable")
+	pickup.add_to_group("expedition_pickup")
+	parent_zone.add_child(pickup)
+	expedition_pickup_visuals[pickup_id] = pickup
+	var resource_id := str(data.get("resource_id", "wood"))
+	var visual := Node3D.new()
+	visual.name = "PickupVisual"
+	pickup.add_child(visual)
+	var material := _material(_pickup_material(resource_id), 0.9, resource_id in ["berries", "shell", "sunstone", "relic"], resource_id in ["berries", "shell", "sunstone", "relic"])
+	if resource_id == "wood":
+		for index in 2:
+			var log := MeshInstance3D.new()
+			var log_mesh := BoxMesh.new()
+			log_mesh.size = Vector3(1.25, 0.18, 0.22)
+			log.mesh = log_mesh
+			log.material_override = material
+			log.position = Vector3(0.0, 0.22 + float(index) * 0.12, float(index) * 0.16 - 0.08)
+			log.rotation.y = float(index) * 0.18
+			visual.add_child(log)
+	elif resource_id in ["stone", "ore", "sunstone"]:
+		var stone := MeshInstance3D.new()
+		stone.mesh = _sphere_mesh(0.28, 0.6, 7, 4)
+		stone.material_override = material
+		stone.position.y = 0.28
+		visual.add_child(stone)
+	else:
+		var bundle := MeshInstance3D.new()
+		var bundle_mesh := CylinderMesh.new()
+		bundle_mesh.top_radius = 0.16
+		bundle_mesh.bottom_radius = 0.22
+		bundle_mesh.height = 0.52
+		bundle_mesh.radial_segments = 7
+		bundle.mesh = bundle_mesh
+		bundle.material_override = material
+		bundle.position.y = 0.28
+		bundle.rotation_degrees.z = 18.0
+		visual.add_child(bundle)
+	var label := _label3d("", 0.15, palette["cream"])
+	label.name = "PickupLabel"
+	label.position.y = 1.15
+	pickup.add_child(label)
+	pickup.call("set_amount", int(data.get("amount", 1)))
+
+func _refresh_expedition_pickups() -> void:
+	_clear_expedition_pickup_visuals()
+	if session == null or current_zone == "Sanctuary" or not session.has_method("has_active_expedition") or not bool(session.call("has_active_expedition")):
+		return
+	var run: Dictionary = session.get("expedition_run")
+	if str(run.get("biome_id", "")) != current_zone:
+		return
+	var pickups: Variant = run.get("pickups", [])
+	if pickups is Array:
+		for pickup_value in pickups:
+			if pickup_value is Dictionary:
+				_spawn_expedition_pickup(pickup_value)
 
 func _sync_expedition_cargo() -> void:
 	if session == null or not session.has_method("has_active_expedition"):

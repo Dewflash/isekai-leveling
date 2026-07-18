@@ -37,6 +37,8 @@ func restore() -> void:
 	visible = zone_active
 	_set_depleted_visual(false)
 	_set_collision_enabled(zone_active)
+	if not is_in_group("interactable"):
+		add_to_group("interactable")
 
 func set_zone_active(active: bool) -> void:
 	zone_active = active
@@ -51,6 +53,10 @@ func set_depleted_from_save(value: bool) -> void:
 	visible = zone_active
 	_set_depleted_visual(depleted)
 	_set_collision_enabled(zone_active and not depleted)
+	if depleted:
+		remove_from_group("interactable")
+	elif not is_in_group("interactable"):
+		add_to_group("interactable")
 
 func set_contact_progress(value: int) -> void:
 	if depleted:
@@ -76,6 +82,7 @@ func complete_depletion() -> void:
 	visible = zone_active
 	_set_depleted_visual(true)
 	_set_collision_enabled(false)
+	remove_from_group("interactable")
 
 func _set_depleted_visual(show_log: bool) -> void:
 	var log_visual := get_node_or_null("FelledLogVisual") as Node3D

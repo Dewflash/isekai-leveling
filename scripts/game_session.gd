@@ -10,7 +10,7 @@ const SettlementGrid = preload("res://scripts/settlement_grid.gd")
 signal state_changed
 signal feedback_requested(kind: String, payload: Dictionary)
 
-const SAVE_VERSION := 8
+const SAVE_VERSION := 9
 const CONTENT_VERSION := 1
 const SAVE_PATH := "user://prodewty_save.json"
 const BACKUP_PATH := "user://prodewty_save.backup.json"
@@ -540,6 +540,7 @@ func start_expedition(biome_id: String) -> bool:
 		"run_id": "%s-%d-%d" % [biome_id.to_lower().replace(" ", "-"), day, Time.get_ticks_msec()],
 		"biome_id": biome_id,
 		"cargo": {},
+		"pickups": [],
 		"depleted_ids": [],
 		"contact_progress": {},
 		"defeated_guardian_ids": [],
@@ -803,6 +804,78 @@ func collect_expedition_resource_with_tool(node_id: String, resource_id: String,
 	state_changed.emit()
 	return true
 
+func harvest_expedition_resource(node_id: String, resource_id: String, amount: int, required_contacts: int = 1, position: Array = [], discovery_id := "", effort_already_spent := false) -> Dictionary:
+	## Spend the field effort and leave a physical drop in the world. Cargo is
+	## intentionally unchanged until collect_expedition_pickup is called.
+	if not has_active_expedition() or node_id.is_empty() or resource_id.is_empty() or amount <= 0:
+		return {}
+	if _route_objective_is_off_branch("resource", resource_id):
+		return {}
+	for known_discovery_id in ContentRegistry.DISCOVERIES:
+		if node_id.to_lower().contains(str(known_discovery_id).to_lower().replace(" ", "")) and _route_objective_is_off_branch("discovery", str(known_discovery_id)):
+			return {}
+	if amount > cargo_capacity:
+		return {}
+	var depleted: Array = expedition_run.get("depleted_ids", [])
+	if depleted.has(node_id) or energy <= 0 or not can_use_tool_for_resource(resource_id):
+		return {}
+	var contact_progress: Dictionary = expedition_run.get("contact_progress", {})
+	if required_contacts > 1 and int(contact_progress.get(node_id, 0)) < required_contacts - 1:
+		return {}
+	var pickups: Array = expedition_run.get("pickups", [])
+	var pickup_id := "%s:drop" % node_id
+	for existing_pickup in pickups:
+		if existing_pickup is Dictionary and str(existing_pickup.get("pickup_id", "")) == pickup_id:
+			return {}
+	var pickup_position := [0.0, 1.0, 0.0]
+	if position.size() >= 3:
+		for value in position.slice(0, 3):
+			if not (value is int or value is float) or not is_finite(float(value)):
+				return {}
+		pickup_position = [clampf(float(position[0]), -EXPEDITION_ANCHOR_LIMIT_X, EXPEDITION_ANCHOR_LIMIT_X), 1.0, clampf(float(position[2]), -EXPEDITION_ANCHOR_LIMIT_Z, EXPEDITION_ANCHOR_LIMIT_Z)]
+	if not effort_already_spent and not spend_resource_contact(resource_id):
+		return {}
+	pickups.append({"pickup_id": pickup_id, "node_id": node_id, "resource_id": resource_id, "resource_label": resource_id.replace("_", " ").capitalize(), "discovery_id": discovery_id, "amount": amount, "position": pickup_position})
+	depleted.append(node_id)
+	contact_progress.erase(node_id)
+	expedition_run["pickups"] = pickups
+	expedition_run["depleted_ids"] = depleted
+	expedition_run["contact_progress"] = contact_progress
+	state_changed.emit()
+	return pickups.back().duplicate(true)
+
+func collect_expedition_pickup(pickup_id: String) -> Dictionary:
+	if not has_active_expedition() or pickup_id.is_empty():
+		return {}
+	var pickups: Array = expedition_run.get("pickups", [])
+	for index in pickups.size():
+		var pickup: Variant = pickups[index]
+		if not (pickup is Dictionary) or str(pickup.get("pickup_id", "")) != pickup_id:
+			continue
+		var resource_id := str(pickup.get("resource_id", ""))
+		var remaining_amount := maxi(0, int(pickup.get("amount", 0)))
+		var carry_amount := mini(remaining_amount, expedition_cargo_remaining())
+		if resource_id.is_empty() or carry_amount <= 0:
+			return {}
+		var cargo: Dictionary = expedition_run.get("cargo", {})
+		cargo[resource_id] = int(cargo.get(resource_id, 0)) + carry_amount
+		expedition_run["cargo"] = cargo
+		remaining_amount -= carry_amount
+		if remaining_amount <= 0:
+			pickups.remove_at(index)
+		else:
+			pickup["amount"] = remaining_amount
+			pickups[index] = pickup
+		expedition_run["pickups"] = pickups
+		var discovery_id := str(pickup.get("discovery_id", ""))
+		if not discovery_id.is_empty():
+			record_discovery(discovery_id)
+		# Discovery-tagged resources still count toward their normal route quota.
+		_advance_expedition_objective("resource", resource_id, carry_amount)
+		state_changed.emit()
+		return {"pickup_id": pickup_id, "resource_id": resource_id, "resource_label": str(pickup.get("resource_label", resource_id.capitalize())), "amount": carry_amount, "remaining": remaining_amount, "discovery_id": discovery_id}
+	return {}
+
 func record_expedition_contact(node_id: String, contacts_done: int) -> bool:
 	if not has_active_expedition() or node_id.is_empty() or contacts_done <= 0:
 		return false
@@ -819,34 +892,14 @@ func record_expedition_contact(node_id: String, contacts_done: int) -> bool:
 	return true
 
 func complete_expedition_resource(node_id: String, resource_id: String, amount: int, required_contacts: int = 1) -> bool:
-	if not has_active_expedition() or node_id.is_empty() or resource_id.is_empty() or amount <= 0:
+	var is_whisperglass_capstone := resource_id == "berries" and node_id.to_lower().contains("whisperglass")
+	var pickup := harvest_expedition_resource(node_id, resource_id, amount, required_contacts)
+	if pickup.is_empty():
 		return false
-	if _route_objective_is_off_branch("resource", resource_id):
-		return false
-	for discovery_id in ContentRegistry.DISCOVERIES:
-		if node_id.to_lower().contains(str(discovery_id).to_lower().replace(" ", "")) and _route_objective_is_off_branch("discovery", str(discovery_id)):
-			return false
-	if not can_carry_expedition_amount(amount):
-		return false
-	var depleted: Array = expedition_run.get("depleted_ids", [])
-	if depleted.has(node_id):
-		return false
-	var contact_progress: Dictionary = expedition_run.get("contact_progress", {})
-	if required_contacts > 1 and int(contact_progress.get(node_id, 0)) < required_contacts - 1:
-		return false
-	var cargo: Dictionary = expedition_run.get("cargo", {})
-	cargo[resource_id] = int(cargo.get(resource_id, 0)) + amount
-	depleted.append(node_id)
-	contact_progress.erase(node_id)
-	expedition_run["cargo"] = cargo
-	expedition_run["depleted_ids"] = depleted
-	expedition_run["contact_progress"] = contact_progress
-	if resource_id == "berries" and str(expedition_run.get("biome_id", "")) == "Whisperwood" and str(expedition_run.get("branch_id", "")) == "grove" and node_id.to_lower().contains("whisperglass"):
+	var collected := not collect_expedition_pickup(str(pickup.get("pickup_id", ""))).is_empty()
+	if collected and is_whisperglass_capstone:
 		_advance_expedition_objective("discovery", "Whisperglass", 1)
-	else:
-		_advance_expedition_objective("resource", resource_id, amount)
-	state_changed.emit()
-	return true
+	return collected
 
 func mark_sanctuary_depleted(node_id: String) -> bool:
 	if node_id.is_empty() or sanctuary_depleted_ids.has(node_id):
@@ -1398,6 +1451,11 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 					structure["rotation"] = 0
 				rotation_structures[structure_id] = structure
 			data["structures"] = rotation_structures
+	if version < 9:
+		var pickup_expedition: Variant = data.get("expedition_run", {})
+		if pickup_expedition is Dictionary and str(pickup_expedition.get("status", "none")) == "active" and not pickup_expedition.has("pickups"):
+			pickup_expedition["pickups"] = []
+			data["expedition_run"] = pickup_expedition
 	if not data.has("unlocked_routes"):
 		# Saves from before route gating already exposed every expedition. Preserve
 		# that player's access; only a truly new session starts at Whisperwood.
@@ -1615,6 +1673,24 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 		for node_id in contact_progress:
 			if not _valid_integer(contact_progress[node_id], 0, 100):
 				return false
+		var pickups: Variant = expedition.get("pickups", [])
+		if not (pickups is Array):
+			return false
+		var pickup_ids := {}
+		var saved_cargo_capacity := maxi(1, int(data.get("cargo_capacity", cargo_capacity)))
+		for pickup_value in pickups:
+			if not (pickup_value is Dictionary):
+				return false
+			var pickup_id := str(pickup_value.get("pickup_id", ""))
+			var pickup_resource := str(pickup_value.get("resource_id", ""))
+			var pickup_amount: Variant = pickup_value.get("amount", 0)
+			var pickup_position: Variant = pickup_value.get("position", [])
+			if pickup_id.is_empty() or pickup_ids.has(pickup_id) or pickup_resource.is_empty() or not _valid_integer(pickup_amount, 1, saved_cargo_capacity) or not (pickup_position is Array) or pickup_position.size() < 3:
+				return false
+			for pickup_coordinate in pickup_position.slice(0, 3):
+				if not _valid_number(pickup_coordinate, -100000.0, 100000.0):
+					return false
+			pickup_ids[pickup_id] = true
 		if expedition.has("depleted_ids") and not (expedition["depleted_ids"] is Array):
 			return false
 		if expedition.has("defeated_guardian_ids") and not (expedition["defeated_guardian_ids"] is Array):
@@ -1764,6 +1840,19 @@ func _apply_dict(data: Dictionary) -> void:
 	else:
 		var stored_expedition_contact_progress: Variant = expedition_run.get("contact_progress", {})
 		expedition_run["contact_progress"] = stored_expedition_contact_progress if stored_expedition_contact_progress is Dictionary else {}
+		var stored_pickups: Variant = expedition_run.get("pickups", [])
+		var normalized_pickups: Array = []
+		if stored_pickups is Array:
+			for pickup_value in stored_pickups:
+				if pickup_value is Dictionary and not str(pickup_value.get("pickup_id", "")).is_empty():
+					var pickup: Dictionary = pickup_value.duplicate(true)
+					pickup["amount"] = maxi(1, int(pickup.get("amount", 1)))
+					var pickup_position: Variant = pickup.get("position", [0.0, 1.0, 0.0])
+					if not (pickup_position is Array) or pickup_position.size() < 3:
+						pickup_position = [0.0, 1.0, 0.0]
+					pickup["position"] = [clampf(float(pickup_position[0]), -EXPEDITION_ANCHOR_LIMIT_X, EXPEDITION_ANCHOR_LIMIT_X), 1.0, clampf(float(pickup_position[2]), -EXPEDITION_ANCHOR_LIMIT_Z, EXPEDITION_ANCHOR_LIMIT_Z)]
+					normalized_pickups.append(pickup)
+		expedition_run["pickups"] = normalized_pickups
 		expedition_run["route_phase"] = str(expedition_run.get("route_phase", "approach"))
 		expedition_run["branch_id"] = str(expedition_run.get("branch_id", ""))
 		expedition_run["objective_id"] = str(expedition_run.get("objective_id", ""))
@@ -1789,4 +1878,4 @@ func _apply_dict(data: Dictionary) -> void:
 	_sync_mastery_permissions()
 
 func _empty_expedition_run() -> Dictionary:
-	return {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "route_phase": "none", "branch_id": "", "objective_id": "", "objective_kind": "", "objective_progress": 0, "objective_target": 0, "objective_complete": false, "shortcut_open": false, "cache_claimed": false, "stake_active": false, "stake_ticks": 0, "anchor": [0.0, 1.0, 7.5]}
+	return {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "pickups": [], "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "route_phase": "none", "branch_id": "", "objective_id": "", "objective_kind": "", "objective_progress": 0, "objective_target": 0, "objective_complete": false, "shortcut_open": false, "cache_claimed": false, "stake_active": false, "stake_ticks": 0, "anchor": [0.0, 1.0, 7.5]}

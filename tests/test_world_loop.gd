@@ -238,6 +238,9 @@ func _run() -> void:
 	assert(session.get("expedition_run").get("branch_id") == "tidepool")
 	world.player.global_position = shell_node.global_position
 	assert(world.call("collect_resource", shell_node))
+	assert(int(session.get("expedition_run").get("cargo").get("shell", 0)) == 0)
+	assert(session.get("expedition_run").get("pickups").size() == 1)
+	world.call("_interact")
 	assert(int(session.get("expedition_run").get("cargo").get("shell", 0)) == 1)
 	assert(int(session.get("inventory").get("shell", 0)) == 0)
 	world.player.global_position = Vector3(0.0, 1.0, 7.5)
@@ -276,6 +279,9 @@ func _run() -> void:
 	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == forest_wood_before)
 	assert(int(session.get("expedition_run").get("contact_progress", {}).get(str(tree_node.get("node_id")), 0)) == 1)
 	assert(world.call("collect_resource", tree_node))
+	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == forest_wood_before)
+	assert(session.get("expedition_run").get("pickups").size() == 1)
+	world.call("_interact")
 	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == forest_wood_before + 2)
 	assert(tree_node.get_node_or_null("FelledLogVisual") != null)
 	assert((tree_node.get_node("FelledLogVisual") as Node3D).visible)
@@ -360,6 +366,14 @@ func _run() -> void:
 	world.call("_interact")
 	assert(session.get("expedition_run").get("branch_id") == "vault")
 	assert(world.call("collect_resource", relic_node))
+	var relic_pickup: Node = null
+	for candidate in get_nodes_in_group("expedition_pickup"):
+		if candidate.get_parent().name == "SunkenDungeon":
+			relic_pickup = candidate
+			break
+	assert(relic_pickup != null)
+	world.player.global_position = relic_pickup.global_position
+	world.call("_interact")
 	world.player.global_position = Vector3(0.0, 1.0, 7.5)
 	world.call("_return_home")
 	assert(int(session.get("inventory").get("relic", 0)) == 1)
@@ -378,6 +392,14 @@ func _run() -> void:
 	world.player.global_position = recovery_tree.global_position
 	assert(world.call("collect_resource", recovery_tree))
 	assert(world.call("collect_resource", recovery_tree))
+	var recovery_pickup: Node = null
+	for candidate in get_nodes_in_group("expedition_pickup"):
+		if candidate.get_parent().name == "Whisperwood":
+			recovery_pickup = candidate
+			break
+	assert(recovery_pickup != null)
+	world.player.global_position = recovery_pickup.global_position
+	world.call("_interact")
 	assert(int(session.get("expedition_run").get("cargo", {}).get("wood", 0)) == 2)
 	# A failed persistence transaction must restore the pre-damage active run,
 	# including positive health, instead of leaving a zero-health soft lock.

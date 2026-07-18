@@ -127,6 +127,56 @@ func _init() -> void:
 	assert(expedition_loaded.finish_expedition()["shell"] == 1)
 	assert(expedition_loaded.inventory["shell"] == 1)
 	assert(expedition_loaded.quest["progress"] == 1)
+	# Field harvesting creates a persisted physical drop; cargo is paid only when
+	# the player picks the bundle up, and a nearly-full satchel can take it in
+	# two deliberate carries.
+	var physical_drop := SessionScript.new()
+	physical_drop.save_slot = "qa_physical_drop"
+	root.add_child(physical_drop)
+	physical_drop.energy = 24
+	assert(physical_drop.start_expedition("Whisperwood"))
+	var drop_energy := int(physical_drop.energy)
+	var dropped: Dictionary = physical_drop.harvest_expedition_resource("field-tree", "wood", 2, 1, [4.0, 1.0, -3.0])
+	assert(not dropped.is_empty())
+	assert(int(physical_drop.expedition_run["cargo"].get("wood", 0)) == 0)
+	assert(physical_drop.expedition_run["pickups"].size() == 1)
+	assert(int(physical_drop.energy) == drop_energy - 1)
+	assert(physical_drop.save_game())
+	var physical_loaded := SessionScript.new()
+	physical_loaded.save_slot = "qa_physical_drop"
+	root.add_child(physical_loaded)
+	assert(physical_loaded.load_game())
+	assert(physical_loaded.expedition_run["pickups"].size() == 1)
+	var picked: Dictionary = physical_loaded.collect_expedition_pickup(str(dropped["pickup_id"]))
+	assert(int(picked.get("amount", 0)) == 2)
+	assert(physical_loaded.expedition_run["pickups"].is_empty())
+	assert(int(physical_loaded.expedition_run["cargo"].get("wood", 0)) == 2)
+	var partial_drop := SessionScript.new()
+	partial_drop.save_slot = "qa_partial_drop"
+	root.add_child(partial_drop)
+	assert(partial_drop.start_expedition("Whisperwood"))
+	partial_drop.expedition_run["cargo"] = {"wood": partial_drop.cargo_capacity - 1}
+	var partial: Dictionary = partial_drop.harvest_expedition_resource("partial-tree", "wood", 2)
+	assert(not partial.is_empty())
+	var partial_pickup: Dictionary = partial_drop.collect_expedition_pickup(str(partial["pickup_id"]))
+	assert(int(partial_pickup.get("amount", 0)) == 1)
+	assert(int(partial_pickup.get("remaining", 0)) == 1)
+	assert(partial_drop.expedition_run["pickups"].size() == 1)
+	assert(partial_drop.finish_expedition()["wood"] == partial_drop.cargo_capacity)
+	assert(partial_drop.expedition_run["pickups"].is_empty())
+	# A discovery-tagged haul still advances the route's resource quota.
+	var physical_tideglass := SessionScript.new()
+	physical_tideglass.save_slot = "qa_physical_tideglass"
+	root.add_child(physical_tideglass)
+	physical_tideglass.unlocked_routes.clear()
+	physical_tideglass.unlocked_routes.append("Sunlit Beach")
+	assert(physical_tideglass.start_expedition("Sunlit Beach"))
+	assert(physical_tideglass.commit_expedition_branch("tidepool"))
+	var tideglass_drop: Dictionary = physical_tideglass.harvest_expedition_resource("SunlitBeach:TideglassShell", "shell", 1, 1, [2.0, 1.0, 1.0], "Tideglass")
+	assert(not tideglass_drop.is_empty())
+	assert(not physical_tideglass.collect_expedition_pickup(str(tideglass_drop["pickup_id"])).is_empty())
+	assert(physical_tideglass.discovered.has("Tideglass"))
+	assert(int(physical_tideglass.expedition_run.get("objective_progress", 0)) == 1)
 	# Survival choices remain available in the field through the same
 	# authoritative inventory commands; they are not Sanctuary-only decoration.
 	expedition_loaded.inventory["bread"] = 1
@@ -322,6 +372,22 @@ func _init() -> void:
 	assert(legacy_loaded.load_game())
 	assert(str(legacy_loaded.structures["legacy_archive"]["state"]) == "building")
 	assert(float(legacy_loaded.structures["legacy_archive"]["remaining_hours"]) > 0.0)
+	var legacy_drop_payload: Dictionary = legacy_writer.call("_to_dict")
+	legacy_drop_payload["save_version"] = 8
+	var legacy_drop_run: Dictionary = legacy_writer.call("_empty_expedition_run")
+	legacy_drop_run["status"] = "active"
+	legacy_drop_run["biome_id"] = "Whisperwood"
+	legacy_drop_run.erase("pickups")
+	legacy_drop_payload["expedition_run"] = legacy_drop_run
+	var legacy_drop_file := FileAccess.open("user://qa_legacy_drop.json", FileAccess.WRITE)
+	legacy_drop_file.store_string(JSON.stringify(legacy_drop_payload))
+	legacy_drop_file.close()
+	var legacy_drop_loaded := SessionScript.new()
+	legacy_drop_loaded.save_slot = "qa_legacy_drop"
+	root.add_child(legacy_drop_loaded)
+	assert(legacy_drop_loaded.load_game())
+	assert(legacy_drop_loaded.expedition_run.has("pickups"))
+	assert(legacy_drop_loaded.expedition_run["pickups"].is_empty())
 	# Fresh saves form a route arc instead of exposing the final Dungeon at the
 	# first click; successful extraction is the authoritative unlock event.
 	var route_chain := SessionScript.new()
