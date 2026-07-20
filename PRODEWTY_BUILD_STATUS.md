@@ -1,6 +1,6 @@
 # Prodewty Build Status
 
-Updated: 2026-07-18, Asia/Singapore
+Updated: 2026-07-21, Asia/Singapore
 
 ## Current target
 
@@ -20,13 +20,77 @@ Updated: 2026-07-18, Asia/Singapore
 - Keyboard, mouse, and virtual joystick movement input
 - Resource gathering, banked inventory, at-risk expedition cargo, energy, XP,
   sleep/day advance, safe camps, heat hazard, and biome-specific recovery packs
-- Four guardian variants with readable wind-up combat and reward-specific loot
+- Progression unlocks now have authored gameplay consequences beyond the HUD:
+  Emberfall/Frostveil crop pressure is mitigated by Verdant Steward, Vein Reader
+  reveals nearby mineral grades, and the Sunken Dungeon contains a Deep
+  Veinstone seam that is closed until Deep Delver and pays its bonus in the
+  authoritative harvest transaction.
+- The Bazaar is now a deterministic daily sourcing loop: demand varies by day,
+  Appraiser's Eye reveals the quality signal, Caravan Contacts adds one rotating
+  specialist lot, each offer has a persisted one-trade receipt, and the market
+  resets only through the normal dawn transaction. Guild Broker now adds one
+  deterministic bulk contract per day with doubled sourcing cost, premium
+  payout, Trading mastery, and a persisted one-settlement receipt; save
+  migration was introduced at version 20; the current save schema is version 24.
+- Sunlit Beach now has an authored tidepool fishing station. Coastal casts are
+  bound to an active expedition; Tide Reader resolves a deterministic favorable
+  tide into an uncommon shell catch, and the shell is paid atomically with the
+  persisted fishing claim. Save migration is now at version 24, with Workshop
+  tool recipes included in the same durable job contract.
+- Crafting Quality Work and Masterwork Bench now resolve real Workshop tool
+  jobs: Reinforced Hatchet and Masterwork Pickaxe consume expedition materials,
+  advance over authored hours, restore tool durability at claim, and reject
+  forged tool outputs at the save boundary.
+- Sanctuary Breeder now resolves repeated feed → sleep → collect care cycles:
+  Clover's persisted nurture progress unlocks the authored Sunplume trait,
+  which adds a quality egg at collection; unknown trait ids are rejected at the
+  save boundary.
+- Expedition lore is now physical and branch-bound: five authored plaques live
+  on route maps, Context Reader translates regional inscriptions, World Polyglot
+  unlocks the ancient vault verse with its reward multiplier, and translated
+  receipts migrate/save atomically.
+- Hunting now has physical and combat-facing progression: route track markers
+  create persisted Track Sign notes, Clean Shot amplifies the first unaware hit,
+  and Ambush Sense warns before a guardian wind-up.
+- Five guardian variants with distinct movement/telegraph/recovery profiles and
+  reward-specific loot
+- Combat now has authoritative guarded-hit reduction, permission-backed heavy
+  guard breaks, and a persisted-run-safe stagger/recovery state so a guardian
+  cannot chain attacks through its own telegraph or resume a stale wind-up after
+  a zone transition. Guard, break, impact, audio, camera, and haptic feedback
+  share the resolved hit result.
+- The latest action-boundary pass now keeps guardian guarding true through the
+  full telegraph, cancels gathering on damage/dodge/attack interruption, rejects
+  no-energy attacks before they wake enemies, pauses simulation on application
+  focus loss until focus returns, closes settings cleanly from the pause control,
+  and rolls failed fishing reel saves back to the pre-action snapshot.
+- Save commits now verify the exact serialized payload that was atomically
+  renamed, avoiding false failures from parsed Dictionary equality while still
+  rejecting malformed or partial final files.
+- Player attacks now run through an explicit wind-up → active contact → recovery
+  state. The active frame queries a measured physics hit shape against named
+  guardian collision bodies, falls back only to that same collision profile when
+  a just-teleported body has not published its broadphase transform, and shows a
+  visible slash/tool prop instead of resolving damage at button press.
+- Guardian behavior IDs now drive distinct runtime combat movement: chasers
+  pursue directly, bruisers commit with a slower close, skirmishers orbit/space
+  and retreat after a committed strike, and sentinels remain dormant until a
+  real alert. Retreat and spacing are readable in-world and reset on route
+  transitions; `tests/test_guardian_behaviors.gd` covers the roster and motion
+  contracts.
 - Furnace state and proximity-aware audio context
 - Procedural original audio layers for ambience, rain, fire, footsteps,
   gathering, and impact feedback
 - Authoritative `GameSession` with versioned local JSON saves, backup recovery,
   idempotent real-life effort receipts, stats, levels, mastery values, and
   target-day transactions
+- The temporary local effort bridge now requires an in-process monotonic
+  25-minute timer and capability-bound receipt; unfinished timers are cleared
+  on disk reload, forged elapsed metadata is rejected, and gameplay XP no
+  longer mints Ability Points. Ability Points remain an activity milestone.
+- Autosave failures now remain visible through a retry state, unreadable saves
+  suppress background overwrite and require an explicit two-step replacement,
+  and future-schema saves remain read-only with a coherent startup warning.
 - Sanctuary garden loop: till, plant, water, sleep, harvest, and visual crop
   stages
 - Persisted Workshop construction/station loop: pay the shell, sleep to finish
@@ -66,6 +130,12 @@ Updated: 2026-07-18, Asia/Singapore
   motion, and operational labels that appear contextually instead of covering
   the whole Sanctuary. The sourced paddock cow is normalized to human-world
   scale and idles when stationary.
+- All five player-placeable facility kinds now have distinct Codex-generated
+  operational cutouts tuned to the saved Sanctuary reference. The imported
+  village kit remains available as provenance/future directional source data,
+  but only one illustrated operational silhouette renders at a time; the
+  corrected alpha sheet is reimported and smoke-fringe checked in the
+  display-backed stage capture.
 - Sanctuary placement now supports authoritative ninety-degree blueprint
   rotation with rotated footprint collision checks; Storage Sheds are
   explicitly repeatable while progression buildings remain unique.
@@ -88,8 +158,35 @@ Updated: 2026-07-18, Asia/Singapore
   branch, capstone, cache, and shortcut state persist with the expedition run.
 - Whisperwood now has an authored topology layer with Arrival Grove, Old Trail
   Fork, Fern Grove, Guardian Clearing, Return Footbridge, collision-backed
-  bramble edges, and a measured traversal contract instead of only the generic
-  arena grammar.
+-  bramble edges, shared landmark sockets for the actual grove/guardian
+  objectives and caches, physical endpoint checkpoints, and a measured
+  traversal contract instead of only the generic arena grammar.
+- Whisperwood route scale now tightens the expedition camera to a local
+  2.5D framing, moves the living objectives onto their authored endpoints,
+  and persists the route phase only after the committed endpoint is physically
+  reached.
+- Sanctuary route sockets now publish authored traversal waypoints. Their
+  connector paths render in-world, and the five-gate traversal contract drives
+  the real camera-relative joystick through physics bodies instead of teleport
+  assertions.
+- The first-save objective chain is now persistent and visible in the reference
+  HUD: Mira → gate → trail → field bundle → extraction → notice-board claim →
+  Workshop. It is save-validated and reload-tested rather than represented by
+  generic cargo text alone.
+- Gathering contacts now leave visible chop/crack marks and stage labels,
+  resolve resource mutation on the tool's strike frame, emit spatial noise on
+  every field contact and footstep, and leave authored rubble or cut-fiber
+  residues where a resource profile provides them.
+- Guardian noise now enters an investigate state before chase, uses grounded
+  distance for hearing, and preserves an attack telegraph through a guarded
+  light hit; only a guard break cancels the wind-up. Investigation now resolves
+  at the measured attack/contact envelope instead of sticking against the
+  player's physics body.
+- Expedition maps now carry a living signature: procedural Meadow Rabbits and
+  Grove Beetles in Whisperwood, Tidepool Crabs on Sunlit Beach, Ridge Marmots
+  on Ember Ridge, and Glass Lizards in the Glass Desert. They idle, wander,
+  flee, can be observed from the contextual interaction rail, and persist only
+  their field-journal observation so map dressing remains deterministic.
 - Return pressure now affects the first forest route as well as later biomes;
   biome intervals are tuned to create a meaningful return leg, and the Glass
   Desert has a physical oasis shade volume that pauses heat pressure.
@@ -100,8 +197,70 @@ Updated: 2026-07-18, Asia/Singapore
   actions share the same runtime input-map path; stack-sized construction
   deliveries keep the physical delivery feedback without requiring one press per
   raw unit.
+- Desktop mouse now has a real camera-projected click-to-move path with a
+  world-space destination marker. Keyboard, gamepad, and touch input take
+  priority and cancel the click target, while zone changes clear it safely.
+  Arrival, placement, focus loss, sustained no-progress, and blocked shell
+  approaches now clear navigation without residual momentum; movement/audio
+  feedback is based on actual displacement.
+- The angled camera now follows the player at a fixed authored yaw/pitch. A
+  held joystick keeps one stable screen direction while the player moves,
+  instead of inheriting transient follow drift; translated-viewport touch input
+  is covered by the camera-control regression suite.
+- Persisted Settings now expose independent master/music/ambience/weather/
+  effects/interface mix controls plus screen-shake and touch-haptics toggles.
+  Settings migrate through save version 11 and apply to Godot audio buses.
 - Saved sanctuary reference image and acceptance notes now distinguish visual
   direction from player-owned building layout
+- Sanctuary has received a density/material pass toward the reference: a soft
+  woodland perimeter, meadow islands, flowers/rocks, decorative crop beds,
+  material yards, stable/market overflow, and a procedural warm Hearth ring
+  layered around the sourced village kit while preserving the player build
+  reserve.
+- Sanctuary now has a dedicated illustrated 2.5D presentation layer with
+  Codex-generated atlas sheets, player-directed placement previews, visible
+  blueprint/scaffold/partial/operational construction stages, and an explicit
+  sprite-to-hit-box asset contract. The visual target is the saved reference;
+  the player's building layout remains authoritative and free-form.
+- The Sanctuary art pass now uses a mid-value moss/olive ground, narrower warm
+  paths, irregular meadow edges, wear, contact shadows, a softer cozy HUD card,
+  and a more readable illustrated player silhouette. A deterministic motion
+  proof covers traversal, tree sway, hearth pulse, light flicker, player
+  visibility, Mira's articulated stride, and legacy/debug geometry suppression.
+- Sanctuary now has a shared illustrated campfire activity focal point at human
+  scale. Its cropped atlas region, pulse/light motion, and presentation-only
+  footprint are contract-checked without consuming player placement cells.
+- Generated Sanctuary billboards now anchor to measured opaque bounds with
+  explicit asset IDs, ground pivots, visual footprints, source bounds, and
+  feet-based sorting metadata. Authoritative structure collision extents and
+  rotated footprints are checked against those presentation contracts.
+- Two player-authored layout captures are proven through the real
+  `can_place_structure → place_structure → deliver_structure_material →
+  advance_day` path, with 42 occupied-cell difference and 65%+ render
+  difference. Obsolete operational utility descendants that read as stray dark
+  geometry are suppressed while their gameplay roots and animation hooks stay
+  active.
+- The HUD now has a logical device-safe-area conversion, responsive status and
+  management cards, a contextual action dock, touch-safe joystick/hints, and a
+  responsive settings panel.
+- The gameplay HUD now follows the saved mobile reference hierarchy: compact
+  hero portrait/status bars, a left stat rail, a contextual interact action,
+  quick resource counts, eight wired action slots, and cargo/XP feedback. The
+  full ledger remains an on-demand surface so normal Sanctuary traversal keeps
+  the world readable. The action belt now uses the sourced warm panel/button
+  textures with large icon and caption treatments instead of a flat dark slab.
+- The first-save cargo target now matches the authored two-unit field bundle;
+  the reference action belt also exposes a touchable X/EXTRACT action at the
+  expedition beacon, with the same authoritative extraction command available
+  from keyboard input.
+- Whisperwood guardians are dormant until the player commits their branch;
+  route entry cannot wake or damage the player before the clearing encounter is
+  actually owned. Blocked investigation lines now recover into pursuit instead
+  of pushing against a route collider indefinitely.
+- Framing trees and rocks now receive measured foot-bearing colliders derived
+  from the same published visual footprint metadata as their Sprite3D artwork;
+  canopy volume remains non-blocking so the player is not trapped by invisible
+  overhead walls.
 - Expedition extraction now requires returning to the entry beacon; defeated
   guardian IDs persist inside active runs so reloads cannot duplicate rewards
 - Whisperwood trees now take two interruptible contacts; partial contact
@@ -146,6 +305,7 @@ Updated: 2026-07-18, Asia/Singapore
   guardian defeat persistence, multi-contact expedition progress, atomic tool
   transactions, mastery permissions and permission save/load, fixed-world placement, and backup preservation after a
   malformed primary, future-content blocking, impossible-day rejection, and
+  unrecoverable-save diagnostics, capability-bound activity timers, and
   scene-level sleep rollback after a forced save failure.
 - World integration test: passed for sourced-tree and animated-cow presence, Sunlit Beach cargo
   banking, Glass Desert camp use, return-to-home, Ember/Dungeon transitions,
@@ -153,14 +313,49 @@ Updated: 2026-07-18, Asia/Singapore
   material delivery, five route gates, all destinations, out-of-range
   rejection, beacon-only extraction, expedition
   anchor persistence, Whisperwood branch commitment, and zone transitions.
+- Progression runtime: passed 291 checks, including release-path rejection of
+  unverified manual UI receipts, forged timer capabilities, monotonic timer
+  completion, the gameplay-XP/real-life-AP boundary, harsh-season crop
+  pressure, mineral-grade guidance, Deep Delver access/yield, persisted daily
+  market receipts, Guild Broker bulk settlement, receipt migration, and
+  malformed contract-receipt rejection, Tide Reader coastal fishing, and
+  forged fishing-bonus rejection, Quality Work/Masterwork tool jobs, forged
+  crafted-tool rejection, livestock trait nurture, trait persistence, physical
+  language inscriptions, Track Sign/World Polyglot gates, Clean Shot combat,
+  and forged progression-state rejection.
+  The registry passes 1,248 checks.
+- Autosave integration: passed failure surfacing and explicit retry coverage in
+  the world loop; `git diff --check` remains clean.
+- World integration test: passed for ten map-fauna instances, procedural
+  silhouette presence, contextual observation, and failed-save rollback; the
+  camera/joystick control suite also passes after the fauna pass.
 - Physical-drop coverage: passed for persisted/reloaded bundles, partial
   satchel pickup, Tideglass discovery plus shell-quota settlement, and the
   field-to-extraction handoff.
 - Visible game launch from the target checkout: headless smoke is clean apart
-  from Godot's macOS certificate warning; desktop screenshot capture is not
-  available in the current Codex session.
-- Desktop screenshot capture is unavailable in the current Codex session, so
-  visual inspection is through the open Godot/game windows and runtime checks.
+  from Godot's macOS certificate warning; deterministic OpenGL captures are
+  available for the full Sanctuary and all seven construction stages.
+- Sanctuary visual contract now passes 4,999 checks across all five structure
+  kinds and all four rotations, including player-safe access zones, placement
+  separation, authored-layout freedom, generated pivots/opaque bounds,
+  construction states, staged materials, presentation replacement stability,
+  asset-fit hitbox metadata, and NPC motion.
+- Measured hitbox contract: `tests/test_asset_hitboxes.gd` passes 609 checks,
+  including the foot-bearing colliders paired to Sanctuary framing trees and
+  rocks. `tests/test_traversal_contract.gd` passes 26 checks across all five
+  gates using real joystick vectors and physics movement.
+- Whisperwood route-state contract: `tests/test_whisperwood_route_state.gd`
+  passes 31 checks for ordered checkpoint persistence, authoritative endpoint
+  transition, save/reload, malformed
+  checkpoint rejection, and fail-closed in-memory state.
+- Whisperwood physical journey: `tests/test_whisperwood_physical_journey.gd`
+  passes 32 checks across camera-relative joystick traversal, pre-commit
+  guardian dormancy, both branch endpoints, and branch collision activation.
+- Extraction input contract: `tests/test_extraction_input_contract.gd` passes
+  8 checks for the reference HUD action, beacon gating, and Sanctuary banking.
+- Current captures: `/private/tmp/isekai-sanctuary-final-v18.png`,
+  `/private/tmp/isekai-sanctuary-stages-v16/`, including seven construction
+  stages, four motion-proof PNGs, and two player-authored layout proofs.
 
 ## Agent and research record
 
@@ -179,21 +374,73 @@ Updated: 2026-07-18, Asia/Singapore
   pass is functional but still needs stronger loot feedback, a fuller authored
   Forest journey, contextual mobile HUD, and deeper combat/gathering contact
   polish. Those are the next quality gates, not claims of completion.
+- Carson (gpt-5.6-sol ultra) and Ampere completed the latest read-only review.
+  Their findings drove the save-commit, focus-pause, action-interruption, and
+  active-frame collision fixes; both agreed the full game and Sanctuary art bar
+  remain open.
+- Raman (gpt-5.6-sol ultra) and Aquinas completed the latest activity/save QA
+  review. Their findings drove the monotonic timer capability, explicit
+  corrupt/future startup states, autosave failure surfacing, semantic activity
+  ledger validation, and gameplay-XP/real-life-AP separation. The chosen
+  external Prodewty activity provider remains intentionally open.
+- Curie (gpt-5.6-sol ultra) and Maxwell completed a failure-oriented review of
+  the Whisperwood route and action boundaries. Their findings drove the shared
+  endpoint sockets/checkpoints, spatial investigate behavior, strike-timed
+  gathering, grounded noise radius, and guarded-telegraph regression.
+- Wegener (gpt-5.6-terra) audited the current route topology and identified the
+  missing continuous walk/reload acceptance coverage. Leibniz (gpt-5.6-sol
+  ultra) independently rejected a premature “complete” verdict; the extraction
+  action, branch-gated guardian, tutorial target, and physical Whisperwood
+  contracts were implemented in response, while pressure, mid-combat reload,
+  full-satchel recovery, and final Sanctuary graphics remain open.
 - Web research checked official Quaternius CC0 character, nature, and monster
   packs, the author-published nature mirror, and Godot's scene-import pipeline;
   the validated nature archive is now actually imported and documented.
+- Gibbs implemented the fail-closed Sanctuary visual contract; the stage worker
+  added a deterministic seven-state capture harness; Ramanujan completed the
+  requested gpt-5.6-sol ultra visual gate review against the saved reference.
+- Nash delivered the ground/material grounding pass, Kierkegaard delivered the
+  traversal/occlusion/motion harness, Popper delivered the feet-pivot/sorting
+  pass, Boole delivered the two-layout proof, Plato removed stray utility
+  geometry, Laplace delivered the safe-area HUD, and Banach expanded the visual
+  contract to 3,005 checks. The Sanctuary art gate remains open for the final
+  authored-density/building-variation/device-QA bar; other biome visuals remain
+  frozen until that bar is accepted.
+- Bacon removed fixed full-size ambient building/activity proxies so player
+  placement owns the built layout. Hegel added five unique structure profiles,
+  four directional variants each, access zones, compound collision descriptors,
+  and construction-component metadata. Lorentz expanded the visual gate for
+  those contracts. Maxwell's gpt-5.6-sol ultra review remains open pending
+  stronger lived-in density, unique operational silhouettes, and touch-device
+  capture.
+- Aristotle independently confirmed that the highest-value graphics gap was the
+  generic operational player-structure layer. Erdos audited the paired
+  collision/feet/directional invariants; the resulting generated facility sheet
+  is now wired to the authoritative footprints and verified in the display-backed
+  stage capture.
+- The reference-HUD verification pass now covers the gameplay/header/rail/belt
+  hierarchy, sourced panel texture, icon/caption slots, and first-run objective;
+  the old prototype panels yield to the new HUD in normal play while
+  ledger/settings remain reachable. The deep traversal review is complete for
+  the default layout; two saved player layouts and touch-device capture remain
+  open.
 
 ## Next actions (the project is not being called finished)
 
-1. Continue the authored Sanctuary pass: retire the remaining fixed-shell
-   authority, add sourced modular props/foliage around the player-owned
-   district, and validate a physical walk from Hearth through every route.
-2. Replace the remaining desktop-style HUD stack with safe-area contextual
-   actions and explicit recipe/food/expedition sheets.
-3. Finish the production art pass: replace generic procedural walls/gates with
-   curated CC0 modular building pieces, animate the player and Mira, and add
-   spatial ambient audio/footstep variation.
-4. Harden the command/state boundary and expand export/device QA; current
+1. Keep the Sanctuary gate active: strengthen lived-in activity density,
+   building-specific silhouettes, directional character variants, and real
+   touch-device capture before calling the reference bar accepted.
+2. Continue the authored Whisperwood acceptance loop: visible resource contact
+   stages, spatial guardian investigate/chase, extraction/reload under pressure,
+   full-satchel reward recovery, and a measured shortcut that materially changes
+   the return route. The first physical endpoint/checkpoint slice is now green;
+   the full walk/reload capture gate remains open.
+3. Repeat the physical walk from Hearth through every Sanctuary route in both
+   saved player layouts, then capture the avatar/roof occlusion and touch-safe
+   HUD on a real device while preserving the shared collision model.
+4. Finish the Sanctuary production art/audio pass: deepen spatial ambience and
+   footstep variation without freezing player-selected building layout.
+5. Harden the command/state boundary and expand export/device QA; current
    desktop/headless evidence is strong but not a completeness claim.
-5. Replace the temporary manual effort logger with the chosen Prodewty data
+6. Replace the temporary manual effort logger with the chosen Prodewty data
    bridge without changing the receipt contract.

@@ -10,7 +10,7 @@ var depleted := false
 func interact(_actor: Node) -> void:
 	if depleted:
 		return
-	if world != null and world.has_method("recover_loot") and world.recover_loot(pack_id):
+	if world != null and world.has_method("recover_loot") and world.recover_loot(pack_id, self):
 		depleted = true
 		visible = false
 		queue_free()

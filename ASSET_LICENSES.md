@@ -9,8 +9,12 @@ launch without relying on a local editor import cache.
 | Asset family | Creator/source | License | Use |
 | --- | --- | --- | --- |
 | Procedural meshes and materials | Codex-generated for Prodewty | Original project code | World, character, props, UI accents |
+| Procedural wildlife silhouettes | Codex-generated for Prodewty | Original project code | Non-hostile rabbits, beetles, crabs, marmots, and lizards with idle/wander/flee animation |
 | Procedural audio | Codex-generated `AudioStreamGenerator` tones | Original project code | Ambience, rain, station, weather modulation, and fallback feedback |
+| Sanctuary illustration sheets | Codex image generation with local atlas processing | Original generated project artwork; no external license dependency | Soft 2.5D Sanctuary props, construction states, trees, rocks, fences, pond, and distinct player-owned facility silhouettes |
+| Sanctuary character sheets | Codex image generation with local atlas processing | Original generated project artwork; no external license dependency | Four-direction idle/walk player and Mira atlases with feet-anchored Sprite3D sorting |
 | Stylized Nature MegaKit Standard | [Quaternius official pack page](https://quaternius.com/packs/stylizednaturemegakit.html), [author-published OpenGameArt mirror](https://opengameart.org/content/stylized-nature-megakit) | CC0 1.0 Universal; included `License_Standard.txt` | Imported glTF trees, rocks, and mushroom used across Sanctuary and expedition maps |
+| LowPoly Medieval Village Pack | [OpenGameArt source page](https://opengameart.org/content/lowpoly-medieval-village-pack), [source archive](https://opengameart.org/sites/default/files/medieval_village_pack_-_dec_2020.zip) | CC0 1.0 Universal; included `License.txt` | Sanctuary presentation kit: sourced buildings, paths, market/camp props, farm edges, and finished player-structure overlays |
 | Farm Animal Pack | [Quaternius official pack page](https://quaternius.com/packs/farmanimal.html), [author-published archive mirror](https://opengameart.org/sites/default/files/Farm%20Animals%20by%20%40Quaternius.zip) | CC0; included `License.txt` | Checked-in source family for the animated resident/wildlife pass; current chicken keeps a procedural fallback until glTF conversion |
 | RPG Audio | [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) | CC0; included `License.txt` | Sampled footsteps, chopping, impacts, discovery, quest, and craft cues |
 | Interface Sounds | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) | CC0 | Sampled UI click cue |

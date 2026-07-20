@@ -21,8 +21,9 @@ func _init() -> void:
 	session.activity_receipts = []
 	session.last_day_transaction = 0
 	# The real-life receipt is idempotent: the same source event cannot pay twice.
-	var first := session.record_activity("qa-receipt-001", 25)
-	var second := session.record_activity("qa-receipt-001", 25)
+	var debug_activity_metadata := {"debug_adapter": "activity_test_v1"}
+	var first := session.record_activity("qa-receipt-001", 25, debug_activity_metadata)
+	var second := session.record_activity("qa-receipt-001", 25, debug_activity_metadata)
 	assert(first)
 	assert(not second)
 	assert(session.xp == 2)
@@ -32,7 +33,7 @@ func _init() -> void:
 	# Level thresholds award exactly one ability point per crossed level.
 	session.award_xp(198)
 	assert(session.level == 3)
-	assert(session.ability_points == 4)
+	assert(session.ability_points == 2)
 	# The daily transaction grows only watered crops and never repeats on retry.
 	session.farm_plot = {"state": "planted", "crop": "wheat", "growth": 0, "watered": true}
 	session.station_job = {"kind": "plank", "remaining_hours": 12.0, "output_id": "plank", "output": 4}
@@ -49,6 +50,26 @@ func _init() -> void:
 	# accidentally apply one crop/job tick to a multi-day jump.
 	session.advance_day(5)
 	assert(session.day == 3)
+	# Clock input is finite and positive; rejected values cannot poison the next save.
+	session.hour = 11.0
+	assert(not session.advance_game_clock(NAN))
+	assert(not session.advance_game_clock(INF))
+	assert(is_equal_approx(float(session.hour), 11.0))
+	assert(session.advance_game_clock(1.5))
+	assert(is_equal_approx(float(session.hour), 12.5))
+	# The day receipt remains idempotent after persistence, not just in memory.
+	var day_persistence := SessionScript.new()
+	day_persistence.save_slot = "qa_day_persistence"
+	root.add_child(day_persistence)
+	assert(day_persistence.advance_day(2))
+	assert(day_persistence.save_game())
+	var day_reloaded := SessionScript.new()
+	day_reloaded.save_slot = "qa_day_persistence"
+	root.add_child(day_reloaded)
+	assert(day_reloaded.load_game())
+	assert(not day_reloaded.advance_day(2))
+	assert(day_reloaded.advance_day(3))
+	assert(not day_reloaded.advance_day(3))
 	# Save/load preserves a meaningful runtime state.
 	session.add_item("ore", 7)
 	assert(session.save_game())
@@ -58,6 +79,39 @@ func _init() -> void:
 	assert(loaded.load_game())
 	assert(loaded.inventory["ore"] == 7)
 	assert(loaded.day == 3)
+	# Accessibility and mix preferences are part of the same atomic world save.
+	assert(loaded.set_setting("music", 0.35))
+	assert(loaded.set_setting("screen_shake", false))
+	assert(not loaded.set_setting("music", 1.5))
+	assert(loaded.save_game())
+	var settings_loaded := SessionScript.new()
+	settings_loaded.save_slot = "qa_session"
+	root.add_child(settings_loaded)
+	assert(settings_loaded.load_game())
+	assert(is_equal_approx(float(settings_loaded.settings["music"]), 0.35))
+	assert(not bool(settings_loaded.settings["screen_shake"]))
+	var missing_settings_payload: Dictionary = settings_loaded.call("_to_dict")
+	missing_settings_payload.erase("settings")
+	missing_settings_payload["save_version"] = 10
+	var missing_settings_file := FileAccess.open("user://qa_settings_missing.json", FileAccess.WRITE)
+	missing_settings_file.store_string(JSON.stringify(missing_settings_payload))
+	missing_settings_file.close()
+	var missing_settings := SessionScript.new()
+	missing_settings.save_slot = "qa_settings_missing"
+	root.add_child(missing_settings)
+	assert(missing_settings.load_game())
+	assert(is_equal_approx(float(missing_settings.settings["master"]), 0.85))
+	# Ambient fauna is journal state, not a fragile scene-node position. It is
+	# idempotent, grants a small field reward once, and survives migration/save.
+	assert(settings_loaded.observe_wildlife("forest_rabbit"))
+	assert(not settings_loaded.observe_wildlife("forest_rabbit"))
+	assert(not settings_loaded.observe_wildlife("not_a_real_creature"))
+	assert(settings_loaded.save_game())
+	var wildlife_loaded := SessionScript.new()
+	wildlife_loaded.save_slot = "qa_session"
+	root.add_child(wildlife_loaded)
+	assert(wildlife_loaded.load_game())
+	assert(wildlife_loaded.observed_wildlife == ["forest_rabbit"])
 	session.add_item("ore", 5)
 	assert(session.save_game())
 	var corrupt := FileAccess.open("user://qa_session.json", FileAccess.WRITE)
@@ -68,6 +122,16 @@ func _init() -> void:
 	root.add_child(recovered)
 	assert(recovered.load_game())
 	assert(recovered.inventory["ore"] == 7)
+	# If neither candidate is usable, startup must expose a rejected state rather
+	# than silently allowing the next autosave to overwrite the player's slot.
+	var unrecoverable_file := FileAccess.open("user://qa_unrecoverable.json", FileAccess.WRITE)
+	unrecoverable_file.store_string("{also broken")
+	unrecoverable_file.close()
+	var unrecoverable := SessionScript.new()
+	unrecoverable.save_slot = "qa_unrecoverable"
+	root.add_child(unrecoverable)
+	assert(not unrecoverable.load_game())
+	assert(str(unrecoverable.get("load_status")) == "rejected")
 	var midnight := SessionScript.new()
 	midnight.save_slot = "qa_midnight"
 	root.add_child(midnight)
@@ -83,8 +147,8 @@ func _init() -> void:
 	root.add_child(duplicate_structures)
 	duplicate_structures.blueprints.append("Tideglass Compass")
 	duplicate_structures.structures = {
-		"storage_shed_legacy_a": {"id": "storage_shed_legacy_a", "kind": "storage_shed", "cell": [11, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
-		"storage_shed_legacy_b": {"id": "storage_shed_legacy_b", "kind": "storage_shed", "cell": [7, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
+		"storage_shed_legacy_a": {"id": "storage_shed_legacy_a", "kind": "storage_shed", "cell": [9, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
+		"storage_shed_legacy_b": {"id": "storage_shed_legacy_b", "kind": "storage_shed", "cell": [4, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
 	}
 	assert(duplicate_structures.save_game())
 	var duplicate_loaded := SessionScript.new()
@@ -203,6 +267,34 @@ func _init() -> void:
 	assert(guardian_reward["reward_id"] == "slime_gel")
 	assert(pressure.expedition_cargo_used() == 2)
 	assert(pressure.resolve_guardian_defeat("forest_slime").is_empty())
+	# The live composition root can require scene-authored resource descriptors;
+	# a valid registered node still works, while an invented node cannot mint
+	# cargo even when its item and amount look superficially valid.
+	var strict_catalog := SessionScript.new()
+	strict_catalog.save_slot = "qa_strict_catalog"
+	root.add_child(strict_catalog)
+	strict_catalog.enable_resource_contract()
+	assert(strict_catalog.start_expedition("Whisperwood"))
+	assert(not strict_catalog.collect_expedition_resource("invented-tree", "wood", 1))
+	assert(strict_catalog.register_resource_node("authored-tree", "Whisperwood", "wood", 1, 1))
+	assert(strict_catalog.collect_expedition_resource("authored-tree", "wood", 1))
+	assert(not strict_catalog.collect_expedition_resource("authored-tree", "stone", 1))
+	assert(strict_catalog.finish_expedition("Whisperwood", [9.0, 1.0, 9.0]).is_empty())
+	assert(strict_catalog.has_active_expedition())
+	assert(strict_catalog.finish_expedition("Whisperwood", [0.0, 1.0, 7.5])["wood"] == 1)
+	var malformed_run := SessionScript.new()
+	malformed_run.save_slot = "qa_malformed_run"
+	root.add_child(malformed_run)
+	assert(malformed_run.start_expedition("Whisperwood"))
+	assert(malformed_run.commit_expedition_branch("grove"))
+	var malformed_payload: Dictionary = malformed_run.call("_to_dict")
+	malformed_payload["expedition_run"]["objective_target"] = 0
+	malformed_payload["expedition_run"]["objective_progress"] = 0
+	malformed_payload["expedition_run"]["objective_complete"] = true
+	assert(not bool(malformed_run.call("_save_shape_is_supported", malformed_payload)))
+	malformed_payload = malformed_run.call("_to_dict")
+	malformed_payload["expedition_run"]["cargo"] = {"not_an_item": 1}
+	assert(not bool(malformed_run.call("_save_shape_is_supported", malformed_payload)))
 	var stake := SessionScript.new()
 	stake.save_slot = "qa_stake"
 	root.add_child(stake)
@@ -231,6 +323,23 @@ func _init() -> void:
 	var started_job: Dictionary = economy.start_workshop_job("plank")
 	assert(started_job["remaining_hours"] == 12.0)
 	assert(economy.inventory["wood"] == 6)
+	assert(economy.save_game())
+	var economy_loaded := SessionScript.new()
+	economy_loaded.save_slot = "qa_economy"
+	root.add_child(economy_loaded)
+	assert(economy_loaded.load_game())
+	economy_loaded.advance_day(economy_loaded.day + 1)
+	var claimed_job: Dictionary = economy_loaded.claim_workshop_job()
+	assert(int(claimed_job.get("output", 0)) == 4)
+	assert(economy_loaded.inventory["plank"] == 4)
+	assert(economy_loaded.claim_workshop_job().is_empty())
+	assert(economy_loaded.save_game())
+	var economy_reloaded := SessionScript.new()
+	economy_reloaded.save_slot = "qa_economy"
+	root.add_child(economy_reloaded)
+	assert(economy_reloaded.load_game())
+	assert(economy_reloaded.inventory["plank"] == 4)
+	assert(economy_reloaded.claim_workshop_job().is_empty())
 	# Odd cargo keeps the remainder and drops only floor(quantity / 2) into
 	# a pack belonging to the biome where the run ended.
 	expedition_loaded.energy = 24
@@ -245,8 +354,15 @@ func _init() -> void:
 	assert(expedition_loaded.claim_recovery_pack(recovery_id, "Sunlit Beach").is_empty())
 	var recovered_loot: Dictionary = expedition_loaded.claim_recovery_pack(recovery_id, "Glass Desert")
 	assert(recovered_loot["sunstone"] == 2)
+	assert(expedition_loaded.inventory["sunstone"] == 5)
 	assert(expedition_loaded.claim_recovery_pack(recovery_id, "Glass Desert").is_empty())
 	assert(not expedition_loaded.has_active_expedition())
+	var empty_pack := SessionScript.new()
+	empty_pack.save_slot = "qa_empty_pack"
+	root.add_child(empty_pack)
+	empty_pack.recovery_pack = {"pack_id": "empty", "zone_id": "Whisperwood", "loot": {}, "position": [0.0, 1.0, 0.0], "expires_day": 2}
+	assert(empty_pack.claim_recovery_pack("empty", "Whisperwood").is_empty())
+	assert(not empty_pack.recovery_pack.is_empty())
 	# A faint that drops no new loot must not move or duplicate the existing pack.
 	var original_pack := expedition_loaded.recovery_pack.duplicate(true)
 	expedition_loaded.energy = 24
@@ -270,7 +386,8 @@ func _init() -> void:
 	future_loaded.save_slot = "qa_future"
 	root.add_child(future_loaded)
 	assert(future_loaded.load_game())
-	assert(not future_loaded.save_blocked)
+	assert(future_loaded.save_blocked)
+	assert(not future_loaded.save_game())
 	assert(future_loaded.coins == 777)
 	# Malformed nested data is rejected without mutating the live session.
 	var malformed := SessionScript.new()
@@ -282,6 +399,38 @@ func _init() -> void:
 	malformed_file.close()
 	assert(not malformed.load_game())
 	assert(malformed.coins == 321)
+	# Nested survival state is validated before it can enter the live session.
+	var malformed_livestock_payload: Dictionary = malformed.call("_to_dict")
+	malformed_livestock_payload["livestock"]["clover"]["hunger"] = -1
+	var malformed_livestock_file := FileAccess.open("user://qa_malformed_livestock.json", FileAccess.WRITE)
+	malformed_livestock_file.store_string(JSON.stringify(malformed_livestock_payload))
+	malformed_livestock_file.close()
+	var malformed_livestock := SessionScript.new()
+	malformed_livestock.save_slot = "qa_malformed_livestock"
+	malformed_livestock.coins = 654
+	root.add_child(malformed_livestock)
+	assert(not malformed_livestock.load_game())
+	assert(malformed_livestock.coins == 654)
+	var malformed_expedition_payload: Dictionary = malformed.call("_to_dict")
+	malformed_expedition_payload["expedition_run"] = {"status": "active", "biome_id": "Whisperwood", "cargo": {"wood": 1}, "contact_progress": {}, "pickups": [], "anchor": [999.0, 1.0, 0.0]}
+	var malformed_expedition_file := FileAccess.open("user://qa_malformed_expedition.json", FileAccess.WRITE)
+	malformed_expedition_file.store_string(JSON.stringify(malformed_expedition_payload))
+	malformed_expedition_file.close()
+	var malformed_expedition := SessionScript.new()
+	malformed_expedition.save_slot = "qa_malformed_expedition"
+	malformed_expedition.coins = 987
+	root.add_child(malformed_expedition)
+	assert(not malformed_expedition.load_game())
+	assert(malformed_expedition.coins == 987)
+	var orphan_cargo_payload: Dictionary = malformed.call("_to_dict")
+	orphan_cargo_payload["expedition_run"] = {"status": "none", "cargo": {"wood": 1}, "pickups": []}
+	var orphan_cargo_file := FileAccess.open("user://qa_orphan_cargo.json", FileAccess.WRITE)
+	orphan_cargo_file.store_string(JSON.stringify(orphan_cargo_payload))
+	orphan_cargo_file.close()
+	var orphan_cargo := SessionScript.new()
+	orphan_cargo.save_slot = "qa_orphan_cargo"
+	root.add_child(orphan_cargo)
+	assert(not orphan_cargo.load_game())
 	# Type-correct but impossible scalar state is rejected before it can create
 	# an invalid live session or soft-lock future day transactions.
 	var semantic_file := FileAccess.open("user://qa_semantic.json", FileAccess.WRITE)
@@ -378,6 +527,7 @@ func _init() -> void:
 	legacy_drop_run["status"] = "active"
 	legacy_drop_run["biome_id"] = "Whisperwood"
 	legacy_drop_run.erase("pickups")
+	legacy_drop_run.erase("anchor")
 	legacy_drop_payload["expedition_run"] = legacy_drop_run
 	var legacy_drop_file := FileAccess.open("user://qa_legacy_drop.json", FileAccess.WRITE)
 	legacy_drop_file.store_string(JSON.stringify(legacy_drop_payload))
@@ -388,6 +538,7 @@ func _init() -> void:
 	assert(legacy_drop_loaded.load_game())
 	assert(legacy_drop_loaded.expedition_run.has("pickups"))
 	assert(legacy_drop_loaded.expedition_run["pickups"].is_empty())
+	assert(legacy_drop_loaded.expedition_run["anchor"] == [0.0, 1.0, 7.5])
 	# Fresh saves form a route arc instead of exposing the final Dungeon at the
 	# first click; successful extraction is the authoritative unlock event.
 	var route_chain := SessionScript.new()
@@ -500,13 +651,27 @@ func _init() -> void:
 	var built_state: Dictionary = expedition_loaded.built
 	built_state["library"] = true
 	expedition_loaded.built = built_state
+	expedition_loaded.masteries["Research"] = 45
+	expedition_loaded.award_mastery("Research", 1)
 	assert(expedition_loaded.record_discovery("Tideglass"))
 	assert(expedition_loaded.research_discovery("Tideglass"))
 	assert(not expedition_loaded.researched.has("Tideglass"))
+	assert(expedition_loaded.research_job["status"] == "researching")
+	assert(float(expedition_loaded.research_job["remaining_hours"]) > 0.0)
 	expedition_loaded.advance_day(expedition_loaded.day + 1)
 	assert(expedition_loaded.research_job["status"] == "ready")
 	assert(expedition_loaded.claim_research())
 	assert(expedition_loaded.researched.has("Tideglass"))
+	assert(expedition_loaded.research_clues.size() == 1)
+	assert(expedition_loaded.research_clues[0]["source_id"] == "Tideglass")
+	assert(expedition_loaded.research_clues[0]["related_id"] == "Aether Relic")
+	assert(expedition_loaded.save_game())
+	var clue_loaded := SessionScript.new()
+	clue_loaded.save_slot = "qa_expedition"
+	root.add_child(clue_loaded)
+	assert(clue_loaded.load_game())
+	assert(clue_loaded.research_clues.size() == 1)
+	assert(clue_loaded.research_clues[0]["hint"] == expedition_loaded.research_clues[0]["hint"])
 	# Guardian defeat IDs are part of the active run, preventing reward replay
 	# after a reload just like depleted resource IDs.
 	expedition_loaded.energy = 24
@@ -573,6 +738,18 @@ func _init() -> void:
 	systems.hydration = 70
 	assert(systems.drink_water())
 	assert(systems.hydration == 100)
+	var survival_edge := SessionScript.new()
+	survival_edge.save_slot = "qa_survival_edge"
+	root.add_child(survival_edge)
+	survival_edge.nutrition = 10
+	survival_edge.hydration = 10
+	survival_edge.health = 100
+	assert(survival_edge.advance_day(2))
+	assert(survival_edge.nutrition == 0)
+	assert(survival_edge.hydration == 0)
+	assert(survival_edge.health == 92)
+	assert(not survival_edge.advance_day(2))
+	assert(survival_edge.health == 92)
 	# Settlement livestock is a day-based loop: build, feed, sleep, collect.
 	systems.structures["qa_livestock_pen"] = {"id": "qa_livestock_pen", "kind": "livestock_pen", "cell": [2, 0], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "fiber": 6, "plank": 2}}
 	systems.call("_activate_structure_kind", "livestock_pen")
@@ -590,12 +767,14 @@ func _init() -> void:
 	systems.blueprints.append("Tideglass Compass")
 	systems.inventory["wood"] = 8
 	systems.inventory["plank"] = 2
+	assert(not systems.can_place_structure("rain_cistern", [11.5, 8]))
+	assert(not systems.can_place_structure("rain_cistern", [INF, 8]))
 	assert(not systems.can_place_structure("rain_cistern", [0, -4]))
 	assert(not systems.can_place_structure("rain_cistern", [5, 3]))
 	assert(not systems.can_place_structure("rain_cistern", [-12, -6]))
 	assert(not systems.can_place_structure("rain_cistern", [11, 7]))
-	assert(systems.can_place_structure("rain_cistern", [11, 8]))
-	var cistern: Dictionary = systems.place_structure("rain_cistern", [11, 8])
+	assert(systems.can_place_structure("rain_cistern", [10, -13]))
+	var cistern: Dictionary = systems.place_structure("rain_cistern", [10, -13])
 	assert(cistern["state"] == "blueprint")
 	assert(int(systems.inventory["wood"]) == 8)
 	assert(int(systems.inventory["plank"]) == 2)
@@ -618,7 +797,7 @@ func _init() -> void:
 	root.add_child(placed_builder)
 	placed_builder.inventory["wood"] = 12
 	placed_builder.inventory["stone"] = 8
-	var workshop_blueprint: Dictionary = placed_builder.place_structure("workshop", [2, 0])
+	var workshop_blueprint: Dictionary = placed_builder.place_structure("workshop", [2, -13])
 	assert(workshop_blueprint["state"] == "blueprint")
 	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "wood", 12)["state"] == "blueprint")
 	# A fresh player can reach the first Workshop without pre-existing Planks;
@@ -666,7 +845,7 @@ func _init() -> void:
 	storage_session.inventory["wood"] = 10
 	storage_session.inventory["stone"] = 4
 	storage_session.inventory["plank"] = 3
-	var storage_blueprint: Dictionary = storage_session.place_structure("storage_shed", [2, 0])
+	var storage_blueprint: Dictionary = storage_session.place_structure("storage_shed", [2, -13])
 	assert(storage_blueprint["state"] == "blueprint")
 	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "wood", 10)["state"] == "blueprint")
 	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "stone", 4)["state"] == "blueprint")
@@ -676,8 +855,8 @@ func _init() -> void:
 	storage_session.advance_day(storage_session.day + 1)
 	assert(str(storage_session.structures[storage_blueprint["id"]]["state"]) == "operational")
 	assert(storage_session.cargo_capacity == 16)
-	assert(storage_session.can_place_structure("storage_shed", [10, 7], 1))
-	var rotated_storage: Dictionary = storage_session.place_structure("storage_shed", [10, 7], 1)
+	assert(storage_session.can_place_structure("storage_shed", [9, 8], 1))
+	var rotated_storage: Dictionary = storage_session.place_structure("storage_shed", [9, 8], 1)
 	assert(int(rotated_storage.get("rotation", -1)) == 1)
 	assert(storage_session.save_game())
 	var rotated_loaded := SessionScript.new()
@@ -701,6 +880,14 @@ func _init() -> void:
 	assert(locked_recipe.start_workshop_job("tonic").is_empty())
 	locked_recipe.unlocked_features.append("tonic_recipe")
 	assert(not locked_recipe.start_workshop_job("tonic").is_empty())
+	var forged_job := SessionScript.new()
+	forged_job.save_slot = "qa_forged_job"
+	root.add_child(forged_job)
+	forged_job.built["workshop"] = true
+	forged_job.station_job = {"kind": "plank", "remaining_hours": 0.0, "total_hours": 12.0, "output_id": "relic", "output": 99}
+	assert(forged_job.claim_workshop_job().is_empty())
+	assert(forged_job.inventory.get("relic", 0) == 0)
+	assert(str(forged_job.station_job["kind"]) == "plank")
 	# Mastery crosses into permissions that change authoritative rules, rather
 	# than remaining a display-only number.
 	var permissions := SessionScript.new()
@@ -748,6 +935,80 @@ func _init() -> void:
 	assert(permissions_loaded.has_permission("field_repair"))
 	assert(permissions_loaded.has_permission("market_favor"))
 	assert(permissions_loaded.has_permission("combat_training"))
+	# Higher attacking tiers resolve through the same authoritative combat
+	# command: the third beat is heavy, refunds energy, and can empower a
+	# finishing strike without allowing the scene to mint damage directly.
+	var attack_feel := SessionScript.new()
+	attack_feel.save_slot = "qa_attack_feel"
+	root.add_child(attack_feel)
+	attack_feel.masteries["Attacking"] = 100
+	attack_feel.unlocked_features.clear()
+	attack_feel.call("_sync_mastery_permissions")
+	attack_feel.energy = 10
+	var heavy_result: Dictionary = attack_feel.resolve_attack(7, 3, 40, true)
+	assert(bool(heavy_result.get("heavy_attack", false)))
+	assert(bool(heavy_result.get("guard_break", false)))
+	assert(int(heavy_result.get("damage", 0)) > attack_feel.resolve_attack_damage(7))
+	assert(int(heavy_result.get("stamina_refunded", 0)) == 2)
+	assert(attack_feel.energy == 11)
+	var finisher_result: Dictionary = attack_feel.resolve_attack(7, 3, 10, true)
+	assert(bool(finisher_result.get("finisher", false)))
+	assert(bool(finisher_result.get("vanguard_resolve", false)))
+	assert(int(finisher_result.get("damage", 0)) > int(heavy_result.get("damage", 0)))
+	attack_feel.energy = 10
+	var unguarded_result: Dictionary = attack_feel.resolve_attack(7, 3, 40, false)
+	assert(not bool(unguarded_result.get("guard_break", false)))
+	attack_feel.energy = 10
+	var guarded_result: Dictionary = attack_feel.resolve_attack(7, 1, 40, true)
+	assert(bool(guarded_result.get("guarded", false)))
+	assert(is_equal_approx(float(guarded_result.get("guard_multiplier", 0.0)), 0.55))
+	assert(int(guarded_result.get("damage", 0)) < attack_feel.resolve_attack_damage(7))
+	# Fractional mastery wear is deterministic across repeated actions: three
+	# quarters of a durability point over four swings becomes exactly three
+	# points, with the remainder carried by the tool rather than a random roll.
+	var wear_session := SessionScript.new()
+	wear_session.save_slot = "qa_fractional_wear"
+	root.add_child(wear_session)
+	wear_session.masteries["Mining"] = 45
+	wear_session.unlocked_features.clear()
+	wear_session.call("_sync_mastery_permissions")
+	wear_session.equipment["pickaxe"]["durability"] = 18
+	for swing in 4:
+		assert(wear_session.use_tool_for_resource("ore", "qa-wear-%d" % swing))
+	assert(wear_session.equipment["pickaxe"]["durability"] == 15)
+	assert(is_equal_approx(float(wear_session.equipment["pickaxe"]["wear_remainder"]), 0.0))
+	assert(wear_session.equipment["fishing_knife"]["durability"] == 12)
+	wear_session.masteries["Foraging"] = 45
+	wear_session.unlocked_features.clear()
+	wear_session.call("_sync_mastery_permissions")
+	assert(wear_session.use_tool_for_resource("fiber", "qa-fiber-wear"))
+	assert(wear_session.equipment["fishing_knife"]["durability"] == 12)
+	# Second Wind is a durable expedition rule: it triggers only at critical
+	# health, can fire once, and remains spent after a reload.
+	var second_wind := SessionScript.new()
+	second_wind.save_slot = "qa_second_wind"
+	root.add_child(second_wind)
+	second_wind.masteries["Surviving"] = 100
+	second_wind.unlocked_features.clear()
+	second_wind.call("_sync_mastery_permissions")
+	assert(second_wind.has_permission("surviving_second_wind"))
+	assert(second_wind.start_expedition("Whisperwood"))
+	second_wind.health = 25
+	var wind_result: Dictionary = second_wind.apply_player_damage(10)
+	assert(bool(wind_result.get("second_wind", false)))
+	assert(int(wind_result.get("health", 0)) == 30)
+	assert(bool(second_wind.expedition_run.get("second_wind_used", false)))
+	var repeat_wind: Dictionary = second_wind.apply_player_damage(20)
+	assert(not bool(repeat_wind.get("second_wind", false)))
+	assert(int(repeat_wind.get("health", 0)) == 10)
+	assert(second_wind.save_game())
+	var second_wind_loaded := SessionScript.new()
+	second_wind_loaded.save_slot = "qa_second_wind"
+	root.add_child(second_wind_loaded)
+	assert(second_wind_loaded.load_game())
+	assert(bool(second_wind_loaded.expedition_run.get("second_wind_used", false)))
+	var persisted_repeat: Dictionary = second_wind_loaded.apply_player_damage(1)
+	assert(not bool(persisted_repeat.get("second_wind", false)))
 	# Whisperwood now has an authoritative fork/capstone/cache arc. The branch
 	# is committed once, the matching objective opens one cache, and the route
 	# state survives a reload.
@@ -820,11 +1081,65 @@ func _init() -> void:
 	sanctuary_loaded.restore_sanctuary_resources()
 	assert(not sanctuary_loaded.is_sanctuary_depleted("Sanctuary:wood:stable"))
 	assert(sanctuary_loaded.record_sanctuary_contact("Sanctuary:TestTree", 2))
+	assert(not sanctuary_loaded.record_sanctuary_contact("Sanctuary:TestTree", 2))
+	assert(not sanctuary_loaded.record_sanctuary_contact("Sanctuary:TestTree", 1))
 	assert(sanctuary_loaded.save_game())
 	var sanctuary_progress_loaded := SessionScript.new()
 	sanctuary_progress_loaded.save_slot = "qa_sanctuary"
 	root.add_child(sanctuary_progress_loaded)
 	assert(sanctuary_progress_loaded.load_game())
 	assert(int(sanctuary_progress_loaded.sanctuary_contact_progress.get("Sanctuary:TestTree", 0)) == 2)
+	# Fishing is an authored, persisted action loop rather than an instant
+	# reward. Wrong-position and early-hook attempts must be side-effect safe.
+	var fishing_domain := SessionScript.new()
+	fishing_domain.save_slot = "qa_fishing_domain"
+	root.add_child(fishing_domain)
+	fishing_domain.inventory["fiber"] = 1
+	fishing_domain.energy = 12
+	assert(fishing_domain.begin_fishing("sanctuary_pond", "Sanctuary", [0.0, 1.0, 0.0]).is_empty())
+	var fishing_start: Dictionary = fishing_domain.begin_fishing("sanctuary_pond", "Sanctuary", [5.35, 1.0, 5.55])
+	assert(str(fishing_start.get("phase", "")) == "waiting")
+	assert(fishing_domain.energy == 10 and fishing_domain.inventory["fiber"] == 0)
+	assert(fishing_domain.save_game())
+	var fishing_loaded := SessionScript.new()
+	fishing_loaded.save_slot = "qa_fishing_domain"
+	root.add_child(fishing_loaded)
+	assert(fishing_loaded.load_game())
+	assert(fishing_loaded.fishing_attempt["attempt_id"] == fishing_domain.fishing_attempt["attempt_id"])
+	assert(fishing_loaded.fishing_attempt["reel_pulse"] == false)
+	var fishing_ticks := 0
+	while str(fishing_loaded.fishing_attempt.get("phase", "")) == "waiting" and fishing_ticks < 30:
+		# A large tick is rejected; the next bounded tick advances the authored clock.
+		if fishing_ticks == 0:
+			assert(fishing_loaded.advance_fishing(0.6, false).is_empty())
+			assert(str(fishing_loaded.fishing_attempt.get("phase", "")) == "waiting")
+			fishing_loaded.advance_fishing(0.1, false)
+		else:
+			fishing_loaded.advance_fishing(0.1, false)
+		fishing_ticks += 1
+	assert(str(fishing_loaded.fishing_attempt.get("phase", "")) == "bite")
+	var bite_state: Dictionary = fishing_loaded.fishing_attempt.duplicate(true)
+	var hook_center := float(bite_state["bite_at"]) + (float(bite_state["hook_deadline"]) - float(bite_state["bite_at"])) * 0.5
+	while float(fishing_loaded.fishing_attempt["elapsed"]) + 0.05 < hook_center:
+		fishing_loaded.advance_fishing(0.05, false)
+	assert(str(fishing_loaded.press_fishing_action(str(fishing_loaded.fishing_attempt["attempt_id"])).get("phase", "")) == "reeling")
+	var reel_ticks := 0
+	while bool(fishing_loaded.has_active_fishing()) and reel_ticks < 40:
+		fishing_loaded.advance_fishing(0.15, reel_ticks % 2 == 0)
+		reel_ticks += 1
+	assert(str(fishing_loaded.fishing_attempt.get("status", "")) == "landed")
+	assert(fishing_loaded.save_game())
+	var landed_reload := SessionScript.new()
+	landed_reload.save_slot = "qa_fishing_domain"
+	root.add_child(landed_reload)
+	assert(landed_reload.load_game())
+	assert(str(landed_reload.fishing_attempt.get("status", "")) == "landed")
+	var claimed_fish: Dictionary = landed_reload.claim_fishing()
+	assert(int(claimed_fish.get("amount", 0)) >= 1)
+	assert(landed_reload.inventory["fish"] >= 1)
+	for suffix in [".json", ".backup.json", ".tmp.json"]:
+		var fishing_save_path := ProjectSettings.globalize_path("user://qa_fishing_domain%s" % suffix)
+		if FileAccess.file_exists(fishing_save_path):
+			DirAccess.remove_absolute(fishing_save_path)
 	print("SESSION_TESTS_PASS")
 	quit()

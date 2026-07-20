@@ -31,10 +31,17 @@ var spatial_cursor := 0
 var music_streams: Dictionary = {}
 var current_music := ""
 var music_transition: Tween
+var audio_focus_lost := false
+var playback_paused := false
+var last_action_times: Dictionary = {}
 
 const RPG_AUDIO_ROOT := "res://assets/sourced/kenney-rpg-audio/Audio/"
+const AUDIO_BUSES := ["Music", "Ambience", "Weather", "Stations", "Effects", "UI"]
 
 func _ready() -> void:
+	# Audio must continue receiving pause/focus notifications so it can stop
+	# streams explicitly even while the gameplay tree is paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	if DisplayServer.get_name() == "headless":
 		audio_enabled = false
 		return
@@ -81,13 +88,22 @@ func _load_sampled_assets() -> void:
 		"gather_shell": load(RPG_AUDIO_ROOT + "handleSmallLeather.ogg"),
 		"gather_sunstone": load(RPG_AUDIO_ROOT + "metalPot3.ogg"),
 		"gather_water": load(RPG_AUDIO_ROOT + "handleSmallLeather2.ogg"),
+		"fishing_cast": load(RPG_AUDIO_ROOT + "handleSmallLeather2.ogg"),
+		"fishing_bite": load(RPG_AUDIO_ROOT + "handleCoins.ogg"),
+		"fishing_hook": load(RPG_AUDIO_ROOT + "cloth1.ogg"),
+		"fishing_reel": load(RPG_AUDIO_ROOT + "metalClick.ogg"),
+		"fishing_catch": load(RPG_AUDIO_ROOT + "handleCoins.ogg"),
+		"fishing_escape": load(RPG_AUDIO_ROOT + "clothBelt.ogg"),
 		"hit": load(RPG_AUDIO_ROOT + "knifeSlice.ogg"),
+		"guard": load(RPG_AUDIO_ROOT + "metalClick.ogg"),
+		"guard_break": load(RPG_AUDIO_ROOT + "metalPot1.ogg"),
 		"discovery": load(RPG_AUDIO_ROOT + "bookOpen.ogg"),
 		"quest": load(RPG_AUDIO_ROOT + "handleCoins.ogg"),
 		"craft": load(RPG_AUDIO_ROOT + "metalPot1.ogg"),
 		"build": load(RPG_AUDIO_ROOT + "creak1.ogg"),
 		"repair": load(RPG_AUDIO_ROOT + "metalClick.ogg"),
 		"collect": load(RPG_AUDIO_ROOT + "handleSmallLeather2.ogg"),
+		"pickup": load(RPG_AUDIO_ROOT + "handleSmallLeather2.ogg"),
 		"eat": load(RPG_AUDIO_ROOT + "metalPot3.ogg"),
 		"drink": load(RPG_AUDIO_ROOT + "metalPot2.ogg"),
 		"dodge": load(RPG_AUDIO_ROOT + "clothBelt.ogg"),
@@ -114,13 +130,19 @@ func _load_sampled_assets() -> void:
 	add_child(ui_player)
 
 func _ensure_buses() -> void:
-	for bus_name in ["Music", "Ambience", "Weather", "Stations", "Effects", "UI"]:
+	var master_index := AudioServer.get_bus_index("Master")
+	if master_index < 0:
+		AudioServer.add_bus()
+		master_index = AudioServer.get_bus_count() - 1
+		AudioServer.set_bus_name(master_index, "Master")
+	for bus_name in AUDIO_BUSES:
 		var bus_index := AudioServer.get_bus_index(bus_name)
 		if bus_index < 0:
 			AudioServer.add_bus()
 			bus_index = AudioServer.get_bus_count() - 1
 			AudioServer.set_bus_name(bus_index, bus_name)
-		AudioServer.set_bus_send(bus_index, "Master")
+		if bus_index != master_index:
+			AudioServer.set_bus_send(bus_index, "Master")
 
 func _make_generator_player(label: String, volume_db: float) -> AudioStreamPlayer:
 	var player := AudioStreamPlayer.new()
@@ -138,7 +160,7 @@ func _make_generator_player(label: String, volume_db: float) -> AudioStreamPlaye
 func set_environment(zone: String, surface: String, hour: float, weather: String, indoor: bool, near_furnace: bool) -> void:
 	environment = {"zone": zone, "surface": surface, "hour": hour, "weather": weather, "indoor": indoor, "near_furnace": near_furnace}
 	var music_key := "Sanctuary" if zone == "Sanctuary" else "Expedition"
-	if music_player != null and music_key != current_music:
+	if music_player != null and music_key != current_music and _can_play_audio():
 		var stream = music_streams.get(music_key)
 		if stream is AudioStream:
 			if music_transition != null and music_transition.is_valid():
@@ -153,16 +175,12 @@ func set_environment(zone: String, surface: String, hour: float, weather: String
 			current_music = music_key
 
 func play_action(kind: String) -> void:
+	if not _can_play_audio() or not _allow_action(kind):
+		return
 	sfx_kind = kind
 	sfx_time = 0.24 if kind == "hit" else (0.28 if kind in ["discovery", "quest", "camp"] else (0.18 if kind.begins_with("step") else 0.16))
 	phases["sfx"] = 0.0
-	var sampled_key := kind
-	if kind.begins_with("step") and not sampled_streams.has(kind):
-		sampled_key = "step"
-	elif kind.begins_with("gather_") and not sampled_streams.has(kind):
-		sampled_key = "gather_wood"
-	elif kind in ["camp", "gather_prepare"]:
-		sampled_key = "craft"
+	var sampled_key := _sampled_key_for(kind)
 	var sampled = sampled_streams.get(sampled_key)
 	if sampled is AudioStream and not sampled_players.is_empty():
 		var player: AudioStreamPlayer = sampled_players[sampled_cursor % sampled_players.size()]
@@ -173,23 +191,21 @@ func play_action(kind: String) -> void:
 		sfx_time = 0.0
 
 func play_action_at(kind: String, world_position: Vector3) -> void:
+	if not _can_play_audio():
+		return
 	if spatial_players.is_empty():
 		play_action(kind)
 		return
-	sfx_kind = kind
-	sfx_time = 0.24 if kind == "hit" else (0.28 if kind in ["discovery", "quest", "camp"] else (0.18 if kind.begins_with("step") else 0.16))
-	phases["sfx"] = 0.0
-	var sampled_key := kind
-	if kind.begins_with("step") and not sampled_streams.has(kind):
-		sampled_key = "step"
-	elif kind.begins_with("gather_") and not sampled_streams.has(kind):
-		sampled_key = "gather_wood"
-	elif kind in ["camp", "gather_prepare"]:
-		sampled_key = "craft"
+	var sampled_key := _sampled_key_for(kind)
 	var sampled = sampled_streams.get(sampled_key)
 	if not sampled is AudioStream:
 		play_action(kind)
 		return
+	if not _allow_action(kind):
+		return
+	sfx_kind = kind
+	sfx_time = 0.24 if kind == "hit" else (0.28 if kind in ["discovery", "quest", "camp"] else (0.18 if kind.begins_with("step") else 0.16))
+	phases["sfx"] = 0.0
 	var player: AudioStreamPlayer3D = spatial_players[spatial_cursor % spatial_players.size()]
 	spatial_cursor += 1
 	player.global_position = world_position
@@ -198,7 +214,7 @@ func play_action_at(kind: String, world_position: Vector3) -> void:
 	player.play()
 
 func play_ui(kind := "ui") -> void:
-	if ui_player == null:
+	if ui_player == null or not _can_play_audio() or not _allow_action(kind):
 		return
 	var sampled = sampled_streams.get(kind, sampled_streams.get("ui"))
 	if sampled is AudioStream:
@@ -211,8 +227,23 @@ func set_mix(bus_name: String, volume_db: float) -> void:
 	if bus_index >= 0:
 		AudioServer.set_bus_volume_db(bus_index, clampf(volume_db, -60.0, 6.0))
 
+func apply_settings(values: Dictionary) -> void:
+	# Settings are stored as normalized values so the same save works across
+	# desktop, controller, and touch builds. Convert only at the audio boundary.
+	var bus_names := {"master": ["Master"], "music": ["Music"], "ambience": ["Ambience"], "weather": ["Weather"], "effects": ["Effects", "Stations"], "ui": ["UI"]}
+	for setting_id in ["master", "music", "ambience", "weather", "effects", "ui"]:
+		var value := clampf(float(values.get(setting_id, 1.0)), 0.0, 1.0)
+		var volume_db := -60.0 if value <= 0.001 else linear_to_db(value)
+		for bus_name_value in bus_names[setting_id]:
+			set_mix(str(bus_name_value), volume_db)
+
 func _process(delta: float) -> void:
 	if not audio_enabled:
+		return
+	var should_pause := audio_focus_lost or get_tree().paused
+	if should_pause != playback_paused:
+		_set_playback_paused(should_pause)
+	if should_pause:
 		return
 	phases["ambience"] += delta
 	phases["weather"] += delta
@@ -223,6 +254,62 @@ func _process(delta: float) -> void:
 	_fill(weather_playback, "weather", 0.0)
 	_fill(station_playback, "station", 0.0)
 	_fill(sfx_playback, "sfx", 0.0)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		audio_focus_lost = true
+		_set_playback_paused(true)
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		audio_focus_lost = false
+		_set_playback_paused(get_tree().paused)
+
+func _can_play_audio() -> bool:
+	return audio_enabled and not audio_focus_lost and not get_tree().paused
+
+func _set_playback_paused(paused: bool) -> void:
+	playback_paused = paused
+	for player in [music_player, ambience_player, weather_player, station_player, sfx_player, ui_player]:
+		if is_instance_valid(player):
+			player.stream_paused = paused
+	for player in sampled_players:
+		if is_instance_valid(player):
+			player.stream_paused = paused
+	for player in spatial_players:
+		if is_instance_valid(player):
+			player.stream_paused = paused
+	if music_transition != null and music_transition.is_valid():
+		if paused:
+			music_transition.pause()
+		else:
+			music_transition.play()
+
+func _sampled_key_for(kind: String) -> String:
+	if kind.begins_with("step") and not sampled_streams.has(kind):
+		return "step"
+	if kind.begins_with("gather_") and not sampled_streams.has(kind):
+		return "gather_wood"
+	if kind in ["camp", "gather_prepare"]:
+		return "craft"
+	return kind
+
+func _action_cooldown_key(kind: String) -> String:
+	if kind.begins_with("step"):
+		return "step"
+	if kind.begins_with("gather_"):
+		return "gather"
+	if kind == "ui":
+		return "ui"
+	return kind
+
+func _allow_action(kind: String) -> bool:
+	var key := _action_cooldown_key(kind)
+	var interval := 0.12 if key == "step" else (0.08 if key == "gather" else (0.06 if key == "ui" else 0.04))
+	var now := float(Time.get_ticks_usec()) / 1000000.0
+	var previous := float(last_action_times.get(key, -INF))
+	if now - previous < interval:
+		return false
+	last_action_times[key] = now
+	return true
 
 func _exit_tree() -> void:
 	for player in [music_player, ambience_player, weather_player, station_player, sfx_player, ui_player]:

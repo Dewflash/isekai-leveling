@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/generated/shaders/ground_depth_edge.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.71, 0.541, 0.396, 1)
+shader_parameter/edge_color = Color(0.455, 0.373, 0.306, 1)
+shader_parameter/edge_width = 0.13
+shader_parameter/side_depth = 0.68
+shader_parameter/macro_scale = 0.31
+shader_parameter/macro_variation = 0.035
+shader_parameter/saturation = 1.03
+shader_parameter/contrast = 1.06

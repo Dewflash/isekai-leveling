@@ -1,0 +1,96 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="ShaderMaterial" path="res://assets/generated/shaders/sanctuary_toon_wood.tres" id="1_toon"]
+[ext_resource type="ShaderMaterial" path="res://assets/generated/shaders/sanctuary_ground_moss.tres" id="2_ground"]
+[ext_resource type="ShaderMaterial" path="res://assets/generated/shaders/sanctuary_ground_path.tres" id="3_path"]
+[ext_resource type="ShaderMaterial" path="res://assets/generated/shaders/sanctuary_pond_water.tres" id="4_water"]
+[ext_resource type="ShaderMaterial" path="res://assets/generated/shaders/sanctuary_foliage.tres" id="5_foliage"]
+[ext_resource type="ShaderMaterial" path="res://assets/generated/shaders/expedition_pickup_glow.tres" id="6_glow"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_toon"]
+size = Vector3(1.8, 1.8, 1.8)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ground"]
+top_radius = 2.1
+bottom_radius = 2.16
+height = 0.12
+radial_segments = 32
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_water"]
+top_radius = 1.8
+bottom_radius = 1.82
+height = 0.08
+radial_segments = 48
+rings = 4
+
+[sub_resource type="SphereMesh" id="SphereMesh_foliage"]
+radius = 1.1
+height = 2.6
+radial_segments = 12
+rings = 6
+
+[sub_resource type="SphereMesh" id="SphereMesh_reward"]
+radius = 0.62
+height = 1.24
+radial_segments = 24
+rings = 12
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial_reward"]
+albedo_color = Color(0.18, 0.42, 0.36, 1)
+roughness = 0.84
+
+[node name="ShaderPreview" type="Node3D"]
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -38, 0)
+light_color = Color(1, 0.87, 0.68, 1)
+light_energy = 1.0
+shadow_enabled = true
+
+[node name="CoolFill" type="OmniLight3D" parent="."]
+position = Vector3(-4, 6, -4)
+light_color = Color(0.58, 0.67, 0.6, 1)
+light_energy = 0.52
+omni_range = 20.0
+shadow_enabled = false
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.780869, -0.329056, 0.5307, 0, 0.849892, 0.526957, -0.624695, -0.411507, 0.663659, 8, 7, 10)
+current = true
+projection = 1
+size = 9.0
+
+[node name="ToonSurface" type="MeshInstance3D" parent="."]
+position = Vector3(-2.8, 1, 0)
+mesh = SubResource("BoxMesh_toon")
+material_override = ExtResource("1_toon")
+
+[node name="GroundMoss" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0, 1.8)
+mesh = SubResource("CylinderMesh_ground")
+material_override = ExtResource("2_ground")
+
+[node name="GroundPath" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.08, -1.2)
+scale = Vector3(0.65, 1, 1.35)
+mesh = SubResource("CylinderMesh_ground")
+material_override = ExtResource("3_path")
+
+[node name="Water" type="MeshInstance3D" parent="."]
+position = Vector3(3.2, 0.11, 1.1)
+mesh = SubResource("CylinderMesh_water")
+material_override = ExtResource("4_water")
+
+[node name="Foliage" type="MeshInstance3D" parent="."]
+position = Vector3(-0.4, 1.65, -2.3)
+mesh = SubResource("SphereMesh_foliage")
+material_override = ExtResource("5_foliage")
+
+[node name="RewardBase" type="MeshInstance3D" parent="."]
+position = Vector3(3.3, 0.7, -2)
+mesh = SubResource("SphereMesh_reward")
+material_override = SubResource("StandardMaterial_reward")
+
+[node name="RewardGlowShell" type="MeshInstance3D" parent="RewardBase"]
+mesh = SubResource("SphereMesh_reward")
+material_override = ExtResource("6_glow")

@@ -10,19 +10,24 @@ Stardew-sized character walking between thumbnail buildings.
 ## Working unit
 
 One Godot world unit is treated as approximately one metre for gameplay
-reasoning. The current orthographic camera is 18 units tall, and expedition
-floors are 44 × 32 units. The player movement envelope is ±20 units on X and
-±15 units on Z; saved expedition anchors use the same limits.
+reasoning. The current orthographic Sanctuary camera is 14.5 units tall at a
+43.3° downward pitch with a diagonal southeast yaw; expedition floors use a
+15.2-unit camera. Sanctuary's dressed ground is 80 × 60 units, and expedition
+floors are 44 × 32 units. The Sanctuary build field is x `-13..13`, z
+`-13..13`; structures claim 4×4 to 7×5 cells so a workshop reads as a real
+small building, not a thumbnail. The player movement envelope is ±20 units on
+X and ±15 units on Z; saved expedition anchors use the same limits.
 
 | Element | Current contract | Direction for final scenes |
 | --- | ---: | ---: |
 | Player collision height | 1.7 m | 1.7–1.9 m |
+| Player visible art height | 2.0 m | 1.9–2.1 m, feet-anchored |
 | Player interaction radius | about 2.35 m | 2.0–2.5 m, contextual |
 | Player movement speed | 5.2 m/s | 4.5–5.5 m/s, tuned per biome |
 | Route gate approach | 4–5 m pad | readable approach plus sightline |
 | Small resource node | 0.5–1.5 m silhouette | hand-sized contact point with clear staging |
 | Tree / large prop | 3–5 m silhouette | blocks sightlines and shapes lanes |
-| Small building footprint | 2–4 m cells | walkable entrance and service side |
+| Small building footprint | 4–7 m cells | walkable entrance and service side |
 | Expedition traversal | authored topology metadata ≥50 m in Whisperwood | 60–90 seconds including beats and actions |
 
 ## Spatial rules

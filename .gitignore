@@ -2,3 +2,11 @@
 .DS_Store
 export/
 exports/
+
+# The Quaternius source archive is the provenance record. Runtime imports use
+# the checked-in FBX subset; source-authoring formats are intentionally kept
+# out of the repository to avoid duplicating the same meshes.
+assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/Blends/
+assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/OBJ/
+assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Props/Blends/
+assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Props/OBJ/
