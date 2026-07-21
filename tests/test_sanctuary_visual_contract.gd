@@ -16,16 +16,16 @@ const MIN_LAYOUT_OCCUPIED_CELL_DIFFERENCE := 12
 const CARDINAL_FACINGS := ["north", "east", "south", "west"]
 const REQUIRED_CONSTRUCTION_PHASES := ["foundation", "frame", "walls", "roof", "fittings"]
 const PLAYER_LAYOUT_A := [
-	{"kind": "workshop", "cell": Vector2i(-13, 8), "rotation": 0},
-	{"kind": "archive", "cell": Vector2i(4, 8), "rotation": 0},
-	{"kind": "rain_cistern", "cell": Vector2i(10, -13), "rotation": 0},
-	{"kind": "storage_shed", "cell": Vector2i(2, -13), "rotation": 0},
+	{"kind": "workshop", "cell": Vector2i(3, 9), "rotation": 0},
+	{"kind": "archive", "cell": Vector2i(-7, 8), "rotation": 0},
+	{"kind": "rain_cistern", "cell": Vector2i(-12, -13), "rotation": 0},
+	{"kind": "storage_shed", "cell": Vector2i(9, -13), "rotation": 0},
 ]
 const PLAYER_LAYOUT_B := [
-	{"kind": "workshop", "cell": Vector2i(4, 8), "rotation": 0},
-	{"kind": "archive", "cell": Vector2i(-13, 8), "rotation": 0},
+	{"kind": "workshop", "cell": Vector2i(-9, 8), "rotation": 0},
+	{"kind": "archive", "cell": Vector2i(2, -13), "rotation": 3},
 	{"kind": "rain_cistern", "cell": Vector2i(10, -13), "rotation": 0},
-	{"kind": "storage_shed", "cell": Vector2i(2, -13), "rotation": 0},
+	{"kind": "storage_shed", "cell": Vector2i(4, 8), "rotation": 0},
 ]
 
 var failures: Array[String] = []
@@ -411,6 +411,7 @@ func _check_quarter_turn_variants(
 		return
 	var variants := value as Array
 	var local_asset_ids := {}
+	var local_asset_paths := {}
 	var local_variant_ids := {}
 	var facings := {}
 	for quarter_turn in 4:
@@ -435,6 +436,11 @@ func _check_quarter_turn_variants(
 			local_asset_ids[variant_asset_id] = true
 			global_variant_ids[variant_asset_id] = "%s r%d" % [kind, quarter_turn]
 			_check(variant_asset_id.begins_with(base_asset_id + "/"), "%s quarter-turn %d asset must live under its unique base asset namespace" % [kind, quarter_turn])
+		var variant_asset_path := str(variant.get("asset_path", ""))
+		if _check(not variant_asset_path.is_empty(), "%s quarter-turn %d needs a production asset path" % [kind, quarter_turn]):
+			_check(ResourceLoader.exists(variant_asset_path), "%s quarter-turn %d production asset path must resolve" % [kind, quarter_turn])
+			_check(not local_asset_paths.has(variant_asset_path), "%s quarter-turn %d must not reuse its directional texture" % [kind, quarter_turn])
+			local_asset_paths[variant_asset_path] = true
 		var variant_id := str(variant.get("variant_id", ""))
 		if _check(not variant_id.is_empty(), "%s quarter-turn %d needs a stable variant id" % [kind, quarter_turn]):
 			_check(not local_variant_ids.has(variant_id), "%s quarter-turn variant id '%s' must be unique" % [kind, variant_id])
@@ -446,6 +452,7 @@ func _check_quarter_turn_variants(
 		_check(catalog_variant == variant, "%s quarter-turn %d catalog lookup must return the authored variant" % [kind, quarter_turn])
 		_check(AssetCatalog.structure_variant_asset_id(kind, quarter_turn) == variant_asset_id, "%s quarter-turn %d asset lookup must preserve identity" % [kind, quarter_turn])
 	_check(local_asset_ids.size() == 4, "%s must use four distinct directional assets" % kind)
+	_check(local_asset_paths.size() == 4, "%s must use four distinct directional textures" % kind)
 	_check(local_variant_ids.size() == 4, "%s must use four distinct directional variant ids" % kind)
 	_check(facings.size() == 4, "%s directional variants must cover all four quarter-turn facings" % kind)
 
@@ -786,6 +793,24 @@ func _check_canonical_landmark_contract(world: Node) -> void:
 	var district := world.get("sanctuary_district") as Node3D
 	if not _check(style != null and district != null, "Sanctuary landmark layers require style and district roots"):
 		return
+	_check(style.visible, "Sanctuary illustrated style must be the visible presentation root")
+	_check(not district.is_visible_in_tree(), "legacy Sanctuary district must stay hidden behind A+C art")
+	for legacy_name in ["WorkshopStation", "ArchiveStation", "SanctuaryFarmPlot", "CloverLivestockPen"]:
+		var legacy_root := world.get_node_or_null("Sanctuary/%s" % legacy_name) as Node3D
+		if legacy_root != null:
+			var visible_legacy_render := false
+			for mesh_value in legacy_root.find_children("*", "MeshInstance3D", true, false):
+				var mesh := mesh_value as MeshInstance3D
+				if mesh == null or not mesh.is_visible_in_tree():
+					continue
+				# Clover's resident and sourced cow are gameplay actors, not the
+				# replaced paddock shell presentation.
+				var path := str(mesh.get_path())
+				if legacy_name == "CloverLivestockPen" and (path.contains("/Clover/") or path.contains("/SourcedPaddockCow/")):
+					continue
+				visible_legacy_render = true
+				break
+			_check(not visible_legacy_render, "%s legacy render geometry must stay hidden behind A+C art" % legacy_name)
 	var landmark_root := style.get_node_or_null("CanonicalLandmarks") as Node3D
 	if not _check(landmark_root != null, "Sanctuary must expose a canonical landmark root"):
 		return
@@ -808,15 +833,16 @@ func _check_canonical_landmark_contract(world: Node) -> void:
 		_check(str(shell.get_meta("asset_id", "")) == str(visual_root.get_meta("asset_id", "")), "%s shell and visible root must share the asset id" % landmark_id)
 		_check(shell.get_meta("visible_root", null) == visual_root, "%s shell must point to its visible root" % landmark_id)
 		_check(shell.get_meta("access_zones", []) == visual_root.get_meta("access_zones", []), "%s shell and visible root must share access zones" % landmark_id)
-		var sourced_asset := visual_root.get_node_or_null("SourcedLandmarkAsset") as Node3D
-		_check(sourced_asset != null and sourced_asset.is_visible_in_tree(), "%s must expose its sourced building asset" % landmark_id)
-		var visible_mesh_count := 0
+		var sourced_asset := visual_root.get_meta("source_measurement_node", null) as Node3D
+		_check(sourced_asset != null, "%s must retain its sourced measurement asset" % landmark_id)
 		if sourced_asset != null:
-			for mesh_value in sourced_asset.find_children("*", "MeshInstance3D", true, false):
-				var mesh := mesh_value as MeshInstance3D
-				if mesh != null and mesh.is_visible_in_tree():
-					visible_mesh_count += 1
-		_check(visible_mesh_count > 0, "%s sourced asset must expose visible building geometry" % landmark_id)
+			_check(not sourced_asset.is_visible_in_tree(), "%s sourced asset must stay hidden behind generated A+C art" % landmark_id)
+		var generated_art := visual_root.get_node_or_null("GeneratedAPlusCLandmark") as Sprite3D
+		_check(generated_art != null and generated_art.is_visible_in_tree(), "%s must expose its generated A+C presentation" % landmark_id)
+		_check(str(visual_root.get_meta("presentation_authority", "")) == "generated_a_plus_c", "%s must declare generated A+C as presentation authority" % landmark_id)
+		if generated_art != null:
+			_check(bool(generated_art.get_meta("canonical_landmark_art", false)), "%s generated presentation must be canonical landmark art" % landmark_id)
+			_check(generated_art.get_meta("visual_size", []).size() >= 2, "%s generated presentation must expose measured visual size" % landmark_id)
 		var collision_shapes := shell.find_children("*", "CollisionShape3D", true, false)
 		_check(not collision_shapes.is_empty(), "%s shell must expose collision shapes" % landmark_id)
 		for collision_value in collision_shapes:
@@ -889,7 +915,7 @@ func _exercise_player_authored_layout(world: Node, session: Node, layout_id: Str
 		_approx(visual.position.x, expected_center.x, "%s %s visual center x" % [layout_id, kind])
 		_approx(visual.position.z, expected_center.z, "%s %s visual center z" % [layout_id, kind])
 		var asset_definition := AssetCatalog.structure_definition(kind)
-		var world_collision := _collision_size_from_authored_footprint(asset_definition, expected_footprint, kind)
+		var world_collision := _collision_size_from_authored_footprint(asset_definition, authored_footprint, kind, rotation)
 		_array_float_pair_matches(visual.get_meta("collision_footprint", []), Vector2(world_collision.x, world_collision.z), "%s %s collision footprint" % [layout_id, kind])
 		var state_sprite := _check_state_sprite(visual, "%s %s blueprint" % [layout_id, kind])
 		_check_structure_sprite_binding(visual, state_sprite, kind, "blueprint", "state", "%s %s blueprint sprite" % [layout_id, kind])
@@ -957,6 +983,17 @@ func _check_stage_presentation(visual: Node3D, label: String, expected_state: St
 	var state_sprite := _check_state_sprite(visual, label)
 	_check_structure_sprite_binding(visual, state_sprite, TEST_KIND, expected_state, "state", "%s state sprite" % label)
 	_check_role_count(visual, "IllustratedPlotBase", 1, "%s plot base" % label)
+	var structure_kind := str(visual.get_meta("structure_kind", TEST_KIND))
+	var directional_art_required := bool(AssetCatalog.structure_definition(structure_kind).get("directional_art_required", false))
+	if directional_art_required:
+		# A production directional family owns the complete construction silhouette
+		# in its state sprite. Reintroducing the legacy sheet-based partial layers
+		# would double-render the shed and make the stage drift from its measured
+		# alpha envelope.
+		_check_role_count(visual, "IllustratedPartialWalls", 0, "%s directional partial walls" % label)
+		_check_role_count(visual, "IllustratedPartialRoof", 0, "%s directional partial roof" % label)
+		_check(state_sprite != null and not str(state_sprite.get_meta("directional_asset_path", "")).is_empty(), "%s directional family must expose its authored state asset" % label)
+		return state_sprite
 	var wall_node := _check_role_count(visual, "IllustratedPartialWalls", wall_layers, "%s partial walls" % label)
 	if wall_node != null:
 		var wall_sprite := wall_node as Sprite3D

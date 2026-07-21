@@ -30,31 +30,38 @@ const MIN_LAYOUT_MEAN_COLOR_DELTA := 0.02
 const LAYOUT_PIXEL_SAMPLE_STEP := 4
 const SCRATCH_SAVE_SLOT := "qa_sanctuary_stage_capture"
 const STAGE_INSTANCE_ID := "qa_sanctuary_stage_workshop"
-const STAGE_KIND := "workshop"
+const DEFAULT_STAGE_KIND := "workshop"
 const CAMERA_OFFSET := Vector3(13.5, 18.0, 13.5)
 const CAMERA_LOOK_OFFSET := Vector3(0.0, 0.2, 0.0)
 const PLAYER_LAYOUT_A := [
-	{"kind": "workshop", "cell": Vector2i(-13, 8), "rotation": 0},
-	{"kind": "archive", "cell": Vector2i(4, 8), "rotation": 0},
-	{"kind": "rain_cistern", "cell": Vector2i(10, -13), "rotation": 0},
-	{"kind": "storage_shed", "cell": Vector2i(2, -13), "rotation": 0},
+	{"kind": "workshop", "cell": Vector2i(3, 9), "rotation": 0},
+	{"kind": "archive", "cell": Vector2i(-7, 8), "rotation": 0},
+	{"kind": "rain_cistern", "cell": Vector2i(-12, -13), "rotation": 0},
+	{"kind": "storage_shed", "cell": Vector2i(9, -13), "rotation": 0},
 ]
 const PLAYER_LAYOUT_B := [
-	{"kind": "workshop", "cell": Vector2i(4, 8), "rotation": 0},
-	{"kind": "archive", "cell": Vector2i(-13, 8), "rotation": 0},
+	# This is intentionally a different player-authored claim, not a swap of two
+	# instances at identical cells. It keeps the same four facilities while
+	# proving that placement and orientation materially change the rendered yard.
+	{"kind": "workshop", "cell": Vector2i(-9, 8), "rotation": 0},
+	{"kind": "archive", "cell": Vector2i(2, -13), "rotation": 3},
 	{"kind": "rain_cistern", "cell": Vector2i(10, -13), "rotation": 0},
-	{"kind": "storage_shed", "cell": Vector2i(2, -13), "rotation": 0},
+	{"kind": "storage_shed", "cell": Vector2i(4, 8), "rotation": 0},
 ]
 
 var capture_viewport: SubViewport
 var world: Node
 var output_directory := ""
+var stage_kind := DEFAULT_STAGE_KIND
 var stage_origin := Vector2i(2, 0)
 
 func _init() -> void:
 	call_deferred("_capture")
 
 func _capture() -> void:
+	var requested_stage_kind := OS.get_environment("SANCTUARY_STAGE_KIND")
+	if not requested_stage_kind.is_empty():
+		stage_kind = requested_stage_kind
 	output_directory = _resolve_output_directory()
 	if not _ensure_output_directory():
 		_abort("Could not create SANCTUARY_STAGE_CAPTURE_DIR: %s" % output_directory)
@@ -92,7 +99,7 @@ func _capture() -> void:
 	if not await _prepare_capture_world():
 		return
 	print("SANCTUARY_STAGE_CAPTURE_ASSUMPTION HUD hidden for world-proof PNGs")
-	print("SANCTUARY_STAGE_CAPTURE_ASSUMPTION stage is a player-placeable workshop at origin ", stage_origin, " with rotation 0")
+	print("SANCTUARY_STAGE_CAPTURE_ASSUMPTION stage is a player-placeable ", stage_kind, " at origin ", stage_origin, " with rotation 0")
 	print("SANCTUARY_STAGE_CAPTURE_ASSUMPTION camera uses Main's authored orthographic offset ", CAMERA_OFFSET)
 
 	# The captures are world-proof images rather than UI screenshots. The HUD is
@@ -155,7 +162,13 @@ func _prepare_capture_world() -> bool:
 	session.set("hour", 10.0)
 	session.set("weather", "clear")
 	session.set("structures", {})
-	session.set("blueprints", [])
+	var required_blueprint := str(ContentRegistry.structure_definition(stage_kind).get("requires_blueprint", ""))
+	var capture_blueprints := session.get("blueprints") as Array
+	if capture_blueprints != null:
+		capture_blueprints.clear()
+		if not required_blueprint.is_empty():
+			capture_blueprints.append(required_blueprint)
+	print("SANCTUARY_STAGE_CAPTURE_DIAGNOSTIC blueprint=", session.call("has_structure_blueprint", stage_kind), " required=", required_blueprint)
 	session.set("station_job", {"kind": "none", "remaining_hours": 0.0, "output_id": "plank", "output": 0})
 	session.set("research_job", {"status": "idle", "discovery_id": "", "ready_day": 0})
 	session.set("expedition_run", {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "started_day": 0, "anchor": [0.0, 1.0, 7.5]})
@@ -177,8 +190,8 @@ func _prepare_capture_world() -> bool:
 	player.global_position = Vector3(0.0, 1.0, 4.0)
 
 	stage_origin = _find_valid_stage_origin(session)
-	if not bool(session.call("can_place_structure", STAGE_KIND, [stage_origin.x, stage_origin.y], 0)):
-		_abort("Could not find a valid deterministic %s capture origin" % STAGE_KIND)
+	if not bool(session.call("can_place_structure", stage_kind, [stage_origin.x, stage_origin.y], 0)):
+		_abort("Could not find a valid deterministic %s capture origin" % stage_kind)
 		return false
 
 	# Let Main settle once more after the in-memory reset before freezing the
@@ -215,10 +228,10 @@ func _capture_placement_preview() -> bool:
 	# _preview_structure_cell() treats the player's facing direction as the
 	# placement ray. Put the player three metres behind the candidate origin so
 	# the preview is a valid, readable, non-overlapping workshop footprint.
-	world.set("placement_structure_id", STAGE_KIND)
+	world.set("placement_structure_id", stage_kind)
 	world.set("placement_rotation_quarter_turns", 0)
 	world.set("placement_mode", true)
-	var preview_footprint_data: Array = ContentRegistry.structure_definition(STAGE_KIND).get("footprint", [1, 1])
+	var preview_footprint_data: Array = ContentRegistry.structure_definition(stage_kind).get("footprint", [1, 1])
 	var preview_footprint := Vector2i(int(preview_footprint_data[0]), int(preview_footprint_data[1]))
 	var preview_distance := 3.0 + float(maxi(preview_footprint.x, preview_footprint.y) - 2)
 	player.global_position = Vector3(float(stage_origin.x), 1.0, float(stage_origin.y) - preview_distance)
@@ -253,7 +266,7 @@ func _capture_structure_stage(file_name: String, state: String, remaining_hours:
 	_clear_structure_visuals()
 	var stage_data := {
 		"id": STAGE_INSTANCE_ID,
-		"kind": STAGE_KIND,
+		"kind": stage_kind,
 		"cell": [stage_origin.x, stage_origin.y],
 		"rotation": 0,
 		"state": state,
@@ -262,7 +275,7 @@ func _capture_structure_stage(file_name: String, state: String, remaining_hours:
 		"delivered_materials": delivered.duplicate(true),
 	}
 	world.call("_spawn_structure_visual", STAGE_INSTANCE_ID, stage_data)
-	var footprint_data: Array = ContentRegistry.structure_definition(STAGE_KIND).get("footprint", [1, 1])
+	var footprint_data: Array = ContentRegistry.structure_definition(stage_kind).get("footprint", [1, 1])
 	var footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
 	var stage_distance := 3.0 + float(maxi(footprint.x, footprint.y) - 2)
 	player.global_position = Vector3(float(stage_origin.x), 1.0, float(stage_origin.y) - stage_distance)
@@ -535,7 +548,7 @@ func _capture_player_authored_layout(layout_id: String, file_name: String, layou
 	var camera := world.get("camera") as Camera3D
 	var previous_camera_size := camera.size if camera != null else 14.5
 	if camera != null:
-		camera.size = 20.0
+		camera.size = 26.0
 	player.global_position = _layout_player_position(focus, occupied_cells)
 	_set_camera_focus(focus)
 	await _settle_and_pause()
@@ -963,10 +976,10 @@ func _player_rendered_pixel_count(visible_image: Image, player: CharacterBody3D,
 	# display-backed SubViewport two render frames to retire the previous shadow
 	# map before sampling the hidden comparison; a single process frame can still
 	# return the old shadowed image on Metal.
-	await _wait_frames(2)
+	await _wait_frames(5)
 	var hidden_image := _current_render_image("hidden-player comparison %d" % sample_index)
 	visual.visible = true
-	await _wait_frames(2)
+	await _wait_frames(5)
 	if hidden_image == null:
 		return -1
 
@@ -1034,13 +1047,13 @@ func _find_valid_stage_origin(session: Node) -> Vector2i:
 	# Prefer the open central build field so the camera can show the player and
 	# the full footprint at the same 1-unit-per-metre scale. Fall back to the
 	# complete authoritative bounds rather than guessing around fixed landmarks.
-	for candidate in [Vector2i(2, 0), Vector2i(2, 3), Vector2i(3, -1), Vector2i(-4, 0), Vector2i(4, -1)]:
-		if bool(session.call("can_place_structure", STAGE_KIND, [candidate.x, candidate.y], 0)):
+	for candidate in [Vector2i(4, 8), Vector2i(8, -12), Vector2i(-12, -12), Vector2i(2, 0), Vector2i(2, 3), Vector2i(3, -1), Vector2i(-4, 0), Vector2i(4, -1), Vector2i(2, 10), Vector2i(8, 8), Vector2i(-12, 10), Vector2i(-8, 10), Vector2i(8, -11), Vector2i(-7, -12)]:
+		if bool(session.call("can_place_structure", stage_kind, [candidate.x, candidate.y], 0)):
 			return candidate
 	for z in range(SettlementGrid.MIN_Z, SettlementGrid.MAX_Z + 1):
 		for x in range(SettlementGrid.MIN_X, SettlementGrid.MAX_X + 1):
 			var candidate := Vector2i(x, z)
-			if bool(session.call("can_place_structure", STAGE_KIND, [x, z], 0)):
+			if bool(session.call("can_place_structure", stage_kind, [x, z], 0)):
 				return candidate
 	return Vector2i(9999, 9999)
 

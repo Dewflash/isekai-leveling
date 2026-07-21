@@ -13,6 +13,7 @@ extends RefCounted
 const ContentRegistry := preload("res://scripts/content_registry.gd")
 const AssetCatalog := preload("res://scripts/sanctuary_asset_catalog.gd")
 const FIT_MARGIN_METERS := 0.14
+const MIN_MEASURED_CLAIM_FILL_RATIO := 0.90
 
 static var _raw_cache: Dictionary = {}
 static var _fit_cache: Dictionary = {}
@@ -77,6 +78,16 @@ static func structure_measurement(kind: String, footprint: Vector2i) -> Dictiona
 		-(fitted_min.z + fitted_max.z) * 0.5
 	)
 	var fitted_bounds := AABB(fitted_min + local_offset, fitted_size)
+	var horizontal_fit_ratio := Vector2(fitted_bounds.size.x / target_width, fitted_bounds.size.z / target_depth)
+	if bool(definition.get("require_measured_claim_fill", false)) and (horizontal_fit_ratio.x < MIN_MEASURED_CLAIM_FILL_RATIO or horizontal_fit_ratio.y < MIN_MEASURED_CLAIM_FILL_RATIO):
+		var underfilled := _invalid_measurement(scene_path, "measured_claim_underfilled")
+		underfilled["kind"] = kind
+		underfilled["footprint"] = [footprint.x, footprint.y]
+		underfilled["raw_bounds"] = raw_bounds
+		underfilled["raw_size"] = raw_size
+		underfilled["horizontal_fit_ratio"] = horizontal_fit_ratio
+		_fit_cache[cache_key] = underfilled.duplicate(true)
+		return underfilled.duplicate(true)
 	var result := {
 		"valid": true,
 		"kind": kind,
@@ -89,7 +100,7 @@ static func structure_measurement(kind: String, footprint: Vector2i) -> Dictiona
 		"fitted_bounds": fitted_bounds,
 		"fitted_size": fitted_bounds.size,
 		"footprint": [footprint.x, footprint.y],
-		"horizontal_fit_ratio": Vector2(fitted_bounds.size.x / target_width, fitted_bounds.size.z / target_depth),
+		"horizontal_fit_ratio": horizontal_fit_ratio,
 	}
 	_fit_cache[cache_key] = result.duplicate(true)
 	return result.duplicate(true)
@@ -164,6 +175,47 @@ static func measure_runtime_node_local(root: Node, name_tokens: Array = [], incl
 	measurement["source_path"] = str(root.get_meta("source_asset", root.get_meta("asset_id", root.name)))
 	measurement["measurement_source"] = "runtime_visible_mesh_bounds_local"
 	return measurement
+
+## Measure only runtime mesh contributors carrying a semantic metadata flag.
+## Rendering profile and collision contribution are intentionally separate: a
+## surface may use the toon shader without becoming a movement blocker, and a
+## collision contributor may be a neutral physical prop. The returned AABB is in
+## the root node's local space so a collider can be fitted from the visible
+## geometry without reusing authored placeholder dimensions.
+static func measure_runtime_meshes_by_meta(root: Node, meta_name: String, expected_value := true, include_hidden := false) -> Dictionary:
+	if root == null or meta_name.is_empty():
+		return _invalid_measurement(str(root.name) if root != null else "", "invalid_runtime_meta_query")
+	var root_inverse := (root as Node3D).global_transform.affine_inverse() if root is Node3D else Transform3D.IDENTITY
+	var result := AABB()
+	var found := false
+	var mesh_count := 0
+	for value in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_node := value as MeshInstance3D
+		if mesh_node == null or mesh_node.mesh == null:
+			continue
+		if not include_hidden and not mesh_node.visible:
+			continue
+		if bool(mesh_node.get_meta(meta_name, not expected_value)) != expected_value:
+			continue
+		var mesh_bounds := mesh_node.get_aabb()
+		if mesh_bounds.size.x <= 0.001 or mesh_bounds.size.y <= 0.001 or mesh_bounds.size.z <= 0.001:
+			continue
+		var transform := root_inverse * mesh_node.global_transform
+		for corner in _aabb_corners(mesh_bounds):
+			var local_corner: Vector3 = transform * corner
+			if not found:
+				result = AABB(local_corner, Vector3.ZERO)
+				found = true
+			else:
+				result = result.expand(local_corner)
+		mesh_count += 1
+	var valid := found and result.size.x > 0.001 and result.size.y > 0.001 and result.size.z > 0.001
+	return {
+		"valid": valid,
+		"bounds": result,
+		"mesh_count": mesh_count,
+		"measurement_source": "runtime_visible_mesh_meta_bounds" if valid else "runtime_mesh_not_found",
+	}
 
 static func _front_segments(bounds: AABB, door: Dictionary, wall_thickness: float, height: float) -> Array:
 	var front_z := bounds.end.z - wall_thickness * 0.5

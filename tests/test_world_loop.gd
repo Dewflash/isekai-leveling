@@ -53,12 +53,13 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	# generated 2.5D asset is the player-facing operational silhouette.
 	assert(not (workshop_visual.get_node("FinishedSourceBuilding") as Node3D).visible)
 	assert(not (storage_visual.get_node("FinishedSourceBuilding") as Node3D).visible)
-	assert(str(workshop_visual.get_meta("operational_art_source", "")) == "generated_player_structure")
-	assert(str(storage_visual.get_meta("operational_art_source", "")) == "generated_player_structure")
+	assert(str(workshop_visual.get_meta("operational_art_source", "")) == "generated_player_structure_directional")
+	assert(str(storage_visual.get_meta("operational_art_source", "")) == "generated_player_structure_directional")
 	assert(not (workshop_visual.get_node("FinishedWalls") as Node3D).visible)
 	var operational_art := workshop_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") as Sprite3D
 	assert(operational_art != null and operational_art.visible)
-	assert(str(operational_art.get_meta("asset_id", "")).begins_with("settlement_props/player_structure/"))
+	assert(str(operational_art.get_meta("asset_id", "")).begins_with("sanctuary/player_structures/workshop/operational/"))
+	assert(operational_art.get_meta("directional_asset_path", "") == "res://assets/generated/sanctuary/workshop/workshop-q0.png")
 	var staged_id := "qa_construction_stages"
 	var blueprint_data := {"id": staged_id, "kind": "storage_shed", "cell": [28, 20], "state": "blueprint", "remaining_hours": 24.0, "total_hours": 24.0, "delivered_materials": {}}
 	world.call("_spawn_structure_visual", staged_id, blueprint_data)
@@ -78,11 +79,13 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	building_data["remaining_hours"] = 10.0
 	world.call("_spawn_structure_visual", staged_id, building_data)
 	staged_visual = visuals.get(staged_id) as Node3D
-	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedPartialWalls") != null)
+	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") != null)
+	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedPartialWalls") == null)
 	building_data["remaining_hours"] = 4.0
 	world.call("_spawn_structure_visual", staged_id, building_data)
 	staged_visual = visuals.get(staged_id) as Node3D
-	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedPartialRoof") != null)
+	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") != null)
+	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedPartialRoof") == null)
 	var pulley := storage_visual.get_node_or_null("StructureUtility/StorageLoadingFrame/StoragePulleyWheel") as MeshInstance3D
 	assert(pulley != null)
 	var workshop_roof := workshop_visual.get_node("CisternRoof") as MeshInstance3D

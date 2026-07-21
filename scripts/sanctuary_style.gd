@@ -11,6 +11,9 @@ const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd"
 const PROP_SHEET_PATH := "res://assets/generated/sanctuary/settlement-props-sheet.png"
 const ENVIRONMENT_SHEET_PATH := "res://assets/generated/sanctuary/environment-sheet.png"
 const PLAYER_STRUCTURE_SHEET_PATH := "res://assets/generated/sanctuary/player-structures-sheet.png"
+const GROUND_MOSS_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_moss.tres"
+const GROUND_PATH_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_path.tres"
+const STRUCTURE_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
 const CELL_SIZE := 512.0
 const CELL_INSET := 7.0
 const CELL_EXTENT := 498.0
@@ -126,6 +129,9 @@ var source_district: Node3D
 var prop_sheet: Texture2D
 var environment_sheet: Texture2D
 var player_structure_sheet: Texture2D
+var ground_moss_material: ShaderMaterial
+var ground_path_material: ShaderMaterial
+var structure_sprite_material: ShaderMaterial
 var grid_root: Node3D
 var preview_root: Node3D
 var preview_fill: MeshInstance3D
@@ -141,6 +147,7 @@ var pulsing_nodes: Array[Dictionary] = []
 var fire_lights: Array[Dictionary] = []
 var resource_visual_roots: Array[Node3D] = []
 var canonical_landmark_roots: Dictionary = {}
+var key_light_direction := Vector3(-0.42, 0.84, 0.34)
 var build_sprite_regions := {
 	"scaffold": 0,
 	"workshop": 1,
@@ -161,6 +168,9 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 	prop_sheet = load(PROP_SHEET_PATH) as Texture2D
 	environment_sheet = load(ENVIRONMENT_SHEET_PATH) as Texture2D
 	player_structure_sheet = load(PLAYER_STRUCTURE_SHEET_PATH) as Texture2D
+	ground_moss_material = load(GROUND_MOSS_MATERIAL_PATH) as ShaderMaterial
+	ground_path_material = load(GROUND_PATH_MATERIAL_PATH) as ShaderMaterial
+	structure_sprite_material = load(STRUCTURE_SPRITE_MATERIAL_PATH) as ShaderMaterial
 	_hide_replaced_presentation(legacy_nodes)
 	_hide_furnace_presentation()
 	if source_district != null:
@@ -169,6 +179,7 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 		# meshes are replaced by this authored 2.5D layer.
 		source_district.visible = false
 	_build_soft_ground()
+	_build_forest_backdrop()
 	_build_paths()
 	_build_open_build_field()
 	_build_story_campfire()
@@ -177,8 +188,21 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 	_build_route_markers()
 	_build_ambient_lights()
 
+func set_key_light_direction(direction: Vector3) -> void:
+	if direction.length_squared() < 0.001:
+		return
+	key_light_direction = direction.normalized()
+	if structure_sprite_material != null:
+		structure_sprite_material.set_shader_parameter("key_light_direction", key_light_direction)
+	for sprite_value in find_children("*", "Sprite3D", true, false):
+		var sprite := sprite_value as Sprite3D
+		var material := sprite.material_override as ShaderMaterial if sprite != null else null
+		if material != null:
+			material.set_shader_parameter("key_light_direction", key_light_direction)
+
 func _process(delta: float) -> void:
 	elapsed += delta
+	_enforce_a_plus_c_authority()
 	_enforce_resource_visuals()
 	_hide_furnace_presentation()
 	for sway_data in swaying_nodes:
@@ -230,6 +254,27 @@ func _hide_furnace_presentation() -> void:
 	if furnace != null:
 		_hide_render_tree(furnace)
 
+func _enforce_a_plus_c_authority() -> void:
+	# Gameplay refreshes may touch source nodes after a save load, construction
+	# tick, or station update. The generated layer remains the only player-facing
+	# Sanctuary presentation, so keep the legacy district and landmark sources
+	# hidden at the presentation boundary on every frame.
+	if source_district != null:
+		source_district.visible = false
+		_hide_render_tree(source_district)
+	for landmark_id in canonical_landmark_roots:
+		var root := canonical_landmark_roots[landmark_id] as Node3D
+		if root == null or not is_instance_valid(root):
+			continue
+		var source := root.get_meta("source_measurement_node", null) as Node3D
+		if source != null:
+			source.visible = false
+			_hide_render_tree(source)
+		var generated_art := root.get_node_or_null("GeneratedAPlusCLandmark") as Sprite3D
+		if generated_art != null:
+			generated_art.visible = true
+		root.set_meta("presentation_authority", "generated_a_plus_c")
+
 func finalize_legacy_cleanup() -> void:
 	# The systems prototype creates a few static meshes before this director is
 	# attached. Hide those render trees after creation, while preserving resource
@@ -241,7 +286,22 @@ func finalize_legacy_cleanup() -> void:
 	for child in sanctuary_zone.get_children():
 		if child == self or child == source_district:
 			continue
-		if child.name == "SanctuaryGround" or child.name == "CloverLivestockPen":
+		if child.name == "SanctuaryGround":
+			# Keep the large floor body for traversal and save compatibility, but
+			# replace its prototype-green render material. The illustrated ground
+			# islands above it are presentation-only and do not own collision.
+			for ground_mesh_value in child.find_children("*", "MeshInstance3D", true, false):
+				var ground_mesh := ground_mesh_value as MeshInstance3D
+				if ground_mesh == null:
+					continue
+				var backdrop_material := StandardMaterial3D.new()
+				backdrop_material.albedo_color = PALETTE["meadow_deep"]
+				backdrop_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				backdrop_material.roughness = 0.98
+				ground_mesh.material_override = backdrop_material
+				ground_mesh.set_meta("presentation_role", "a_plus_c_collision_backdrop")
+			continue
+		if child.name == "CloverLivestockPen":
 			continue
 		if child.is_in_group("resource_node") or child.is_in_group("route_gate"):
 			_hide_render_tree(child)
@@ -320,6 +380,28 @@ func _build_soft_ground() -> void:
 	]:
 		var edge := _add_rounded_patch(edge_data[0], edge_data[1], PALETTE[str(edge_data[3])], float(edge_data[2]))
 		edge.name = "IrregularMeadowEdge"
+
+func _build_forest_backdrop() -> void:
+	# A+C reads as a settlement carved out of a living forest, not a green
+	# platform floating in empty space. These distant cards are intentionally
+	# non-interactive framing art: they sit beyond the authored build reserve,
+	# never claim settlement cells, and have no physics body. Foreground trees
+	# and rocks continue to use the measured framing contract in the catalog.
+	var backdrop := [
+		[Vector3(-13.8, 0.10, -11.8), 1, 6.0, 0.78],
+		[Vector3(-8.5, 0.10, -13.4), 1, 6.2, 0.72],
+		[Vector3(-2.6, 0.10, -14.0), 0, 5.8, 0.68],
+		[Vector3(3.6, 0.10, -14.0), 1, 5.9, 0.70],
+		[Vector3(9.4, 0.10, -12.9), 2, 6.0, 0.74],
+		[Vector3(14.2, 0.10, -10.5), 1, 5.7, 0.80],
+	]
+	for item in backdrop:
+		var sprite := _add_environment_sprite(int(item[1]), item[0], float(item[2]), float(item[0].x) * 0.08)
+		if sprite == null:
+			continue
+		sprite.name = "APlusCForestBackdrop"
+		sprite.modulate = Color(float(item[3]), float(item[3]) * 1.03, float(item[3]) * 0.92, 1.0)
+		sprite.set_meta("presentation_role", "distant_forest_framing")
 
 func _build_paths() -> void:
 	# Two-to-three-metre traversal lanes use a dark packed-earth shoulder, a
@@ -462,6 +544,11 @@ func _bind_canonical_landmark(parent: Node3D, definition: Dictionary) -> void:
 	root.set_meta("collision_profile_id", str(definition.get("collision_profile_id", "")))
 	root.set_meta("access_zones", zones.duplicate(true))
 	root.set_meta("ground_pivot", [0.0, 0.0, 0.0])
+	# Keep the imported scene available as a hidden provenance/measurement node.
+	# The generated A+C cutout owns visible presentation; this node remains the
+	# authoritative source envelope used to audit the existing shell collision.
+	root.set_meta("source_measurement_node", source)
+	root.set_meta("source_render_policy", "hidden_generated_a_plus_c_presentation")
 	root.set_meta("collision_node", shell)
 	parent.add_child(root)
 	# The district shell is authoritative for the landmark transform. This
@@ -484,21 +571,38 @@ func _bind_canonical_landmark(parent: Node3D, definition: Dictionary) -> void:
 		collision.set_meta("access_zones", zones.duplicate(true))
 		collision.set_meta("visible_root", root)
 
-	var source_asset_path := str(source.get_meta("source_asset", ""))
-	root.set_meta("source_asset", source_asset_path)
-	var source_scene := load(source_asset_path) as PackedScene if not source_asset_path.is_empty() else null
-	if source_scene != null:
-		var visual := source_scene.instantiate() as Node3D
-		if visual != null:
-			visual.name = "SourcedLandmarkAsset"
-			root.add_child(visual)
-			# Preserve only the imported asset's authored local scale/orientation.
-			# The shell remains authoritative for the world-space origin and rotation,
-			# so later district placement changes cannot separate art from collision.
-			var source_relative := shell.global_transform.affine_inverse() * source.global_transform
-			source_relative.origin = Vector3.ZERO
-			visual.transform = source_relative
-			visual.visible = true
+	# The collision shell remains sourced and measured, but the fixed landmark's
+	# visible presentation must speak the same A+C language as player-built
+	# facilities. Re-instantiating the old Quaternius scene here created the
+	# hybrid runtime that made a fresh launch look like the prototype. The
+	# generated cutout is presentation-only; the shell remains authoritative for
+	# interaction and access.
+	var generated_kind := ""
+	var generated_world_size := 6.6
+	match str(definition.get("id", "")):
+		"hearth_lodge":
+			generated_kind = "workshop"
+			generated_world_size = 8.2
+		"archive_house":
+			generated_kind = "archive"
+			generated_world_size = 7.1
+		"wanderers_bazaar":
+			generated_kind = "market"
+			generated_world_size = 5.8
+	var generated_sprite: Sprite3D = null
+	if generated_kind in ["workshop", "archive"]:
+		generated_sprite = _player_structure_hero_sprite(generated_kind, 0, generated_world_size)
+	elif generated_kind == "market":
+		generated_sprite = _add_prop_sprite("market", Vector3.ZERO, generated_world_size, false)
+	if generated_sprite != null:
+		generated_sprite.name = "GeneratedAPlusCLandmark"
+		generated_sprite.reparent(root, false)
+		generated_sprite.position = Vector3.ZERO
+		generated_sprite.rotation = Vector3.ZERO
+		generated_sprite.set_meta("canonical_landmark_art", true)
+		root.set_meta("presentation_mode", "generated_a_plus_c_cutout")
+	else:
+		root.set_meta("presentation_mode", "missing_generated_cutout")
 	# The original source node stays in the district for world-loop compatibility,
 	# but it is never allowed to become a second visible presentation root.
 	source.visible = false
@@ -507,27 +611,21 @@ func _bind_canonical_landmark(parent: Node3D, definition: Dictionary) -> void:
 func _build_environment_framing() -> void:
 	# The environment sheet gives the scene a consistent illustrated silhouette
 	# language instead of mixing flat primitives with imported low-poly trees.
-	for tree_data in [
-		[0, Vector3(-12.5, 0.10, -8.6), 5.5], [1, Vector3(-7.7, 0.10, -10.0), 5.0],
-		[1, Vector3(0.0, 0.10, -10.4), 5.4], [2, Vector3(7.2, 0.10, -9.4), 5.0],
-		[0, Vector3(12.0, 0.10, -7.4), 5.0], [2, Vector3(-12.1, 0.10, 6.9), 4.3],
-		[1, Vector3(12.2, 0.10, 7.4), 4.8], [0, Vector3(-11.7, 0.10, 10.0), 4.6],
-		[2, Vector3(10.5, 0.10, 10.3), 4.2],
-	]:
-		var tree_size := float(tree_data[2])
-		var tree_position: Vector3 = tree_data[1]
-		_add_contact_shadow(self, Vector3(tree_position.x, 0.084, tree_position.z + 0.12), Vector2(tree_size * 0.58, tree_size * 0.22), tree_position.x * 1.7)
-		var tree_sprite := _add_environment_sprite(int(tree_data[0]), tree_position, tree_size, 0.22)
-		_attach_measured_visual_collision(tree_sprite, "tree")
-	for rock_data in [
-		[Vector3(-11.5, 0.10, -3.9), 3.2], [Vector3(11.6, 0.10, -2.6), 2.8],
-		[Vector3(-10.8, 0.10, 8.3), 2.7], [Vector3(10.8, 0.10, 8.8), 2.5],
-	]:
-		var rock_size := float(rock_data[1])
-		var rock_position: Vector3 = rock_data[0]
-		_add_contact_shadow(self, Vector3(rock_position.x, 0.084, rock_position.z + 0.08), Vector2(rock_size * 0.60, rock_size * 0.22), rock_position.z * 2.0)
-		var rock_sprite := _add_environment_sprite(3, rock_position, rock_size, 0.1)
-		_attach_measured_visual_collision(rock_sprite, "rock")
+	for obstacle_value in SanctuaryAssetCatalog.FRAMING_OBSTACLES:
+		if not (obstacle_value is Dictionary):
+			continue
+		var obstacle: Dictionary = obstacle_value
+		var position_data: Array = obstacle.get("position", [])
+		if position_data.size() < 3:
+			continue
+		var obstacle_position := Vector3(float(position_data[0]), float(position_data[1]), float(position_data[2]))
+		var obstacle_size := float(obstacle.get("world_size", 0.0))
+		var sprite_index := int(obstacle.get("sprite_index", 0))
+		var obstacle_kind := str(obstacle.get("kind", ""))
+		var shadow_size := Vector2(obstacle_size * (0.58 if obstacle_kind == "tree" else 0.60), obstacle_size * (0.22 if obstacle_kind == "tree" else 0.22))
+		_add_contact_shadow(self, Vector3(obstacle_position.x, 0.084, obstacle_position.z + (0.12 if obstacle_kind == "tree" else 0.08)), shadow_size, obstacle_position.x * (1.7 if obstacle_kind == "tree" else 0.0) + obstacle_position.z * (0.0 if obstacle_kind == "tree" else 2.0))
+		var obstacle_sprite := _add_environment_sprite(sprite_index, obstacle_position, obstacle_size, 0.22 if obstacle_kind == "tree" else 0.1)
+		_attach_measured_visual_collision(obstacle_sprite, obstacle_kind)
 	_add_contact_shadow(self, Vector3(-11.0, 0.084, 4.9), Vector2(2.2, 0.7), 8.0)
 	_add_environment_sprite(4, Vector3(-11.0, 0.10, 4.8), 3.1, 0.35)
 	_add_contact_shadow(self, Vector3(10.9, 0.084, 4.3), Vector2(2.1, 0.7), -7.0)
@@ -602,7 +700,8 @@ func _fire_sprite_from_sheet(position: Vector3, world_size: float) -> Sprite3D:
 	sprite.axis = Vector3.AXIS_Z
 	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
-	sprite.shaded = false
+	sprite.shaded = true
+	sprite.material_override = _structure_sprite_material(atlas)
 	sprite.no_depth_test = false
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.0
@@ -646,13 +745,125 @@ func _player_structure_sprite_from_sheet(kind: String, world_size: float) -> Spr
 	sprite.axis = Vector3.AXIS_Z
 	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
-	sprite.shaded = false
+	sprite.shaded = true
+	sprite.material_override = _structure_sprite_material(atlas)
 	sprite.no_depth_test = false
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.0
 	_set_sprite_contract_metadata(sprite, profile, opaque_bounds, maxf(0.01, world_size))
 	sprite.set_meta("player_structure_art_kind", kind)
 	sprite.set_meta("player_structure_sheet_cell", sheet_index)
+	add_child(sprite)
+	return sprite
+
+func _structure_sprite_material(texture: Texture2D) -> ShaderMaterial:
+	if structure_sprite_material == null or texture == null:
+		return null
+	var material := structure_sprite_material.duplicate() as ShaderMaterial
+	material.set_shader_parameter("albedo_texture", texture)
+	material.set_shader_parameter("base_color", Color.WHITE)
+	return material
+
+func _player_structure_hero_sprite(kind: String, rotation_quarter_turns: int, world_size: float) -> Sprite3D:
+	# Every production facility uses this measured cutout constructor. Directional
+	# records resolve through the catalog; no sprite is rotated in metadata and no
+	# facility can silently inherit Workshop art.
+	var variant := SanctuaryAssetCatalog.structure_directional_variant(kind, rotation_quarter_turns)
+	var asset_path := str(variant.get("asset_path", ""))
+	if asset_path.is_empty() or not ResourceLoader.exists(asset_path):
+		return null
+	var texture := load(asset_path) as Texture2D
+	if texture == null:
+		return null
+	var image := texture.get_image()
+	if image == null:
+		return null
+	var opaque_bounds := image.get_used_rect()
+	if opaque_bounds.size.x <= 0 or opaque_bounds.size.y <= 0:
+		return null
+	var opaque_width := maxi(1, opaque_bounds.size.x)
+	var opaque_height := maxi(1, opaque_bounds.size.y)
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(0.0, 0.0, float(image.get_width()), float(image.get_height()))
+	atlas.filter_clip = true
+	var sprite := Sprite3D.new()
+	sprite.texture = atlas
+	sprite.centered = false
+	var transparent_bottom := float(maxi(0, image.get_height() - opaque_bounds.position.y - opaque_height))
+	sprite.offset = Vector2(
+		-(float(opaque_bounds.position.x) + float(opaque_width) * 0.5),
+		-transparent_bottom
+	)
+	sprite.pixel_size = maxf(0.01, world_size) / float(opaque_height)
+	sprite.position = Vector3.ZERO
+	sprite.axis = Vector3.AXIS_Z
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	sprite.shaded = true
+	sprite.material_override = _structure_sprite_material(atlas)
+	sprite.no_depth_test = false
+	sprite.sorting_use_aabb_center = false
+	sprite.sorting_offset = 0.0
+	var profile := {
+		"asset_id": str(variant.get("asset_id", "sanctuary/player_structures/%s/operational/q%d" % [kind, posmod(rotation_quarter_turns, 4)])),
+		"footprint_ratio": Vector2(0.92, 0.56),
+		"asset_path": asset_path,
+	}
+	_set_sprite_contract_metadata(sprite, profile, opaque_bounds, maxf(0.01, world_size))
+	sprite.set_meta("player_structure_art_kind", kind)
+	sprite.set_meta("directional_asset_path", asset_path)
+	sprite.set_meta("directional_quarter_turn", posmod(rotation_quarter_turns, 4))
+	sprite.set_meta("directional_family_world_height", maxf(0.01, world_size))
+	sprite.set_meta("opaque_measurement_source", "texture_alpha_used_rect")
+	add_child(sprite)
+	return sprite
+
+func _player_structure_stage_sprite(kind: String, stage_id: String, rotation_quarter_turns: int, world_size: float) -> Sprite3D:
+	var asset_path := SanctuaryAssetCatalog.structure_construction_stage_asset(kind, stage_id, rotation_quarter_turns)
+	if asset_path.is_empty() or not ResourceLoader.exists(asset_path):
+		return null
+	var texture := load(asset_path) as Texture2D
+	if texture == null:
+		return null
+	var image := texture.get_image()
+	if image == null:
+		return null
+	var opaque_bounds := image.get_used_rect()
+	if opaque_bounds.size.x <= 0 or opaque_bounds.size.y <= 0:
+		return null
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(0.0, 0.0, float(image.get_width()), float(image.get_height()))
+	atlas.filter_clip = true
+	var sprite := Sprite3D.new()
+	sprite.texture = atlas
+	sprite.centered = false
+	var opaque_width := maxi(1, opaque_bounds.size.x)
+	var opaque_height := maxi(1, opaque_bounds.size.y)
+	var transparent_bottom := float(maxi(0, image.get_height() - opaque_bounds.position.y - opaque_height))
+	sprite.offset = Vector2(-(float(opaque_bounds.position.x) + float(opaque_width) * 0.5), -transparent_bottom)
+	sprite.pixel_size = maxf(0.01, world_size) / float(opaque_height)
+	sprite.position = Vector3.ZERO
+	sprite.axis = Vector3.AXIS_Z
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	sprite.shaded = true
+	sprite.material_override = _structure_sprite_material(atlas)
+	sprite.no_depth_test = false
+	sprite.sorting_use_aabb_center = false
+	sprite.sorting_offset = 0.0
+	var profile := {
+		"asset_id": "sanctuary/player_structures/%s/construction/%s" % [kind, stage_id],
+		"footprint_ratio": Vector2(0.92, 0.56),
+		"asset_path": asset_path,
+	}
+	_set_sprite_contract_metadata(sprite, profile, opaque_bounds, maxf(0.01, world_size))
+	sprite.set_meta("player_structure_art_kind", kind)
+	sprite.set_meta("construction_stage", stage_id)
+	sprite.set_meta("directional_asset_path", asset_path)
+	sprite.set_meta("opaque_measurement_source", "texture_alpha_used_rect")
+	sprite.set_meta("directional_family_world_height", maxf(0.01, world_size))
 	add_child(sprite)
 	return sprite
 
@@ -849,6 +1060,7 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	# interaction bodies are separate nodes and are never traversed here.
 	var measured_3d_source := structure.get_node_or_null("FinishedSourceBuilding/ImportedBuilding") as Node3D
 	var structure_definition := SanctuaryAssetCatalog.structure_definition(kind)
+	var directional_art_required := bool(structure_definition.get("directional_art_required", false))
 	var use_measured_3d_art := state == "operational" and str(structure_definition.get("operational_art_mode", "illustrated_2_5d")) == "measured_3d" and bool(structure.get_meta("source_measurement_valid", false)) and measured_3d_source != null
 	var use_player_structure_art := state == "operational" and not use_measured_3d_art and player_structure_sheet != null and PLAYER_STRUCTURE_ASSET_PROFILES.has(kind)
 	var hide_names := [
@@ -880,6 +1092,17 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 		utility.visible = state == "operational" and kind != "rain_cistern"
 		_hide_render_tree(utility)
 		utility.set_meta("illustrated_render_descendants_hidden", true)
+	if directional_art_required and (state == "blueprint" or state == "building"):
+		# The authored stage cutout is the complete player-facing silhouette. Keep
+		# legacy construction roots alive for gameplay/QA metadata, but hide their
+		# mesh descendants so beams, slabs, and delivered bundles cannot double-render
+		# beneath the directional asset.
+		for construction_root_name in ["ScaffoldFrame", "ConstructionWalls", "ConstructionRoof", "AdditiveConstructionComponents", "DeliveredLogs", "DeliveredStone", "DeliveredPlanks", "DeliveredFiber"]:
+			var construction_root := structure.get_node_or_null(construction_root_name) as Node3D
+			if construction_root == null:
+				continue
+			_hide_render_tree(construction_root)
+			construction_root.set_meta("directional_stage_render_hidden", true)
 	var sprite_kind := "scaffold"
 	var modulation := Color(0.36, 1.0, 0.94, 0.38)
 	var build_progress := _construction_progress(data) if state == "building" else 0.0
@@ -905,19 +1128,40 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	var structure_footprint := _structure_local_visual_footprint(structure, data, _structure_world_size(kind))
 	var cell_index := int(build_sprite_regions.get(sprite_kind, 0))
 	var sprite: Sprite3D = null
+	var rotation_quarter_turns := int(structure.get_meta("rotation_quarter_turns", 0))
+	var measured_hero_world_size := _measured_hero_world_size(structure, kind, rotation_quarter_turns)
+	var directional_stage_art := false
 	if not use_measured_3d_art:
-		sprite = _player_structure_sprite_from_sheet(kind, _structure_world_size(kind)) if use_player_structure_art else _sprite_from_sheet(prop_sheet, cell_index, Vector3.ZERO, _structure_world_size(kind))
+		if state == "blueprint" or state == "building":
+			var stage_id := "blueprint" if state == "blueprint" else _construction_stage_for_progress(build_progress)
+			var stage_asset_path := SanctuaryAssetCatalog.structure_construction_stage_asset(kind, stage_id, rotation_quarter_turns)
+			var stage_world_size := _measured_stage_family_world_size(structure, kind, stage_id, measured_hero_world_size)
+			sprite = _player_structure_stage_sprite(kind, stage_id, rotation_quarter_turns, stage_world_size)
+			directional_stage_art = sprite != null
+		if sprite == null and use_player_structure_art and not (directional_art_required and (state == "blueprint" or state == "building")):
+			sprite = _player_structure_hero_sprite(kind, rotation_quarter_turns, measured_hero_world_size)
+		if sprite == null and not directional_art_required:
+			sprite = _player_structure_sprite_from_sheet(kind, _structure_world_size(kind))
+		if sprite == null and directional_art_required:
+			structure.set_meta("visual_art_missing", true)
+		else:
+			structure.set_meta("visual_art_missing", false)
+		if sprite == null and not directional_art_required:
+			sprite = _sprite_from_sheet(prop_sheet, cell_index, Vector3.ZERO, _structure_world_size(kind))
 	if sprite != null:
 		sprite.name = "IllustratedStateSprite"
 		sprite.reparent(presentation)
 		sprite.position = Vector3.ZERO
-		sprite.modulate = modulation
+		sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
 		_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
-		if use_player_structure_art:
+		if directional_stage_art:
+			structure.set_meta("operational_art_source", "generated_%s_construction_stage" % kind)
+		elif use_player_structure_art:
 			# The generated cutout is the single opaque operational silhouette. The
 			# imported kit remains instantiated for provenance and future directional
 			# replacement, but its render tree is hidden so the art never double-renders.
-			structure.set_meta("operational_art_source", "generated_player_structure")
+			structure.set_meta("operational_art_source", "generated_player_structure_directional" if sprite.has_meta("directional_asset_path") else "generated_player_structure")
+			structure.set_meta("operational_visual_world_height", measured_hero_world_size)
 		elif state == "operational":
 			structure.set_meta("operational_art_source", "sourced_or_sheet_fallback")
 		else:
@@ -929,7 +1173,9 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 		# are visible instead of hiding geometry behind a billboard.
 		measured_3d_source.visible = true
 		structure.set_meta("operational_art_source", "measured_3d_source")
-	if state == "building":
+	# Required directional families fail closed when a stage asset is missing;
+	# never reintroduce a generic prop-sheet layer behind the missing silhouette.
+	if state == "building" and not directional_stage_art and not directional_art_required:
 		if build_progress >= 0.50:
 			var partial_kind := _finished_sprite_kind(kind)
 			var partial := _sprite_from_sheet(prop_sheet, int(build_sprite_regions.get(partial_kind, 1)), Vector3.ZERO, _structure_world_size(kind))
@@ -967,6 +1213,89 @@ func _finished_sprite_kind(kind: String) -> String:
 func _construction_progress(data: Dictionary) -> float:
 	var total_hours := maxf(1.0, float(data.get("total_hours", 24.0)))
 	return clampf(1.0 - float(data.get("remaining_hours", total_hours)) / total_hours, 0.0, 1.0)
+
+func _construction_stage_for_progress(progress: float) -> String:
+	# Keep the authored directional cutouts synchronized with the authoritative
+	# construction milestones: frame/foundation through the first half, walls
+	# through the wall-complete threshold, and roof for the finishing interval.
+	# The physical material ledger owns these same boundaries; this function only
+	# selects the presentation stage and never changes gameplay progress.
+	if progress < 0.50:
+		return "frame"
+	if progress < 0.76:
+		return "walls"
+	return "roof"
+
+func _measured_hero_world_size(structure: Node3D, kind: String, rotation_quarter_turns: int) -> float:
+	var fallback := _structure_world_size(kind)
+	if structure == null:
+		return fallback
+	var definition := SanctuaryAssetCatalog.structure_definition(kind)
+	var family_size := fallback
+	for variant_value in definition.get("directional_variants", []):
+		if not (variant_value is Dictionary):
+			continue
+		var variant: Dictionary = variant_value
+		family_size = maxf(family_size, _measured_cutout_world_size(structure, kind, str(variant.get("asset_path", "")), fallback))
+	return family_size
+
+func _measured_stage_family_world_size(structure: Node3D, kind: String, stage_id: String, fallback: float) -> float:
+	var definition := SanctuaryAssetCatalog.structure_definition(kind)
+	var directional: Dictionary = definition.get("construction_stage_directional_paths", {})
+	var stage_paths: Dictionary = directional.get(stage_id, {})
+	if stage_paths.is_empty():
+		return _measured_cutout_world_size(structure, kind, SanctuaryAssetCatalog.structure_construction_stage_asset(kind, stage_id, 0), fallback)
+	var family_size := fallback
+	for rotation in [0, 1, 2, 3]:
+		family_size = maxf(family_size, _measured_cutout_world_size(structure, kind, str(stage_paths.get(rotation, "")), fallback))
+	return family_size
+
+func _measured_cutout_world_size(structure: Node3D, kind: String, asset_path: String, fallback: float) -> float:
+	if structure == null or asset_path.is_empty():
+		return fallback
+	var measurement: Dictionary = structure.get_meta("source_measurement", {})
+	var fitted_size: Vector3 = measurement.get("fitted_size", Vector3.ZERO)
+	if fitted_size.x <= 0.01 or fitted_size.y <= 0.01:
+		return fallback
+	var texture := load(asset_path) as Texture2D if not asset_path.is_empty() and ResourceLoader.exists(asset_path) else null
+	if texture == null:
+		return fallback
+	var image := texture.get_image()
+	if image == null:
+		return fallback
+	var opaque_bounds := image.get_used_rect()
+	if opaque_bounds.size.x <= 0 or opaque_bounds.size.y <= 0:
+		return fallback
+	# Fit the visible generated silhouette to the measured physical envelope and
+	# the camera-projected horizontal envelope. A 3/4 cutout represents both
+	# local X and local Z, so width-only fitting can drift outside the shell.
+	var projected_horizontal_extent := _measured_projected_horizontal_extent(structure, fitted_size)
+	var width_limit := projected_horizontal_extent * float(opaque_bounds.size.y) / float(opaque_bounds.size.x)
+	# Width is the controlling envelope for a 3/4 cutout: the visible silhouette
+	# must reach the measured shell's projected horizontal edge or the player will
+	# see empty space where the collision already blocks movement. The height is
+	# the measured source height; a facility family may grow from the widest
+	# directional requirement, but no arbitrary per-view multiplier is allowed.
+	var result := maxf(width_limit, fitted_size.y)
+	return maxf(1.0, result)
+
+func _measured_projected_horizontal_extent(structure: Node3D, fitted_size: Vector3) -> float:
+	var camera := get_viewport().get_camera_3d() if get_viewport() != null else null
+	var camera_right := Vector3(1.0, 0.0, 0.0)
+	if camera != null:
+		camera_right = camera.global_basis.x
+		camera_right.y = 0.0
+		if camera_right.length_squared() > 0.01:
+			camera_right = camera_right.normalized()
+	var world_x := structure.global_basis * Vector3.RIGHT
+	var world_z := structure.global_basis * Vector3.BACK
+	world_x.y = 0.0
+	world_z.y = 0.0
+	if world_x.length_squared() <= 0.01 or world_z.length_squared() <= 0.01:
+		return minf(fitted_size.x, fitted_size.z)
+	world_x = world_x.normalized()
+	world_z = world_z.normalized()
+	return maxf(0.25, absf(world_x.dot(camera_right)) * fitted_size.x + absf(world_z.dot(camera_right)) * fitted_size.z)
 
 func _structure_local_visual_footprint(structure: Node3D, data: Dictionary, fallback_size: float) -> Vector2:
 	# Read the already-authored local collision shape when available. This is a
@@ -1015,9 +1344,9 @@ func _vector3_to_array(value: Variant) -> Array:
 func _add_worn_path_segment(position: Vector3, size: Vector2, rotation_degrees: float, darker := false) -> void:
 	var edge_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path_edge"]
 	var core_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path"]
-	var edge := _add_rounded_patch(position + Vector3(0.0, -0.006, 0.0), size + Vector2(0.44, 0.42), edge_color, rotation_degrees)
+	var edge := _add_rounded_patch(position + Vector3(0.0, -0.006, 0.0), size + Vector2(0.44, 0.42), edge_color, rotation_degrees, true)
 	edge.name = "PackedEarthPathEdge"
-	var core := _add_rounded_patch(position, size, core_color, rotation_degrees)
+	var core := _add_rounded_patch(position, size, core_color, rotation_degrees, true)
 	core.name = "PackedEarthPath"
 
 func _add_contact_shadow(parent: Node3D, position: Vector3, size: Vector2, rotation_degrees: float) -> MeshInstance3D:
@@ -1025,10 +1354,10 @@ func _add_contact_shadow(parent: Node3D, position: Vector3, size: Vector2, rotat
 	# adding bodies or participating in placement/occupancy calculations.
 	return _create_rounded_patch(parent, "IllustratedContactShadow", position, size, PALETTE["contact_shadow"], rotation_degrees)
 
-func _add_rounded_patch(position: Vector3, size: Vector2, color: Color, rotation_degrees: float) -> MeshInstance3D:
-	return _create_rounded_patch(self, "SoftGroundPatch", position, size, color, rotation_degrees)
+func _add_rounded_patch(position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false) -> MeshInstance3D:
+	return _create_rounded_patch(self, "SoftGroundPatch", position, size, color, rotation_degrees, path_material)
 
-func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3, size: Vector2, color: Color, rotation_degrees: float) -> MeshInstance3D:
+func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false) -> MeshInstance3D:
 	var patch := MeshInstance3D.new()
 	patch.name = node_name
 	var mesh := CylinderMesh.new()
@@ -1040,11 +1369,19 @@ func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3,
 	patch.position = position
 	patch.rotation_degrees.y = rotation_degrees
 	patch.scale = Vector3(size.x * 0.5, 1.0, size.y * 0.5)
-	patch.material_override = _ground_material(color, color.a < 0.999)
+	patch.material_override = _ground_material(color, color.a < 0.999, path_material)
+	patch.set_meta("shader_role", "ground_path" if path_material and color.a >= 0.999 else ("ground_moss" if color.a >= 0.999 else "transparent_contact"))
 	parent.add_child(patch)
 	return patch
 
-func _ground_material(color: Color, transparent: bool) -> StandardMaterial3D:
+func _ground_material(color: Color, transparent: bool, path_material := false) -> Material:
+	if not transparent:
+		var template := ground_path_material if path_material else ground_moss_material
+		if template != null:
+			var shader_material := template.duplicate() as ShaderMaterial
+			shader_material.set_shader_parameter("base_color", Color(color.r, color.g, color.b, 1.0))
+			shader_material.set_shader_parameter("edge_color", Color(color.darkened(0.34).r, color.darkened(0.34).g, color.darkened(0.34).b, 1.0))
+			return shader_material
 	# Ground decals need stable authored values: the prototype's strong world
 	# light otherwise turns muted moss into lime and the build reserve into a
 	# yellow blob. Unshaded here affects presentation meshes only; day/night,

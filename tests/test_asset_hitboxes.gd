@@ -135,11 +135,13 @@ func _check_landmark_hitboxes(world: Node) -> void:
 		if visual_root == null:
 			continue
 		var shell := visual_root.get_meta("collision_node", null) as StaticBody3D
-		var sourced := visual_root.get_node_or_null("SourcedLandmarkAsset") as Node3D
-		_check(shell != null and sourced != null, "landmark %s must bind visible source art to its shell" % visual_root.name)
-		if shell == null or sourced == null:
+		var sourced := visual_root.get_meta("source_measurement_node", null) as Node3D
+		var generated := visual_root.get_node_or_null("GeneratedAPlusCLandmark") as Sprite3D
+		_check(shell != null and sourced != null and generated != null, "landmark %s must bind generated art and source measurement to its shell" % visual_root.name)
+		if shell == null or sourced == null or generated == null:
 			continue
-		var measurement := AssetMeasurement.measure_runtime_node_local(sourced)
+		_check(generated.is_visible_in_tree(), "landmark %s generated presentation must be visible" % visual_root.name)
+		var measurement := AssetMeasurement.measure_runtime_node_local(sourced, [], true)
 		_check(bool(measurement.get("valid", false)), "landmark %s source must be measurable" % visual_root.name)
 		var bounds: AABB = measurement.get("bounds", AABB())
 		for shape_value in shell.find_children("*", "CollisionShape3D", true, false):

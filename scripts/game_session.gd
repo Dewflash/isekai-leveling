@@ -133,6 +133,7 @@ var expedition_run := {
 	"depleted_ids": [],
 	"contact_progress": {},
 	"defeated_guardian_ids": [],
+	"guardian_states": {},
 	"started_day": 0,
 	"anchor": [0.0, 1.0, 7.5],
 	"route_checkpoints": [],
@@ -1716,6 +1717,7 @@ func start_expedition(biome_id: String) -> bool:
 		"depleted_ids": [],
 		"contact_progress": {},
 		"defeated_guardian_ids": [],
+		"guardian_states": {},
 		"camp_used": false,
 		"started_day": day,
 		"anchor": [0.0, 1.0, 7.5],
@@ -1728,6 +1730,7 @@ func start_expedition(biome_id: String) -> bool:
 		"objective_complete": false,
 		"shortcut_open": false,
 		"cache_claimed": false,
+		"return_checkpoint_crossed": false,
 		"stake_active": false,
 		"stake_ticks": 0,
 		"pressure_elapsed_seconds": 0.0,
@@ -1876,14 +1879,69 @@ func record_route_checkpoint(checkpoint_id: String) -> bool:
 		_: return false
 	if checkpoint_id != expected_checkpoint:
 		return false
+	var expected_prefix: Array = []
+	match checkpoint_id:
+		"arrival": expected_prefix = []
+		"fork": expected_prefix = ["arrival"]
+		"return": expected_prefix = ["arrival", "fork"]
+	if checkpoints != expected_prefix:
+		return false
 	checkpoints.append(checkpoint_id)
 	expedition_run["route_checkpoints"] = checkpoints
 	match checkpoint_id:
 		"arrival": expedition_run["route_phase"] = "arrival"
 		"fork": expedition_run["route_phase"] = "fork"
-		"return": expedition_run["route_phase"] = "return"
+		"return":
+			expedition_run["route_phase"] = "return"
+			expedition_run["return_checkpoint_crossed"] = true
 	feedback_requested.emit("route_checkpoint", {"route": "Whisperwood", "checkpoint": checkpoint_id, "phase": str(expedition_run.get("route_phase", ""))})
 	state_changed.emit()
+	return true
+
+func record_expedition_return_checkpoint(position: Array) -> bool:
+	if not has_active_expedition() or position.size() < 3:
+		return false
+	var biome_id := str(expedition_run.get("biome_id", ""))
+	if biome_id == "Whisperwood" or not bool(expedition_run.get("cache_claimed", false)) or not bool(expedition_run.get("shortcut_open", false)) or str(expedition_run.get("route_phase", "")) != "shortcut":
+		return false
+	for coordinate in position.slice(0, 3):
+		if not _valid_number(coordinate, -100000.0, 100000.0):
+			return false
+	if Vector2(float(position[0]), float(position[2])).distance_to(Vector2(0.0, 8.7)) > 2.8:
+		return false
+	expedition_run["return_checkpoint_crossed"] = true
+	expedition_run["route_phase"] = "return"
+	feedback_requested.emit("route_checkpoint", {"route": biome_id, "checkpoint": "return_causeway", "phase": "return"})
+	state_changed.emit()
+	return true
+
+func expedition_return_checkpoint_required() -> bool:
+	## Once a Whisperwood capstone opens the shortcut, the return is an authored
+	## physical beat rather than a UI-only promise. Ordinary runs can still
+	## extract early, but a cached run must cross the Return Footbridge before
+	## its pressure-bearing cargo can be banked.
+	if not has_active_expedition():
+		return false
+	var biome_id := str(expedition_run.get("biome_id", ""))
+	var cache_claimed := bool(expedition_run.get("cache_claimed", false))
+	var shortcut_open := bool(expedition_run.get("shortcut_open", false))
+	var checkpoints: Variant = expedition_run.get("route_checkpoints", [])
+	if cache_claimed != shortcut_open:
+		return true
+	if biome_id != "Whisperwood":
+		var return_crossed := bool(expedition_run.get("return_checkpoint_crossed", false))
+		if return_crossed and not cache_claimed:
+			return true
+		return cache_claimed and not return_crossed
+	if not cache_claimed:
+		var ordinary_phase := str(expedition_run.get("route_phase", "approach"))
+		return ordinary_phase in ["shortcut", "return"] or (checkpoints is Array and (checkpoints as Array).has("return"))
+	if not checkpoints is Array:
+		return true
+	var ordered_checkpoints: Array = checkpoints
+	var phase := str(expedition_run.get("route_phase", "approach"))
+	if phase == "return" and ordered_checkpoints == ["arrival", "fork", "return"]:
+		return false
 	return true
 
 func record_expedition_endpoint(branch_id: String) -> bool:
@@ -1920,6 +1978,7 @@ func expedition_route_snapshot() -> Dictionary:
 		"objective_complete": bool(expedition_run.get("objective_complete", false)),
 		"shortcut_open": bool(expedition_run.get("shortcut_open", false)),
 		"cache_claimed": bool(expedition_run.get("cache_claimed", false)),
+		"return_checkpoint_crossed": bool(expedition_run.get("return_checkpoint_crossed", false)),
 		"route_checkpoints": checkpoints.duplicate(true),
 		"next_checkpoint": next_checkpoint,
 		"branch_options": expedition_branch_options(),
@@ -2375,6 +2434,19 @@ func _fixed_cell_occupied(cell: Vector2i) -> bool:
 	for rect in ContentRegistry.ROUTE_RESERVED_RECTS:
 		if cell.x >= int(rect[0]) and cell.x <= int(rect[2]) and cell.y >= int(rect[1]) and cell.y <= int(rect[3]):
 			return true
+	# Illustrated framing obstacles publish the same world transforms consumed by
+	# SanctuaryStyle. A claimed one-metre grid cell is rejected when its physical
+	# square intersects an authored build-clearance envelope; this prevents a
+	# player structure from being accepted underneath a tree/rock that the live
+	# camera will visibly occlude.
+	var candidate_rect := Rect2(Vector2(float(cell.x) - 0.5, float(cell.y) - 0.5), Vector2.ONE)
+	for obstacle_value in SanctuaryAssetCatalog.framing_placement_rects():
+		if not (obstacle_value is Dictionary):
+			continue
+		var obstacle: Dictionary = obstacle_value
+		var obstacle_rect: Rect2 = obstacle.get("rect", Rect2())
+		if candidate_rect.intersects(obstacle_rect):
+			return true
 	return false
 
 func _structure_access_cells(structure_id: String, origin: Vector2i, rotation_quarter_turns := 0) -> Array[Vector2i]:
@@ -2515,6 +2587,37 @@ func mark_guardian_defeated(guardian_id: String) -> bool:
 		return false
 	defeated.append(guardian_id)
 	expedition_run["defeated_guardian_ids"] = defeated
+	var guardian_states: Dictionary = expedition_run.get("guardian_states", {}) if expedition_run.get("guardian_states", {}) is Dictionary else {}
+	guardian_states.erase(guardian_id)
+	expedition_run["guardian_states"] = guardian_states
+	state_changed.emit()
+	return true
+
+func record_guardian_combat_state(guardian_id: String, health_value: int, position: Array) -> bool:
+	if not has_active_expedition() or guardian_id.is_empty() or position.size() < 3:
+		return false
+	var expedition_biome := str(expedition_run.get("biome_id", ""))
+	var definition := ContentRegistry.guardian_definition(guardian_id)
+	if definition.is_empty() or str(definition.get("zone_id", "")) != expedition_biome:
+		return false
+	var expedition_branch := str(expedition_run.get("branch_id", ""))
+	if expedition_branch.is_empty() or _route_objective_is_off_branch("guardian", guardian_id):
+		return false
+	var defeated: Variant = expedition_run.get("defeated_guardian_ids", [])
+	if defeated is Array and defeated.has(guardian_id):
+		return false
+	var max_guardian_health := maxi(1, int(definition.get("health", 1)))
+	if health_value < 1 or health_value > max_guardian_health:
+		return false
+	for coordinate in position.slice(0, 3):
+		if not _valid_number(coordinate, -100000.0, 100000.0):
+			return false
+	var guardian_states: Dictionary = expedition_run.get("guardian_states", {}) if expedition_run.get("guardian_states", {}) is Dictionary else {}
+	guardian_states[guardian_id] = {
+		"health": health_value,
+		"position": [clampf(float(position[0]), -EXPEDITION_ANCHOR_LIMIT_X, EXPEDITION_ANCHOR_LIMIT_X), 1.0, clampf(float(position[2]), -EXPEDITION_ANCHOR_LIMIT_Z, EXPEDITION_ANCHOR_LIMIT_Z)],
+	}
+	expedition_run["guardian_states"] = guardian_states
 	state_changed.emit()
 	return true
 
@@ -2552,6 +2655,9 @@ func resolve_guardian_defeat(guardian_id: String) -> Dictionary:
 	defeated.append(guardian_id)
 	var cargo: Dictionary = expedition_run.get("cargo", {})
 	expedition_run["defeated_guardian_ids"] = defeated
+	var guardian_states: Dictionary = expedition_run.get("guardian_states", {}) if expedition_run.get("guardian_states", {}) is Dictionary else {}
+	guardian_states.erase(guardian_id)
+	expedition_run["guardian_states"] = guardian_states
 	var deferred_pickup := false
 	var pickup_id := "guardian:%s:%s:reward" % [str(expedition_run.get("run_id", "")), guardian_id]
 	if can_carry_reward:
@@ -2604,6 +2710,8 @@ func claim_quest() -> bool:
 
 func finish_expedition(extraction_zone_id: String = "", extraction_position: Array = []) -> Dictionary:
 	if not has_active_expedition():
+		return {}
+	if expedition_return_checkpoint_required():
 		return {}
 	if resource_contract_required:
 		var expedition_zone := str(expedition_run.get("biome_id", ""))
@@ -3701,8 +3809,36 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 					return false
 				previous_checkpoint_index = checkpoint_index
 				seen_route_checkpoints[str(checkpoint_value)] = true
-		for route_flag in ["objective_complete", "shortcut_open", "cache_claimed"]:
+		for route_flag in ["objective_complete", "shortcut_open", "cache_claimed", "return_checkpoint_crossed"]:
 			if expedition.has(route_flag) and not (expedition[route_flag] is bool):
+				return false
+		var route_phase_value := str(expedition.get("route_phase", "approach"))
+		var cache_claimed := bool(expedition.get("cache_claimed", false))
+		var shortcut_open := bool(expedition.get("shortcut_open", false))
+		if expedition_biome == "Whisperwood":
+			var route_checkpoints_value: Variant = expedition.get("route_checkpoints", [])
+			if not (route_checkpoints_value is Array):
+				return false
+			var route_checkpoints: Array = route_checkpoints_value
+			var objective_complete := bool(expedition.get("objective_complete", false))
+			if cache_claimed != shortcut_open:
+				return false
+			if shortcut_open:
+				if not objective_complete or route_phase_value not in ["shortcut", "return"]:
+					return false
+				if route_phase_value == "shortcut" and route_checkpoints != ["arrival", "fork"]:
+					return false
+				if route_phase_value == "return" and route_checkpoints != ["arrival", "fork", "return"]:
+					return false
+			elif route_phase_value in ["shortcut", "return"] or route_checkpoints.has("return"):
+				return false
+		else:
+			var return_checkpoint_crossed := bool(expedition.get("return_checkpoint_crossed", false))
+			if return_checkpoint_crossed and (not cache_claimed or not shortcut_open or route_phase_value != "return"):
+				return false
+			if route_phase_value == "return" and not return_checkpoint_crossed:
+				return false
+			if shortcut_open and route_phase_value not in ["shortcut", "return"]:
 				return false
 		if expedition.has("stake_active") and not (expedition["stake_active"] is bool):
 			return false
@@ -3785,6 +3921,26 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 					if not (entry is String) or str(entry).is_empty() or seen_ids.has(str(entry)):
 						return false
 					seen_ids[str(entry)] = true
+		var guardian_states: Variant = expedition.get("guardian_states", {})
+		if not (guardian_states is Dictionary) or guardian_states.size() > ContentRegistry.GUARDIANS.size():
+			return false
+		var defeated_guardian_ids: Array = expedition.get("defeated_guardian_ids", []) if expedition.get("defeated_guardian_ids", []) is Array else []
+		for guardian_id in guardian_states:
+			if not (guardian_id is String) or str(guardian_id).is_empty() or defeated_guardian_ids.has(str(guardian_id)):
+				return false
+			var guardian_definition := ContentRegistry.guardian_definition(str(guardian_id))
+			if guardian_definition.is_empty() or str(guardian_definition.get("zone_id", "")) != expedition_biome:
+				return false
+			var guardian_state: Variant = guardian_states[guardian_id]
+			if not (guardian_state is Dictionary) or not _valid_integer(guardian_state.get("health", 0), 1, maxi(1, int(guardian_definition.get("health", 1)))):
+				return false
+			var guardian_position: Variant = guardian_state.get("position", [])
+			if not (guardian_position is Array) or guardian_position.size() < 3:
+				return false
+			if not _valid_number(guardian_position[0], -EXPEDITION_ANCHOR_LIMIT_X, EXPEDITION_ANCHOR_LIMIT_X) or not _valid_number(guardian_position[1], -100000.0, 100000.0) or not _valid_number(guardian_position[2], -EXPEDITION_ANCHOR_LIMIT_Z, EXPEDITION_ANCHOR_LIMIT_Z):
+				return false
+		if expedition_status == "none" and not guardian_states.is_empty():
+			return false
 		if expedition.has("anchor"):
 			var anchor: Variant = expedition["anchor"]
 			if not (anchor is Array) or anchor.size() < 3:
@@ -4060,6 +4216,27 @@ func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 		expedition_run["cargo"] = normalized_cargo
 		var stored_expedition_contact_progress: Variant = expedition_run.get("contact_progress", {})
 		expedition_run["contact_progress"] = stored_expedition_contact_progress if stored_expedition_contact_progress is Dictionary else {}
+		var stored_guardian_states: Variant = expedition_run.get("guardian_states", {})
+		var normalized_guardian_states: Dictionary = {}
+		var stored_defeated_guardians: Variant = expedition_run.get("defeated_guardian_ids", [])
+		if stored_guardian_states is Dictionary:
+			for guardian_id_value in stored_guardian_states:
+				var guardian_id := str(guardian_id_value)
+				var guardian_definition := ContentRegistry.guardian_definition(guardian_id)
+				var guardian_state: Variant = stored_guardian_states[guardian_id_value]
+				if guardian_definition.is_empty() or str(guardian_definition.get("zone_id", "")) != str(expedition_run.get("biome_id", "")) or (stored_defeated_guardians is Array and stored_defeated_guardians.has(guardian_id)) or not (guardian_state is Dictionary):
+					continue
+				var stored_guardian_health: Variant = guardian_state.get("health", 0)
+				var stored_guardian_position: Variant = guardian_state.get("position", [])
+				if not _valid_integer(stored_guardian_health, 1, maxi(1, int(guardian_definition.get("health", 1)))) or not (stored_guardian_position is Array) or stored_guardian_position.size() < 3:
+					continue
+				if not _valid_number(stored_guardian_position[0], -EXPEDITION_ANCHOR_LIMIT_X, EXPEDITION_ANCHOR_LIMIT_X) or not _valid_number(stored_guardian_position[1], -100000.0, 100000.0) or not _valid_number(stored_guardian_position[2], -EXPEDITION_ANCHOR_LIMIT_Z, EXPEDITION_ANCHOR_LIMIT_Z):
+					continue
+				normalized_guardian_states[guardian_id] = {
+					"health": int(stored_guardian_health),
+					"position": [float(stored_guardian_position[0]), 1.0, float(stored_guardian_position[2])],
+				}
+		expedition_run["guardian_states"] = normalized_guardian_states
 		var stored_pickups: Variant = expedition_run.get("pickups", [])
 		var normalized_pickups: Array = []
 		if stored_pickups is Array:
@@ -4111,6 +4288,7 @@ func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 		expedition_run["objective_complete"] = bool(expedition_run.get("objective_complete", false))
 		expedition_run["shortcut_open"] = bool(expedition_run.get("shortcut_open", false))
 		expedition_run["cache_claimed"] = bool(expedition_run.get("cache_claimed", false))
+		expedition_run["return_checkpoint_crossed"] = bool(expedition_run.get("return_checkpoint_crossed", false)) or str(expedition_run.get("route_phase", "")) == "return"
 		expedition_run["stake_active"] = bool(expedition_run.get("stake_active", false))
 		expedition_run["stake_ticks"] = maxi(0, int(expedition_run.get("stake_ticks", 0)))
 		var stored_pressure_elapsed: Variant = expedition_run.get("pressure_elapsed_seconds", 0.0)
@@ -4126,4 +4304,4 @@ func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 	_sync_mastery_permissions()
 
 func _empty_expedition_run() -> Dictionary:
-	return {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "pickups": [], "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "camp_used": false, "started_day": 0, "route_phase": "none", "branch_id": "", "objective_id": "", "objective_kind": "", "objective_progress": 0, "objective_target": 0, "objective_complete": false, "shortcut_open": false, "cache_claimed": false, "stake_active": false, "stake_ticks": 0, "pressure_elapsed_seconds": 0.0, "second_wind_used": false, "route_checkpoints": [], "anchor": [0.0, 1.0, 7.5]}
+	return {"status": "none", "run_id": "", "biome_id": "", "cargo": {}, "pickups": [], "depleted_ids": [], "contact_progress": {}, "defeated_guardian_ids": [], "guardian_states": {}, "camp_used": false, "started_day": 0, "route_phase": "none", "branch_id": "", "objective_id": "", "objective_kind": "", "objective_progress": 0, "objective_target": 0, "objective_complete": false, "shortcut_open": false, "cache_claimed": false, "return_checkpoint_crossed": false, "stake_active": false, "stake_ticks": 0, "pressure_elapsed_seconds": 0.0, "second_wind_used": false, "route_checkpoints": [], "anchor": [0.0, 1.0, 7.5]}

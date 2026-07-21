@@ -39,6 +39,8 @@ func _new_session(slot: String) -> Node:
 
 func _prepare_cache_run(session: Node) -> void:
 	_check(bool(session.call("start_expedition", "Whisperwood")), "pressure run starts")
+	_check(bool(session.call("record_route_checkpoint", "arrival")), "pressure run records arrival")
+	_check(bool(session.call("record_route_checkpoint", "fork")), "pressure run records fork")
 	_check(bool(session.call("commit_expedition_branch", "clearing")), "clearing branch commits")
 	_check(bool(session.call("record_expedition_endpoint", "clearing")), "clearing endpoint records")
 	session.expedition_run["objective_progress"] = int(session.expedition_run.get("objective_target", 1))

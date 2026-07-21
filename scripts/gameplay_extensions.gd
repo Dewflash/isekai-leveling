@@ -93,8 +93,16 @@ func _update_extract_button() -> void:
 	var expedition := is_instance_valid(world) and str(world.get("current_zone")) != "Sanctuary"
 	extract_button.visible = expedition
 	var at_beacon := _extraction_is_available()
-	extract_button.disabled = not at_beacon or bool(world.get_tree().paused)
-	extract_button.tooltip_text = "Extract cargo (X)" if at_beacon else "Walk to the expedition beacon to extract"
+	var route_blocked := false
+	var session := world.get("session") as Node if is_instance_valid(world) else null
+	if session != null and session.has_method("expedition_return_checkpoint_required"):
+		route_blocked = bool(session.call("expedition_return_checkpoint_required"))
+	extract_button.disabled = not at_beacon or route_blocked or bool(world.get_tree().paused)
+	if route_blocked and at_beacon:
+		var return_landmark_label := "Return Footbridge" if str(world.get("current_zone")) == "Whisperwood" else "Return Causeway"
+		extract_button.tooltip_text = "Cross the %s before extracting" % return_landmark_label
+	else:
+		extract_button.tooltip_text = "Extract cargo (X)" if at_beacon else "Walk to the expedition beacon to extract"
 
 func _extraction_is_available() -> bool:
 	if not is_instance_valid(world) or str(world.get("current_zone")) == "Sanctuary":

@@ -29,12 +29,38 @@ const STRUCTURES := {
 		"sprite_kind": "workshop",
 		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/FBX/Blacksmith.fbx",
 		"operational_art_mode": "illustrated_2_5d",
+		# Workshop has a complete four-view construction family as well as its
+		# operational hero art. Fail closed to that authored family instead of
+		# letting the legacy scaffold reappear during a state refresh.
+		"directional_art_required": true,
 		"world_size": 8.2,
+		"interior_profile": {
+			"interior_id": "workshop_v1",
+			"entry_zone_id": "front_door",
+			"ceiling_height_ratio": 0.82,
+			"egress_clearance_ratio": 0.18,
+			# Presentation-only bleed keeps the authored cutaway room legible behind
+			# live stations at the fixed 3/4 camera. It never changes room collision
+			# or station hitboxes; those remain measured from the runtime meshes.
+			"illustrated_shell_width_ratio": 1.35,
+		},
+		"construction_stage_paths": {
+			"blueprint": "res://assets/generated/sanctuary/workshop/workshop-stage-blueprint.png",
+			"frame": "res://assets/generated/sanctuary/workshop/workshop-stage-frame.png",
+			"walls": "res://assets/generated/sanctuary/workshop/workshop-stage-walls.png",
+			"roof": "res://assets/generated/sanctuary/workshop/workshop-stage-roof.png",
+		},
+		"construction_stage_directional_paths": {
+			"blueprint": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-blueprint.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-blueprint-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-blueprint-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-blueprint-q3.png"},
+			"frame": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-frame.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-frame-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-frame-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-frame-q3.png"},
+			"walls": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-walls.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q3.png"},
+			"roof": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-roof.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q3.png"},
+		},
 		"directional_variants": [
-			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "facing": [0.0, 0.0, 1.0]},
-			{"quarter_turn": 1, "variant_id": "workshop_q1_pos_x", "asset_id": "sanctuary/player_structures/workshop/operational/q1_pos_x", "facing": [1.0, 0.0, 0.0]},
-			{"quarter_turn": 2, "variant_id": "workshop_q2_neg_z", "asset_id": "sanctuary/player_structures/workshop/operational/q2_neg_z", "facing": [0.0, 0.0, -1.0]},
-			{"quarter_turn": 3, "variant_id": "workshop_q3_neg_x", "asset_id": "sanctuary/player_structures/workshop/operational/q3_neg_x", "facing": [-1.0, 0.0, 0.0]},
+			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q0.png", "facing": [0.0, 0.0, 1.0]},
+			{"quarter_turn": 1, "variant_id": "workshop_q1_pos_x", "asset_id": "sanctuary/player_structures/workshop/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q1.png", "facing": [1.0, 0.0, 0.0]},
+			{"quarter_turn": 2, "variant_id": "workshop_q2_neg_z", "asset_id": "sanctuary/player_structures/workshop/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q2.png", "facing": [0.0, 0.0, -1.0]},
+			{"quarter_turn": 3, "variant_id": "workshop_q3_neg_x", "asset_id": "sanctuary/player_structures/workshop/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q3.png", "facing": [-1.0, 0.0, 0.0]},
 		],
 		"access_zones": [
 			{"id": "front_door", "kind": "door", "visible_feature_id": "workshop_double_door", "center": [0.0, 0.0, 2.20], "size": [1.30, 0.80], "facing": [0.0, 0.0, 1.0], "must_be_visible_in_asset": true},
@@ -52,17 +78,19 @@ const STRUCTURES := {
 	"archive": {
 		"profile_id": "sanctuary_structure_archive_v1",
 		"asset_id": "sanctuary/player_structures/archive",
-		# Temporary fallback only; directional archive artwork must use the unique
-		# asset IDs above and below once the renderer consumes profile variants.
+		# Operational art is a dedicated four-view authored family. Construction
+		# stages remain on the shared scaffold contract until their matching archive
+		# frame/walls/roof family is authored; this prevents a half-complete family
+		# from silently producing an empty build state.
 		"sprite_kind": "workshop",
 		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/FBX/House_3.fbx",
 		"operational_art_mode": "illustrated_2_5d",
 		"world_size": 7.1,
 		"directional_variants": [
-			{"quarter_turn": 0, "variant_id": "archive_q0_pos_z", "asset_id": "sanctuary/player_structures/archive/operational/q0_pos_z", "facing": [0.0, 0.0, 1.0]},
-			{"quarter_turn": 1, "variant_id": "archive_q1_pos_x", "asset_id": "sanctuary/player_structures/archive/operational/q1_pos_x", "facing": [1.0, 0.0, 0.0]},
-			{"quarter_turn": 2, "variant_id": "archive_q2_neg_z", "asset_id": "sanctuary/player_structures/archive/operational/q2_neg_z", "facing": [0.0, 0.0, -1.0]},
-			{"quarter_turn": 3, "variant_id": "archive_q3_neg_x", "asset_id": "sanctuary/player_structures/archive/operational/q3_neg_x", "facing": [-1.0, 0.0, 0.0]},
+			{"quarter_turn": 0, "variant_id": "archive_q0_pos_z", "asset_id": "sanctuary/player_structures/archive/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/archive/archive-q0.png", "facing": [0.0, 0.0, 1.0]},
+			{"quarter_turn": 1, "variant_id": "archive_q1_pos_x", "asset_id": "sanctuary/player_structures/archive/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/archive/archive-q1.png", "facing": [1.0, 0.0, 0.0]},
+			{"quarter_turn": 2, "variant_id": "archive_q2_neg_z", "asset_id": "sanctuary/player_structures/archive/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/archive/archive-q2.png", "facing": [0.0, 0.0, -1.0]},
+			{"quarter_turn": 3, "variant_id": "archive_q3_neg_x", "asset_id": "sanctuary/player_structures/archive/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/archive/archive-q3.png", "facing": [-1.0, 0.0, 0.0]},
 		],
 		"access_zones": [
 			{"id": "front_door", "kind": "door", "visible_feature_id": "archive_arched_door", "center": [0.0, 0.0, 1.80], "size": [1.25, 0.70], "facing": [0.0, 0.0, 1.0], "must_be_visible_in_asset": true},
@@ -81,14 +109,27 @@ const STRUCTURES := {
 		"profile_id": "sanctuary_structure_storage_shed_v1",
 		"asset_id": "sanctuary/player_structures/storage_shed",
 		"sprite_kind": "tent",
-		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/FBX/House_4.fbx",
+		# House_4 is a narrow decorative prop (its measured envelope underfills the
+		# 5x4 m claim). Sawmill is the sourced shed-scale proxy: its measured
+		# 4.40x2.86x3.28 m envelope fits at least 94% of the horizontal claim after
+		# uniform measurement-based fitting, without inventing a per-building
+		# collider dimension.
+		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/FBX/Sawmill.fbx",
 		"operational_art_mode": "illustrated_2_5d",
+		"directional_art_required": true,
+		"require_measured_claim_fill": true,
 		"world_size": 6.8,
+		"construction_stage_directional_paths": {
+			"blueprint": {0: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-blueprint.png", 1: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-blueprint-q1.png", 2: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-blueprint-q2.png", 3: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-blueprint-q3.png"},
+			"frame": {0: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-frame.png", 1: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-frame-q1.png", 2: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-frame-q2.png", 3: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-frame-q3.png"},
+			"walls": {0: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-walls.png", 1: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-walls-q1.png", 2: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-walls-q2.png", 3: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-walls-q3.png"},
+			"roof": {0: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-roof.png", 1: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-roof-q1.png", 2: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-roof-q2.png", 3: "res://assets/generated/sanctuary/storage_shed/storage_shed-stage-roof-q3.png"},
+		},
 		"directional_variants": [
-			{"quarter_turn": 0, "variant_id": "storage_shed_q0_pos_z", "asset_id": "sanctuary/player_structures/storage_shed/operational/q0_pos_z", "facing": [0.0, 0.0, 1.0]},
-			{"quarter_turn": 1, "variant_id": "storage_shed_q1_pos_x", "asset_id": "sanctuary/player_structures/storage_shed/operational/q1_pos_x", "facing": [1.0, 0.0, 0.0]},
-			{"quarter_turn": 2, "variant_id": "storage_shed_q2_neg_z", "asset_id": "sanctuary/player_structures/storage_shed/operational/q2_neg_z", "facing": [0.0, 0.0, -1.0]},
-			{"quarter_turn": 3, "variant_id": "storage_shed_q3_neg_x", "asset_id": "sanctuary/player_structures/storage_shed/operational/q3_neg_x", "facing": [-1.0, 0.0, 0.0]},
+			{"quarter_turn": 0, "variant_id": "storage_shed_q0_pos_z", "asset_id": "sanctuary/player_structures/storage_shed/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/storage_shed/storage_shed-q0.png", "visible_feature_ids": ["front_door", "loading_side"], "facing": [0.0, 0.0, 1.0]},
+			{"quarter_turn": 1, "variant_id": "storage_shed_q1_pos_x", "asset_id": "sanctuary/player_structures/storage_shed/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/storage_shed/storage_shed-q1.png", "visible_feature_ids": ["front_door"], "facing": [1.0, 0.0, 0.0]},
+			{"quarter_turn": 2, "variant_id": "storage_shed_q2_neg_z", "asset_id": "sanctuary/player_structures/storage_shed/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/storage_shed/storage_shed-q2.png", "visible_feature_ids": [], "facing": [0.0, 0.0, -1.0]},
+			{"quarter_turn": 3, "variant_id": "storage_shed_q3_neg_x", "asset_id": "sanctuary/player_structures/storage_shed/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/storage_shed/storage_shed-q3.png", "visible_feature_ids": ["loading_side"], "facing": [-1.0, 0.0, 0.0]},
 		],
 		"access_zones": [
 			{"id": "front_door", "kind": "door", "visible_feature_id": "storage_shed_sliding_door", "center": [0.0, 0.0, 1.80], "size": [1.40, 0.70], "facing": [0.0, 0.0, 1.0], "must_be_visible_in_asset": true},
@@ -106,17 +147,18 @@ const STRUCTURES := {
 	"livestock_pen": {
 		"profile_id": "sanctuary_structure_livestock_pen_v1",
 		"asset_id": "sanctuary/player_structures/livestock_pen",
-		# Temporary fallback only; it keeps the current sheet renderer stable while
-		# preventing garden art from being treated as the pen's production asset.
+		# Operational art is a dedicated four-view authored enclosure family. The
+		# shared garden cell remains only as a construction-stage fallback until the
+		# matching pen scaffold/frame/walls/roof family is authored.
 		"sprite_kind": "garden",
 		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/FBX/Stable.fbx",
 		"operational_art_mode": "illustrated_2_5d",
 		"world_size": 5.9,
 		"directional_variants": [
-			{"quarter_turn": 0, "variant_id": "livestock_pen_q0_pos_z", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q0_pos_z", "facing": [0.0, 0.0, 1.0]},
-			{"quarter_turn": 1, "variant_id": "livestock_pen_q1_pos_x", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q1_pos_x", "facing": [1.0, 0.0, 0.0]},
-			{"quarter_turn": 2, "variant_id": "livestock_pen_q2_neg_z", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q2_neg_z", "facing": [0.0, 0.0, -1.0]},
-			{"quarter_turn": 3, "variant_id": "livestock_pen_q3_neg_x", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q3_neg_x", "facing": [-1.0, 0.0, 0.0]},
+			{"quarter_turn": 0, "variant_id": "livestock_pen_q0_pos_z", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/livestock_pen/livestock-pen-q0.png", "facing": [0.0, 0.0, 1.0]},
+			{"quarter_turn": 1, "variant_id": "livestock_pen_q1_pos_x", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/livestock_pen/livestock-pen-q1.png", "facing": [1.0, 0.0, 0.0]},
+			{"quarter_turn": 2, "variant_id": "livestock_pen_q2_neg_z", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/livestock_pen/livestock-pen-q2.png", "facing": [0.0, 0.0, -1.0]},
+			{"quarter_turn": 3, "variant_id": "livestock_pen_q3_neg_x", "asset_id": "sanctuary/player_structures/livestock_pen/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/livestock_pen/livestock-pen-q3.png", "facing": [-1.0, 0.0, 0.0]},
 		],
 		"access_zones": [
 			{"id": "front_gate", "kind": "door", "visible_feature_id": "livestock_pen_latched_gate", "center": [0.0, 0.0, 2.40], "size": [1.60, 0.80], "facing": [0.0, 0.0, 1.0], "must_be_visible_in_asset": true},
@@ -135,14 +177,16 @@ const STRUCTURES := {
 		"profile_id": "sanctuary_structure_rain_cistern_v1",
 		"asset_id": "sanctuary/player_structures/rain_cistern",
 		"sprite_kind": "well",
+		# Operational art is a dedicated four-view authored cistern family; its
+		# tank, roof, pipes, platform, and water basin are one measured silhouette.
 		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Props/FBX/Well.fbx",
 		"operational_art_mode": "illustrated_2_5d",
 		"world_size": 4.8,
 		"directional_variants": [
-			{"quarter_turn": 0, "variant_id": "rain_cistern_q0_pos_z", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q0_pos_z", "facing": [0.0, 0.0, 1.0]},
-			{"quarter_turn": 1, "variant_id": "rain_cistern_q1_pos_x", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q1_pos_x", "facing": [1.0, 0.0, 0.0]},
-			{"quarter_turn": 2, "variant_id": "rain_cistern_q2_neg_z", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q2_neg_z", "facing": [0.0, 0.0, -1.0]},
-			{"quarter_turn": 3, "variant_id": "rain_cistern_q3_neg_x", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q3_neg_x", "facing": [-1.0, 0.0, 0.0]},
+			{"quarter_turn": 0, "variant_id": "rain_cistern_q0_pos_z", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/rain_cistern/rain-cistern-q0.png", "facing": [0.0, 0.0, 1.0]},
+			{"quarter_turn": 1, "variant_id": "rain_cistern_q1_pos_x", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/rain_cistern/rain-cistern-q1.png", "facing": [1.0, 0.0, 0.0]},
+			{"quarter_turn": 2, "variant_id": "rain_cistern_q2_neg_z", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/rain_cistern/rain-cistern-q2.png", "facing": [0.0, 0.0, -1.0]},
+			{"quarter_turn": 3, "variant_id": "rain_cistern_q3_neg_x", "asset_id": "sanctuary/player_structures/rain_cistern/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/rain_cistern/rain-cistern-q3.png", "facing": [-1.0, 0.0, 0.0]},
 		],
 		"access_zones": [
 			{"id": "draw_water", "kind": "service", "visible_feature_id": "rain_cistern_spout", "center": [0.0, 0.0, 2.25], "size": [1.20, 0.70], "facing": [0.0, 0.0, 1.0], "must_be_visible_in_asset": true},
@@ -165,8 +209,55 @@ const RESOURCE_TREES := {
 	"autumn_tree": {"asset_id": "environment/autumn_tree", "sprite_index": 2, "world_size": 4.25},
 }
 
+## Static illustrated obstacles are one shared presentation/placement contract.
+## SanctuaryStyle consumes these exact transforms for the visible framing art;
+## GameSession consumes the derived placement rectangles so a player cannot
+## legally claim a grid cell that the live foliage/rock envelope already occupies.
+## `placement_clearance_ratio` is an authored build-clearance envelope, distinct
+## from the smaller foot-bearing physics hitbox used by the sprite itself.
+const FRAMING_OBSTACLES := [
+	{"id": "framing_tree_fruit_0", "kind": "tree", "sprite_index": 0, "position": [-12.5, 0.10, -8.6], "world_size": 5.5, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_pine_1", "kind": "tree", "sprite_index": 1, "position": [-7.7, 0.10, -10.0], "world_size": 5.0, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_pine_2", "kind": "tree", "sprite_index": 1, "position": [0.0, 0.10, -10.4], "world_size": 5.4, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_autumn_3", "kind": "tree", "sprite_index": 2, "position": [7.2, 0.10, -9.4], "world_size": 5.0, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_fruit_4", "kind": "tree", "sprite_index": 0, "position": [12.0, 0.10, -7.4], "world_size": 5.0, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_autumn_5", "kind": "tree", "sprite_index": 2, "position": [-12.1, 0.10, 6.9], "world_size": 4.3, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_pine_6", "kind": "tree", "sprite_index": 1, "position": [12.2, 0.10, 7.4], "world_size": 4.8, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_fruit_7", "kind": "tree", "sprite_index": 0, "position": [-11.7, 0.10, 10.0], "world_size": 4.6, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_tree_autumn_8", "kind": "tree", "sprite_index": 2, "position": [10.5, 0.10, 10.3], "world_size": 4.2, "placement_clearance_ratio": [0.32, 0.24]},
+	{"id": "framing_rock_0", "kind": "rock", "sprite_index": 3, "position": [-11.5, 0.10, -3.9], "world_size": 3.2, "placement_clearance_ratio": [0.66, 0.30]},
+	{"id": "framing_rock_1", "kind": "rock", "sprite_index": 3, "position": [11.6, 0.10, -2.6], "world_size": 2.8, "placement_clearance_ratio": [0.66, 0.30]},
+	{"id": "framing_rock_2", "kind": "rock", "sprite_index": 3, "position": [-10.8, 0.10, 8.3], "world_size": 2.7, "placement_clearance_ratio": [0.66, 0.30]},
+	{"id": "framing_rock_3", "kind": "rock", "sprite_index": 3, "position": [10.8, 0.10, 8.8], "world_size": 2.5, "placement_clearance_ratio": [0.66, 0.30]},
+]
+
+static func framing_placement_rects() -> Array:
+	var result: Array = []
+	for obstacle_value in FRAMING_OBSTACLES:
+		if not (obstacle_value is Dictionary):
+			continue
+		var obstacle: Dictionary = obstacle_value
+		var position: Array = obstacle.get("position", [])
+		var ratio: Array = obstacle.get("placement_clearance_ratio", [0.0, 0.0])
+		if position.size() < 3 or ratio.size() < 2:
+			continue
+		var world_size := float(obstacle.get("world_size", 0.0))
+		var size := Vector2(world_size * float(ratio[0]), world_size * float(ratio[1]))
+		if size.x <= 0.0 or size.y <= 0.0:
+			continue
+		result.append({
+			"id": str(obstacle.get("id", "")),
+			"rect": Rect2(Vector2(float(position[0]), float(position[2])) - size * 0.5, size),
+		})
+	return result
+
 static func structure_definition(kind: String) -> Dictionary:
-	return STRUCTURES.get(kind, STRUCTURES["storage_shed"]).duplicate(true)
+	if not STRUCTURES.has(kind):
+		# Unknown persisted/content kinds must fail closed. Inheriting a complete
+		# Storage Shed profile would fabricate the wrong art, footprint, access
+		# zones, and collision profile for corrupted or future data.
+		return {}
+	return STRUCTURES[kind].duplicate(true)
 
 ## Returns the unique directional presentation record for a normalized quarter
 ## turn. This does not rotate or mutate gameplay occupancy.
@@ -184,6 +275,17 @@ static func structure_directional_variant(kind: String, rotation_quarter_turns: 
 
 static func structure_variant_asset_id(kind: String, rotation_quarter_turns: int) -> String:
 	return str(structure_directional_variant(kind, rotation_quarter_turns).get("asset_id", ""))
+
+static func structure_construction_stage_asset(kind: String, stage_id: String, rotation_quarter_turns: int) -> String:
+	var definition := structure_definition(kind)
+	var directional: Dictionary = definition.get("construction_stage_directional_paths", {})
+	var stage_paths: Dictionary = directional.get(stage_id, {})
+	var normalized_rotation := posmod(rotation_quarter_turns, 4)
+	if directional.has(stage_id):
+		# A declared directional family is a completeness contract. Missing turns
+		# fail closed instead of silently reusing q0 art.
+		return str(stage_paths.get(normalized_rotation, ""))
+	return str(definition.get("construction_stage_paths", {}).get(stage_id, ""))
 
 ## Returns access/service zones transformed into the requested root rotation.
 ## Consumers may use these for approach markers and interaction anchors, but the

@@ -90,9 +90,20 @@ func _run() -> void:
 	invalid_run["route_checkpoints"] = ["arrival"]
 	invalid_run["biome_id"] = "Sunlit Beach"
 	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "Whisperwood checkpoints cannot leak into another biome")
+	invalid_run["biome_id"] = "Whisperwood"
+	invalid_run["route_checkpoints"] = ["return"]
+	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "return cannot appear without the ordered route prefix")
+	invalid_run["route_checkpoints"] = ["arrival", "fork", "return"]
+	invalid_run["shortcut_open"] = false
+	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "cache and shortcut flags must agree")
+	invalid_run["shortcut_open"] = true
+	invalid_run["route_phase"] = "return"
+	invalid_run["route_checkpoints"] = ["arrival", "fork"]
+	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "return phase requires the persisted return checkpoint")
 
 	reloaded.expedition_run["route_checkpoints"] = "corrupt"
 	_check(not bool(reloaded.call("record_route_checkpoint", "return")), "corrupt checkpoint state fails closed")
+	_check(bool(reloaded.call("expedition_return_checkpoint_required")), "corrupt cached state blocks extraction fail-closed")
 	_check(reloaded.call("expedition_route_snapshot").get("route_checkpoints", []).is_empty(), "snapshot fails closed for corrupt checkpoint state")
 
 	if failures > 0:

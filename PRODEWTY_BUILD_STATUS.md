@@ -10,6 +10,12 @@ Updated: 2026-07-21, Asia/Singapore
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
+- Active Sanctuary art authority: `assets/generated/reference/sanctuary-a-plus-c-target.png`
+- Latest live A+C capture: `/private/tmp/isekai-a-plus-c-live-v2.png`
+- Latest display-backed stage proof: `/private/tmp/isekai-a-plus-c-live-stages-v4/`
+- Persisted A+C evidence set: `docs/evidence/sanctuary-a-plus-c-v27/`
+- Launch note: restart any Godot editor or export opened before the A+C
+  authority checkpoint; stale/committed builds cannot render the new assets.
 
 ## What exists (current checkpoint)
 
@@ -136,6 +142,18 @@ Updated: 2026-07-21, Asia/Singapore
   but only one illustrated operational silhouette renders at a time; the
   corrected alpha sheet is reimported and smoke-fringe checked in the
   display-backed stage capture.
+- Fixed Sanctuary landmarks now use the same generated A+C presentation path:
+  Hearth, Archive, and Bazaar retain their measured imported source scenes only
+  as hidden provenance/measurement nodes while their visible roots render the
+  generated cutouts. Their authoritative shell collisions and access zones are
+  unchanged.
+- The A+C presentation director now reasserts its authority every frame. The
+  legacy district, sourced landmark nodes, and legacy facility silhouettes stay
+  hidden after save/load and construction refreshes while interaction roots and
+  measured collision shells remain intact.
+- The A+C live presentation pass now darkens the prototype collision-floor
+  backdrop and adds distant woodland framing without claiming build cells or
+  adding interactive blockers.
 - Sanctuary placement now supports authoritative ninety-degree blueprint
   rotation with rotated footprint collision checks; Storage Sheds are
   explicitly repeatable while progression buildings remain unique.
@@ -165,6 +183,12 @@ Updated: 2026-07-21, Asia/Singapore
   2.5D framing, moves the living objectives onto their authored endpoints,
   and persists the route phase only after the committed endpoint is physically
   reached.
+- The first expedition now has a complete scene-level acceptance loop: the
+  player physically reaches the fork and endpoint, harvests a discovery into a
+  ground drop, collects it into at-risk cargo, opens the cache, survives a
+  pressure tick across a scene reload, crosses the Return Footbridge, and
+  extracts into banked Sanctuary inventory. Cached Whisperwood runs cannot
+  bypass that return landmark by pressing Extract at the beacon.
 - Sanctuary route sockets now publish authored traversal waypoints. Their
   connector paths render in-world, and the five-gate traversal contract drives
   the real camera-relative joystick through physics bodies instead of teleport
@@ -335,27 +359,43 @@ Updated: 2026-07-21, Asia/Singapore
 - Visible game launch from the target checkout: headless smoke is clean apart
   from Godot's macOS certificate warning; deterministic OpenGL captures are
   available for the full Sanctuary and all seven construction stages.
-- Sanctuary visual contract now passes 4,999 checks across all five structure
+- Sanctuary visual contract now passes 5,127 checks across all five structure
   kinds and all four rotations, including player-safe access zones, placement
   separation, authored-layout freedom, generated pivots/opaque bounds,
   construction states, staged materials, presentation replacement stability,
   asset-fit hitbox metadata, and NPC motion.
-- Measured hitbox contract: `tests/test_asset_hitboxes.gd` passes 609 checks,
+- Measured hitbox contract: `tests/test_asset_hitboxes.gd` passes 612 checks,
   including the foot-bearing colliders paired to Sanctuary framing trees and
   rocks. `tests/test_traversal_contract.gd` passes 26 checks across all five
   gates using real joystick vectors and physics movement.
 - Whisperwood route-state contract: `tests/test_whisperwood_route_state.gd`
-  passes 31 checks for ordered checkpoint persistence, authoritative endpoint
+  passes 35 checks for ordered checkpoint persistence, authoritative endpoint
   transition, save/reload, malformed
   checkpoint rejection, and fail-closed in-memory state.
 - Whisperwood physical journey: `tests/test_whisperwood_physical_journey.gd`
   passes 32 checks across camera-relative joystick traversal, pre-commit
   guardian dormancy, both branch endpoints, and branch collision activation.
+- Full Whisperwood loop: `tests/test_whisperwood_full_loop.gd` passes 77
+  scene-level checks covering physical route movement, discovery harvest/contact,
+  persisted ground pickup, cache/capstone pressure, reload, authoritative
+  Return Footbridge extraction, premature-extraction refusal, shortcut distance,
+  live player-hit guardian defeat/reward state, damaged-guardian health and
+  position surviving a scene reload before the decisive hit, and rollback when
+  a nonfatal combat save is deliberately blocked.
 - Extraction input contract: `tests/test_extraction_input_contract.gd` passes
   8 checks for the reference HUD action, beacon gating, and Sanctuary banking.
 - Current captures: `/private/tmp/isekai-sanctuary-final-v18.png`,
   `/private/tmp/isekai-sanctuary-stages-v16/`, including seven construction
   stages, four motion-proof PNGs, and two player-authored layout proofs.
+- Full gameplay regression after the return-contract change: pass — session,
+  physical Whisperwood journey, full expedition loops, route state, pressure
+  rewards, camera/input, progression, guardians, world loop, hitboxes,
+  Workshop interior, shaders, Sanctuary visual contract, directional facility
+  families, Storage Shed, and construction-stage suites.
+- Later-expedition physical return acceptance: pass — `LATER_EXPEDITION_RETURN_PASS`
+  with 101 checks across Sunlit Beach, Ember Ridge, Glass Desert, and Sunken
+  Dungeon, including branch harvest, pickups, capstones, return causeways, and
+  final extraction.
 
 ## Agent and research record
 
@@ -418,6 +458,9 @@ Updated: 2026-07-21, Asia/Singapore
   collision/feet/directional invariants; the resulting generated facility sheet
   is now wired to the authoritative footprints and verified in the display-backed
   stage capture.
+- Kierkegaard's independent ultra-depth persistence review is checking the latest
+  guardian-state transaction for migration, rollback, route ownership, and runtime
+  restore; it is not being treated as a rubber-stamp.
 - The reference-HUD verification pass now covers the gameplay/header/rail/belt
   hierarchy, sourced panel texture, icon/caption slots, and first-run objective;
   the old prototype panels yield to the new HUD in normal play while
@@ -430,11 +473,11 @@ Updated: 2026-07-21, Asia/Singapore
 1. Keep the Sanctuary gate active: strengthen lived-in activity density,
    building-specific silhouettes, directional character variants, and real
    touch-device capture before calling the reference bar accepted.
-2. Continue the authored Whisperwood acceptance loop: visible resource contact
-   stages, spatial guardian investigate/chase, extraction/reload under pressure,
-   full-satchel reward recovery, and a measured shortcut that materially changes
-   the return route. The first physical endpoint/checkpoint slice is now green;
-   the full walk/reload capture gate remains open.
+2. Harden the remaining expedition edge case at scene level: mid-combat reload
+   semantics are now implemented and covered by the full loop; continue
+   failure-injection coverage around durable combat saves. The complete
+   resource/cache/pressure/reload/return/extract loop, full-satchel guardian
+   recovery, and physical shortcut distance proof are green.
 3. Repeat the physical walk from Hearth through every Sanctuary route in both
    saved player layouts, then capture the avatar/roof occlusion and touch-safe
    HUD on a real device while preserving the shared collision model.

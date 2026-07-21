@@ -1,12 +1,17 @@
 # Sanctuary graphics checkpoint
 
-Updated: 2026-07-20
+Updated: 2026-07-21
 
 Sanctuary is the current art gate for Isekai Leveling. The other biome
 presentations remain frozen until this scene reaches the saved reference's
 visual bar. The layout of player-owned buildings is not fixed: the reference
 sets the visual language, while the authoritative grid/save model owns where
 the player builds.
+
+The active A+C visual authority is
+`assets/generated/reference/sanctuary-a-plus-c-target.png`. It is a
+composition/style target rather than a fixed background: the player remains
+free to choose the actual building layout.
 
 ## Implemented in this pass
 
@@ -91,10 +96,56 @@ the player builds.
   cropped fire atlas asset, pulse/light motion, and no occupancy claim, so it
   strengthens the lived-in reference read without deciding the player's build
   layout.
+- Added an authored Workshop interior cutaway shell behind live station meshes.
+  The stations retain their own measured visible-asset collision proxies, while
+  the architecture carries the richer teal timber / stone-floor reference
+  language and animated forge lighting. The latest interior pass uses an
+  original authored station sheet for the two furnaces, workbench, anvil, and
+  storage crate; its opaque alpha bounds are measured at runtime and calibrated
+  against the imported station envelope for visual scale and collision depth.
+  The custom toon shader now preserves Sprite3D billboarding explicitly, so the
+  cutaway remains correctly oriented instead of becoming a skewed card.
+- Interior entry now holds a deliberate room-centered camera composition while
+  the player moves inside it. The exit doorway is part of the illustrated room
+  shell, while the live egress capsule and doorway clearance remain measured
+  gameplay geometry.
+- Workshop entry/exit now validates the player's full capsule at every egress
+  candidate and fails closed if no clear position is available. Construction
+  stage sizing uses the selected directional asset's alpha envelope, and the
+  flagged pale-green stage fringe is neutralized in the processed PNGs.
 - Removed the remaining visible debug furnace presentation from the Sanctuary
   capture while preserving its gameplay root and interaction logic.
 - Added a deterministic seven-stage capture harness so visual review can compare
   the same scene states every time.
+- Added the first non-Workshop production facility family: Storage Shed now has
+  four authored directional operational views, four authored construction-stage
+  families for blueprint/frame/walls/roof, declared visible feature sockets, and
+  fail-closed missing-art behavior. Its legacy scaffold meshes remain available
+  for gameplay/QA metadata but cannot double-render beneath the authored cutout.
+- Added authored four-view operational families for Archive, Livestock Pen, and
+  Rain Cistern. Each view is a unique chroma-cleaned alpha cutout with measured
+  runtime bounds, directional identity, and the same camera-facing/lighting
+  contract as Workshop and Storage Shed. Their construction-stage families are
+  intentionally still tracked separately rather than being falsely implied by
+  the operational art.
+- Rebound fixed Hearth, Archive, and Bazaar landmarks onto the same generated
+  A+C presentation path. Their imported scenes remain hidden provenance and
+  measurement sources; the measured shell collision, access zones, and source
+  identity remain authoritative.
+- Added a runtime presentation-authority guard so legacy district and facility
+  render descendants cannot reappear after save/load or construction refresh;
+  interaction roots and measured collision shells remain available to gameplay.
+- Darkened the remaining prototype collision-floor backdrop and added a denser
+  distant woodland frame so fresh Sanctuary startup no longer presents the old
+  bright green prototype plane as its visual base.
+- Synchronized the directional construction presentation with the authoritative
+  material milestones: frame through 50% progress, walls through 76%, then roof
+  to completion. The renderer derives each cutout's placement from its measured
+  alpha envelope and the source-measured projected shell.
+- Added a fresh live display-backed Storage Shed evidence set at
+  `docs/evidence/sanctuary-scale-v26/`, including the placement preview,
+  construction phases, operation, motion/occlusion, and two genuinely different
+  player-authored layouts.
 - Added measured foot-bearing colliders to the illustrated framing trees and
   rocks. Their canopy pixels remain visual-only, while the blocked footprint is
   sourced from the published visual measurement metadata and verified as a
@@ -103,33 +154,63 @@ the player builds.
 ## Evidence currently available
 
 - Full Sanctuary capture:
-  `docs/evidence/sanctuary-scale-v24/07_operational_structure.png`
+  `docs/evidence/sanctuary-scale-v26/07_operational_structure.png`
+- Latest live A+C startup capture:
+  `/private/tmp/isekai-a-plus-c-live-v2.png`
+- Latest display-backed A+C stage proof:
+  `/private/tmp/isekai-a-plus-c-live-stages-v4/01_clean_daylight.png` through
+  `10_player_layout_split_workyard.png`
+- Persisted A+C evidence set:
+  `docs/evidence/sanctuary-a-plus-c-v27/`
 - Stage captures:
-  `docs/evidence/sanctuary-scale-v24/01_clean_daylight.png` through
+  `docs/evidence/sanctuary-scale-v26/01_clean_daylight.png` through
   `07_operational_structure.png`
 - Motion/occlusion proof:
-  `docs/evidence/sanctuary-scale-v24/08_motion_occlusion_00.png` through
+  `docs/evidence/sanctuary-scale-v26/08_motion_occlusion_00.png` through
   `08_motion_occlusion_03.png`
 - Player-authored layout proofs:
-  `docs/evidence/sanctuary-scale-v24/09_player_layout_east_courtyard.png`
+  `docs/evidence/sanctuary-scale-v26/09_player_layout_east_courtyard.png`
   and `10_player_layout_split_workyard.png`
+- Workshop interior proof:
+  `docs/evidence/sanctuary-scale-v26/workshop-interior-authored-stations.png`
+- New operational facility assets:
+  `assets/generated/sanctuary/archive/archive-q0.png`,
+  `assets/generated/sanctuary/livestock_pen/livestock-pen-q0.png`, and
+  `assets/generated/sanctuary/rain_cistern/rain-cistern-q0.png` (q1–q3 sit
+  beside each q0 asset).
 - Saved visual target:
-  `docs/reference/sanctuary-final-look-reference.png`
+  `assets/generated/reference/sanctuary-a-plus-c-target.png`
 
 ## Verification
 
-- `tests/test_sanctuary_visual_contract.gd`: pass, 4,999 checks across all five
+- `tests/test_sanctuary_visual_contract.gd`: pass, 5,127 checks across all five
   structure kinds and all four rotations, including authored layouts, generated
   pivots/opaque bounds, player-safe access zones, source-measured runtime
   collision centers/sizes, construction metadata, and Mira motion
+- `tests/test_sanctuary_directional_families.gd`: pass, 99 checks across Archive,
+  Livestock Pen, and Rain Cistern; every operational quarter-turn imports,
+  renders, binds its unique authored texture, and publishes measured bounds
 - `tests/capture_sanctuary_stages.gd`: pass, seven 1280 × 720 stage captures,
   four motion/occlusion captures, and two player-authored layout captures
 - Motion proof: pass, 4.16 m traversal; tree sway, hearth pulse, light flicker,
   rendered-player pixels, Mira articulation, and legacy-geometry checks all passed
 - `tests/test_game_session.gd`: pass
 - `tests/test_world_loop.gd`: pass
-- `tests/test_asset_hitboxes.gd`: pass, 609 checks covering tree trunks, rocks,
+- `tests/test_asset_hitboxes.gd`: pass, 612 checks covering tree trunks, rocks,
   guardians, route/inscription assets, and measured landmark shells
+- `tests/test_storage_shed_visuals.gd`: pass, 148 checks covering all four
+  directional operational views, all sixteen construction-stage views, visible
+  feature declarations, alpha-envelope coverage, and fail-closed metadata
+- `tests/test_sanctuary_shader_integration.gd`: pass, 160 checks covering live
+  moss/path/facility shader bindings, Sprite3D modulation preservation, and the
+  billboarding/light-direction shader contract
+- `tests/test_workshop_interior_contract.gd`: pass, 87 checks covering room
+  composition, measured station alpha bounds, station collision calibration,
+  and the authored shell
+- `tests/test_workshop_interior_runtime.gd`: pass, 63 checks covering entry,
+  room-centered interior movement, interaction, egress clearance, and exit
+- `tests/test_workshop_stage_visuals.gd`: pass, 134 checks covering authored
+  Workshop construction stages and motion
 - `tests/test_camera_controls.gd`: pass
 - `tests/test_reference_hud.gd`: pass, 18 checks covering gameplay visibility,
   portrait/status content, first-run objective, sourced belt texture,
@@ -141,9 +222,11 @@ the player builds.
   camera-relative joystick movement and physics release settling
 - `tests/probe_sanctuary_assets.gd`: pass for the Sanctuary asset subset
 - Godot editor/script checks: pass
-- Full current regression run: pass — audio feel, camera controls, progression
-  registry, expedition loops, progression runtime, session, world loop, and
-  Sanctuary visual contract (4,999 checks)
+- Focused current regression run: pass — session, world loop, Storage Shed,
+  shaders, Sanctuary visual contract (5,127 checks), directional facility
+  families (99 checks), Workshop interior, hitboxes (612 checks), traversal, and
+  Workshop stages. Godot headless scripts
+  all exited successfully.
 - `git diff --check`: pass on the last completed verification run
 
 Headless Godot still prints the known macOS certificate warning. It is an
@@ -157,12 +240,16 @@ reference-complete. The latest evidence is strongest on scale, construction
 states, authored layout freedom, measured source hitboxes, motion, and
 contextual HUD safety. The remaining bar is visual production quality: more
 authored lived-in activity density and variation, more building-specific
-silhouettes and directional character animation, and device capture on a real
-touch-safe-area target. The five operational facility identities are distinct,
-but the current facility atlas is still one camera-facing cutout per kind;
-four-direction facility raster variants and stronger 3D operational models
-remain before the directional-art requirement is complete. Other biome visual
-development remains frozen until this Sanctuary bar is explicitly accepted.
+construction-stage silhouettes and directional character animation, and device
+capture on a real touch-safe-area target. The Workshop now has four authored
+operational views and four authored construction-stage views per phase, while
+Archive, Livestock Pen, and Rain Cistern have their first authored operational
+families. The interior also has an authored cutaway shell behind separately
+measured station meshes. The whole Sanctuary gate remains open for the remaining
+construction families, exterior sprite lighting device verification, and the
+density/occlusion bar against the A+C reference on a real display. Other biome
+visual development remains frozen until this Sanctuary bar is explicitly
+accepted.
 
 ## Agent review record
 
@@ -193,5 +280,9 @@ development remains frozen until this Sanctuary bar is explicitly accepted.
   highest-value slice was replacing the hidden-by-source generic silhouettes
   with distinct illustrated operational assets.
 - Erdos audited the same slice's collision, feet, and directional invariants;
-  the measured imported-mesh envelope now drives the runtime shell, and the
-  focused contract covers 4,999 checks.
+-  the measured imported-mesh envelope now drives the runtime shell, and the
+  focused visual contract covers 5,127 checks.
+- The shader specialist caught and drove the world/view light-space correction,
+  mipmap sampler correction, depth-prepass policy, and explicit Sprite3D
+  billboard transform. The Workshop interior specialist independently measured
+  the skewed-card failure and verified the corrected room-centered cutaway.

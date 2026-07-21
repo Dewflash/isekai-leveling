@@ -321,3 +321,70 @@ func set_defeated_from_save(value: bool) -> void:
 		health = max_health
 		visible = true
 		set_active(zone_active)
+
+func restore_from_saved_state(state: Dictionary) -> void:
+	var saved_health: Variant = state.get("health", 0)
+	var saved_position: Variant = state.get("position", [])
+	if not (saved_health is int or saved_health is float) or not (saved_position is Array) or saved_position.size() < 3:
+		set_defeated_from_save(false)
+		return
+	health = clampi(int(saved_health), 1, max_health)
+	global_position = Vector3(float(saved_position[0]), 1.0, float(saved_position[2]))
+	velocity = Vector3.ZERO
+	attack_cooldown = 0.0
+	attack_windup = 0.0
+	attack_recovery = 0.0
+	stagger_time = 0.0
+	retreat_time = 0.0
+	guarding = false
+	alerted = false
+	alert_timer = 0.0
+	behavior_state = "idle"
+	visible = true
+	if visual != null:
+		visual.position.y = 0.0
+		visual.scale = Vector3.ONE
+	_sync_collision_to_visual()
+	set_active(zone_active)
+
+func capture_combat_state() -> Dictionary:
+	return {
+		"health": health,
+		"position": global_position,
+		"velocity": velocity,
+		"attack_cooldown": attack_cooldown,
+		"attack_windup": attack_windup,
+		"attack_recovery": attack_recovery,
+		"stagger_time": stagger_time,
+		"retreat_time": retreat_time,
+		"guarding": guarding,
+		"alerted": alerted,
+		"alert_timer": alert_timer,
+		"behavior_state": behavior_state,
+		"visible": visible,
+	}
+
+func restore_combat_state(snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	health = clampi(int(snapshot.get("health", max_health)), 0, max_health)
+	var saved_position: Variant = snapshot.get("position", global_position)
+	if saved_position is Vector3:
+		global_position = saved_position
+	var saved_velocity: Variant = snapshot.get("velocity", Vector3.ZERO)
+	velocity = saved_velocity if saved_velocity is Vector3 else Vector3.ZERO
+	attack_cooldown = maxf(0.0, float(snapshot.get("attack_cooldown", 0.0)))
+	attack_windup = maxf(0.0, float(snapshot.get("attack_windup", 0.0)))
+	attack_recovery = maxf(0.0, float(snapshot.get("attack_recovery", 0.0)))
+	stagger_time = maxf(0.0, float(snapshot.get("stagger_time", 0.0)))
+	retreat_time = maxf(0.0, float(snapshot.get("retreat_time", 0.0)))
+	guarding = bool(snapshot.get("guarding", false))
+	alerted = bool(snapshot.get("alerted", false))
+	alert_timer = maxf(0.0, float(snapshot.get("alert_timer", 0.0)))
+	behavior_state = str(snapshot.get("behavior_state", "idle"))
+	visible = bool(snapshot.get("visible", true)) and health > 0
+	if visual != null:
+		visual.scale = Vector3.ONE
+		visual.position.y = 0.0
+	_sync_collision_to_visual()
+	set_active(zone_active)

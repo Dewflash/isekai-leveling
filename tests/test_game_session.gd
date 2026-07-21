@@ -147,7 +147,7 @@ func _init() -> void:
 	root.add_child(duplicate_structures)
 	duplicate_structures.blueprints.append("Tideglass Compass")
 	duplicate_structures.structures = {
-		"storage_shed_legacy_a": {"id": "storage_shed_legacy_a", "kind": "storage_shed", "cell": [9, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
+		"storage_shed_legacy_a": {"id": "storage_shed_legacy_a", "kind": "storage_shed", "cell": [9, -13], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
 		"storage_shed_legacy_b": {"id": "storage_shed_legacy_b", "kind": "storage_shed", "cell": [4, 8], "state": "operational", "remaining_hours": 0.0, "total_hours": 24.0, "delivered_materials": {"wood": 10, "stone": 4, "plank": 3}},
 	}
 	assert(duplicate_structures.save_game())
@@ -511,7 +511,7 @@ func _init() -> void:
 	root.add_child(legacy_writer)
 	var legacy_payload: Dictionary = legacy_writer.call("_to_dict")
 	legacy_payload["save_version"] = 6
-	legacy_payload["structures"] = {"legacy_archive": {"id": "legacy_archive", "kind": "archive", "cell": [6, 8], "state": "blueprint", "remaining_hours": 0.0}}
+	legacy_payload["structures"] = {"legacy_archive": {"id": "legacy_archive", "kind": "archive", "cell": [4, 8], "state": "blueprint", "remaining_hours": 0.0}}
 	var legacy_file := FileAccess.open("user://qa_legacy_blueprint.json", FileAccess.WRITE)
 	legacy_file.store_string(JSON.stringify(legacy_payload))
 	legacy_file.close()
@@ -546,9 +546,12 @@ func _init() -> void:
 	root.add_child(route_chain)
 	assert(not route_chain.start_expedition("Sunlit Beach"))
 	assert(route_chain.start_expedition("Whisperwood"))
+	assert(route_chain.record_route_checkpoint("arrival"))
+	assert(route_chain.record_route_checkpoint("fork"))
 	assert(route_chain.commit_expedition_branch("grove"))
 	assert(route_chain.complete_expedition_resource("Whisperglass:chain", "berries", 1, 1))
 	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.record_route_checkpoint("return"))
 	assert(route_chain.finish_expedition().get("berries", 0) == 3)
 	assert(route_chain.route_is_unlocked("Sunlit Beach"))
 	var wide_anchor := SessionScript.new()
@@ -567,6 +570,7 @@ func _init() -> void:
 	assert(route_chain.collect_expedition_resource("SunlitBeach:TideglassShell:pool", "shell", 1))
 	assert(bool(route_chain.expedition_run.get("objective_complete", false)))
 	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(route_chain.finish_expedition().get("shell", 0) == 3)
 	assert(route_chain.route_is_unlocked("Ember Ridge"))
 	route_chain.energy = 24
@@ -576,6 +580,7 @@ func _init() -> void:
 	assert(route_chain.collect_expedition_resource("EmberRidge:quarry:2", "ore", 1))
 	assert(route_chain.collect_expedition_resource("EmberRidge:quarry:3", "ore", 1))
 	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(route_chain.finish_expedition().get("ore", 0) == 4)
 	assert(route_chain.route_is_unlocked("Ember Ridge"))
 	assert(route_chain.route_is_unlocked("Glass Desert"))
@@ -586,6 +591,7 @@ func _init() -> void:
 		assert(route_chain.collect_expedition_resource("GlassDesert:oasis:%d" % index, "fiber", 1))
 	assert(bool(route_chain.expedition_run.get("objective_complete", false)))
 	assert(not route_chain.open_expedition_capstone().is_empty())
+	assert(route_chain.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(route_chain.finish_expedition().get("fiber", 0) >= 3)
 	assert(route_chain.route_is_unlocked("Sunken Dungeon"))
 	var bypass_route := SessionScript.new()
@@ -617,6 +623,7 @@ func _init() -> void:
 	assert(authored_routes.collect_expedition_resource("SunlitBeach:tidepool:2", "shell", 1))
 	assert(authored_routes.expedition_route_snapshot().get("branch_definition", {}).get("objective_id") == "shell")
 	assert(authored_routes.open_expedition_capstone().get("loot", {}).get("shell", 0) == 1)
+	assert(authored_routes.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(authored_routes.finish_expedition().get("shell", 0) >= 1)
 	authored_routes.energy = 24
 	assert(authored_routes.start_expedition("Ember Ridge"))
@@ -626,6 +633,7 @@ func _init() -> void:
 	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry:3", "ore", 1))
 	assert(bool(authored_routes.expedition_run.get("objective_complete", false)))
 	assert(not authored_routes.open_expedition_capstone().is_empty())
+	assert(authored_routes.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(authored_routes.finish_expedition().get("ore", 0) >= 1)
 	authored_routes.energy = 24
 	assert(authored_routes.start_expedition("Glass Desert"))
@@ -633,12 +641,14 @@ func _init() -> void:
 	for index in 4:
 		assert(authored_routes.collect_expedition_resource("GlassDesert:oasis:%d" % index, "fiber", 1))
 	assert(not authored_routes.open_expedition_capstone().is_empty())
+	assert(authored_routes.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(authored_routes.finish_expedition().get("fiber", 0) >= 1)
 	authored_routes.energy = 24
 	assert(authored_routes.start_expedition("Sunken Dungeon"))
 	assert(authored_routes.commit_expedition_branch("vault"))
 	assert(authored_routes.record_discovery("Aether Relic"))
 	assert(not authored_routes.open_expedition_capstone().is_empty())
+	assert(authored_routes.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
 	assert(authored_routes.finish_expedition().get("relic", 0) >= 1)
 	var impossible_day_file := FileAccess.open("user://qa_impossible_day.json", FileAccess.WRITE)
 	impossible_day_file.store_string(JSON.stringify({"save_version": 7, "content_version": 1, "day": 5, "last_day_transaction": 6}))
@@ -797,7 +807,7 @@ func _init() -> void:
 	root.add_child(placed_builder)
 	placed_builder.inventory["wood"] = 12
 	placed_builder.inventory["stone"] = 8
-	var workshop_blueprint: Dictionary = placed_builder.place_structure("workshop", [2, -13])
+	var workshop_blueprint: Dictionary = placed_builder.place_structure("workshop", [3, 9])
 	assert(workshop_blueprint["state"] == "blueprint")
 	assert(placed_builder.deliver_structure_material(str(workshop_blueprint["id"]), "wood", 12)["state"] == "blueprint")
 	# A fresh player can reach the first Workshop without pre-existing Planks;
@@ -819,7 +829,7 @@ func _init() -> void:
 	bootstrap_graph.inventory["wood"] = 8
 	bootstrap_graph.inventory["stone"] = 8
 	bootstrap_graph.inventory["plank"] = 3
-	var archive_blueprint: Dictionary = bootstrap_graph.place_structure("archive", [6, 8])
+	var archive_blueprint: Dictionary = bootstrap_graph.place_structure("archive", [4, 8])
 	assert(archive_blueprint["state"] == "blueprint")
 	for material_id in {"wood": 8, "stone": 8, "plank": 3}:
 		var archive_frame: Dictionary = bootstrap_graph.deliver_structure_material(str(archive_blueprint["id"]), str(material_id), int({"wood": 8, "stone": 8, "plank": 3}[material_id]))
@@ -845,7 +855,7 @@ func _init() -> void:
 	storage_session.inventory["wood"] = 10
 	storage_session.inventory["stone"] = 4
 	storage_session.inventory["plank"] = 3
-	var storage_blueprint: Dictionary = storage_session.place_structure("storage_shed", [2, -13])
+	var storage_blueprint: Dictionary = storage_session.place_structure("storage_shed", [9, -13])
 	assert(storage_blueprint["state"] == "blueprint")
 	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "wood", 10)["state"] == "blueprint")
 	assert(storage_session.deliver_structure_material(str(storage_blueprint["id"]), "stone", 4)["state"] == "blueprint")
@@ -855,8 +865,8 @@ func _init() -> void:
 	storage_session.advance_day(storage_session.day + 1)
 	assert(str(storage_session.structures[storage_blueprint["id"]]["state"]) == "operational")
 	assert(storage_session.cargo_capacity == 16)
-	assert(storage_session.can_place_structure("storage_shed", [9, 8], 1))
-	var rotated_storage: Dictionary = storage_session.place_structure("storage_shed", [9, 8], 1)
+	assert(storage_session.can_place_structure("storage_shed", [2, -13], 1))
+	var rotated_storage: Dictionary = storage_session.place_structure("storage_shed", [2, -13], 1)
 	assert(int(rotated_storage.get("rotation", -1)) == 1)
 	assert(storage_session.save_game())
 	var rotated_loaded := SessionScript.new()
@@ -1019,6 +1029,8 @@ func _init() -> void:
 	grove_route.expedition_run = {"status": "none"}
 	assert(grove_route.start_expedition("Whisperwood"))
 	assert(not grove_route.commit_expedition_branch("bogus"))
+	assert(grove_route.record_route_checkpoint("arrival"))
+	assert(grove_route.record_route_checkpoint("fork"))
 	assert(grove_route.commit_expedition_branch("grove"))
 	assert(not grove_route.commit_expedition_branch("clearing"))
 	assert(grove_route.complete_expedition_resource("Whisperglass:route-capstone", "berries", 1, 1))

@@ -14,13 +14,13 @@ config/name="Prodewty: Isekai Leveling"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.7")
 
-[autoload]
-
-GameplayExtensions="*res://scripts/gameplay_extensions.gd"
-
 [audio]
 
 default_bus_layout="res://default_bus_layout.tres"
+
+[autoload]
+
+GameplayExtensions="*res://scripts/gameplay_extensions.gd"
 
 [display]
 

@@ -19,6 +19,7 @@ const SettlementGrid = preload("res://scripts/settlement_grid.gd")
 const SanctuaryStyleScript = preload("res://scripts/sanctuary_style.gd")
 const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd")
 const SanctuaryAssetMeasurement = preload("res://scripts/sanctuary_asset_measurement.gd")
+const BuildingInteriorScript = preload("res://scripts/building_interior.gd")
 
 const SOURCED_TREE_ASSETS := {
 	"Sanctuary": "res://assets/quaternius-stylized-nature/glTF/CommonTree_2.gltf",
@@ -58,6 +59,13 @@ var desert_zone: Node3D
 var dungeon_zone: Node3D
 var sanctuary_district: Node3D
 var sanctuary_style: Node3D
+var building_interior: Node3D
+var interior_active := false
+var interior_transitioning := false
+var interior_kind := ""
+var interior_instance_id := ""
+var interior_return_position := Vector3.ZERO
+var interior_return_facing := Vector3(0.0, 0.0, 1.0)
 var world_zones: Array[Node3D] = []
 var wildlife_nodes: Array[Node3D] = []
 var player: CharacterBody3D
@@ -267,6 +275,7 @@ func _ready() -> void:
 	session.feedback_requested.connect(_on_session_feedback)
 	_build_lighting()
 	_build_world()
+	_build_building_interior()
 	_build_player()
 	_build_audio()
 	_apply_player_settings()
@@ -295,6 +304,8 @@ func _process(delta: float) -> void:
 	if get_tree().paused:
 		_update_hud()
 		return
+	if interior_transitioning and building_interior != null and not bool(building_interior.call("is_transitioning")):
+		interior_transitioning = false
 	_copy_session_to_runtime()
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	attack_combo_timer = maxf(0.0, attack_combo_timer - delta)
@@ -309,8 +320,10 @@ func _process(delta: float) -> void:
 		if screen_shake_enabled and camera_shake > 0.0:
 			camera_shake = maxf(0.0, camera_shake - delta)
 			shake = Vector3(randf_range(-0.08, 0.08), randf_range(-0.04, 0.04), randf_range(-0.08, 0.08)) * camera_shake * 12.0
-		var sanctuary_focus_offset := Vector3(0.0, 0.0, -2.4) if current_zone == "Sanctuary" else Vector3.ZERO
+		var sanctuary_focus_offset := Vector3(0.0, 0.0, -2.4) if current_zone == "Sanctuary" and not interior_active else Vector3.ZERO
 		var camera_focus := _clamped_camera_focus(player.global_position + sanctuary_focus_offset)
+		if interior_active and building_interior != null and building_interior.has_method("camera_focus_position"):
+			camera_focus = building_interior.call("camera_focus_position")
 		# The camera is fixed-angle by contract. Smooth a separate anchor, then
 		# apply the authored offset to both the camera and its look target. This
 		# keeps translation soft without letting follow lag change the yaw/pitch.
@@ -331,6 +344,7 @@ func _process(delta: float) -> void:
 	_update_player_structure_motion(delta)
 	_update_resource_action(delta)
 	_update_whisperwood_route_progress()
+	_update_expedition_route_progress()
 	_update_attack_action(delta)
 	_update_structure_preview()
 	_update_lighting()
@@ -362,6 +376,8 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
+	if interior_transitioning:
+		return
 	if event.is_action_pressed("pause"):
 		if settings_open:
 			_toggle_settings()
@@ -369,6 +385,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_pause()
 		return
 	if get_tree().paused and not event.is_action_pressed("pause"):
+		return
+	if interior_active:
+		if event.is_action_pressed("interact"):
+			_contextual_interact()
 		return
 	if is_player_input_locked() and not event.is_action_pressed("interact"):
 		return
@@ -662,7 +682,10 @@ func _build_world() -> void:
 	world_zones.append(beach_zone)
 	mountain_zone = _create_expedition_zone("Ember Ridge", Color("#596367"), Color("#7f8d8c"), Color("#e19a62"))
 	_create_rock(mountain_zone, Vector3(-8, 0, -6), "ore", 2, "Copper Ore")
-	_create_rock(mountain_zone, Vector3(8, 0, -2), "ore", 2, "Copper Ore")
+	# Both quarry veins belong to the left-hand quarry lane. Keeping the
+	# objective resources on the committed side means the player never has to
+	# cross the physical high-pass barricade to finish a route they chose.
+	_create_rock(mountain_zone, Vector3(-5.0, 0, -2.0), "ore", 2, "Copper Ore")
 	_create_rock(mountain_zone, Vector3(-4, 0, 6), "stone", 2)
 	_create_expedition_inscription(mountain_zone, Vector3(-6.0, 0.0, -4.5), "ember_quarry_mark")
 	_create_tree(mountain_zone, Vector3(10, 0, 7), 0.76, "wood", 1)
@@ -681,7 +704,10 @@ func _build_world() -> void:
 	_create_wildlife_for_zone(desert_zone, "Glass Desert")
 	world_zones.append(desert_zone)
 	dungeon_zone = _create_expedition_zone("Sunken Dungeon", Color("#29353e"), Color("#4a5360"), Color("#a88ce0"))
-	_create_rock(dungeon_zone, Vector3(-7.0, 0.0, -4.0), "ore", 3, "Deep Veinstone", "deep")
+	# Keep the deep seam off the vault capstone approach. The landmark remains
+	# reachable from the dungeon, while its measured interaction envelope cannot
+	# steal focus from the completed vault objective.
+	_create_rock(dungeon_zone, Vector3(-11.0, 0.0, 6.0), "ore", 3, "Deep Veinstone", "deep")
 	_create_rock(dungeon_zone, Vector3(8.0, 0.0, 4.5), "ore", 3, "Veinstone")
 	_create_relic_discovery(dungeon_zone, Vector3(4.0, 0.0, -3.0))
 	_create_expedition_inscription(dungeon_zone, Vector3(4.8, 0.0, -4.8), "sunken_vault_verse")
@@ -692,6 +718,13 @@ func _build_world() -> void:
 		zone.visible = zone == sanctuary_zone
 	if session != null and session.has_method("enable_resource_contract"):
 		session.call("enable_resource_contract")
+
+func _build_building_interior() -> void:
+	building_interior = BuildingInteriorScript.new() as Node3D
+	if building_interior == null:
+		return
+	building_interior.name = "BuildingInteriorController"
+	building_interior.call("build", self)
 
 func _create_wildlife_for_zone(parent: Node3D, zone_id: String) -> void:
 	var observed: Array = session.get("observed_wildlife") if session != null else []
@@ -1179,6 +1212,32 @@ func _update_whisperwood_route_progress() -> void:
 		return
 	_refresh_whisperwood_route()
 
+func _update_expedition_route_progress() -> void:
+	if current_zone in ["Sanctuary", "Whisperwood"] or session == null or player == null or not session.has_method("record_expedition_return_checkpoint") or not bool(session.call("has_active_expedition")):
+		return
+	var run: Dictionary = session.get("expedition_run")
+	if str(run.get("biome_id", "")) != current_zone or str(run.get("route_phase", "")) != "shortcut":
+		return
+	var route := get_node_or_null("%s/ExpeditionRoute" % current_zone.replace(" ", "")) as Node3D
+	var causeway := route.get_node_or_null("ReturnCauseway") as Node3D if route != null else null
+	if causeway == null:
+		return
+	var causeway_radius := float(causeway.get_meta("checkpoint_radius", 2.8))
+	if _ground_distance(player.global_position, causeway.global_position) > causeway_radius:
+		return
+	var before_checkpoint: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	if not bool(session.call("record_expedition_return_checkpoint", [player.global_position.x, 1.0, player.global_position.z])):
+		return
+	if not bool(session.call("save_game")):
+		if not before_checkpoint.is_empty() and session.has_method("restore_state"):
+			session.call("restore_state", before_checkpoint)
+		_copy_session_to_runtime()
+		_refresh_expedition_routes()
+		_show_toast("The return causeway could not be secured. Keep moving; the route remains open.", 2.6)
+		return
+	_refresh_expedition_routes()
+	_show_toast("Return causeway crossed  |  The beacon is safe to reach.", 2.4)
+
 func _create_beach_landmarks(parent: Node3D) -> void:
 	var sea := Node3D.new()
 	sea.name = "TideLine"
@@ -1482,6 +1541,7 @@ func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent
 	route.set_meta("route_id", route_id)
 	parent.add_child(route)
 	_create_route_pressure_visual(route, route_id, accent)
+	_create_expedition_return_causeway(route, accent)
 	_create_path(route, Vector3(0.0, 0.045, -1.9), Vector3(3.4, 0.07, 1.0), accent.darkened(0.18))
 	_create_path(route, Vector3(-3.5, 0.045, -2.85), Vector3(5.8, 0.07, 1.0), accent.darkened(0.26))
 	_create_path(route, Vector3(3.5, 0.045, -2.85), Vector3(5.8, 0.07, 1.0), accent.darkened(0.26))
@@ -1531,6 +1591,39 @@ func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent
 	route_title.position = Vector3(0.0, 1.8, -0.8)
 	route.add_child(route_title)
 
+func _create_expedition_return_causeway(route: Node3D, accent: Color) -> void:
+	# Every later expedition has a physical return beat. It remains inert until
+	# the branch capstone opens the shortcut, then the same world-space marker is
+	# used by the route progress command and the extraction contract.
+	var causeway := Node3D.new()
+	causeway.name = "ReturnCauseway"
+	causeway.position = Vector3(0.0, 0.0, 8.7)
+	causeway.set_meta("checkpoint_radius", 2.8)
+	route.add_child(causeway)
+	_create_path(causeway, Vector3(0.0, 0.045, 0.0), Vector3(3.0, 0.08, 3.2), accent.darkened(0.12))
+	for side in [-1.0, 1.0]:
+		_structure_box(causeway, "CausewayPost_%s" % side, Vector3(0.16, 1.35, 0.16), Vector3(side * 1.15, 0.70, 0.0), accent.darkened(0.34))
+		_structure_box(causeway, "CausewayRail_%s" % side, Vector3(0.12, 0.12, 2.55), Vector3(side * 1.15, 1.22, 0.0), accent.darkened(0.28))
+	for plank_index in 5:
+		var plank_z := -1.0 + float(plank_index) * 0.5
+		_structure_box(causeway, "CausewayPlank_%02d" % plank_index, Vector3(2.15, 0.10, 0.28), Vector3(0.0, 0.13, plank_z), palette["wood_dark"], Vector3(0.0, float(plank_index % 2) * 2.0, 0.0))
+	var trigger := Area3D.new()
+	trigger.name = "ReturnCausewayTrigger"
+	trigger.collision_layer = 0
+	trigger.collision_mask = 0
+	var trigger_shape := CollisionShape3D.new()
+	var trigger_cylinder := CylinderShape3D.new()
+	trigger_cylinder.radius = 2.8
+	trigger_cylinder.height = 0.2
+	trigger_shape.shape = trigger_cylinder
+	trigger_shape.position.y = 0.1
+	trigger.add_child(trigger_shape)
+	causeway.add_child(trigger)
+	var label := _label3d("RETURN CAUSEWAY", 0.14, palette["cream"])
+	label.name = "ReturnCausewayLabel"
+	label.position = Vector3(0.0, 1.72, 0.0)
+	causeway.add_child(label)
+
 func _refresh_expedition_routes() -> void:
 	if session == null:
 		return
@@ -1551,6 +1644,12 @@ func _refresh_expedition_routes() -> void:
 		var route_title := route.get_node_or_null("RouteTitle") as Label3D
 		if route_title != null:
 			route_title.text = route_id.to_upper() + ("\nCHOOSE A TRAIL" if active and branch_id.is_empty() else ("\nCAPSTONE READY %s" % objective_counter if active and objective_complete else ("\nOBJECTIVE %s" % objective_counter if active else "\nTWO TRAILS, ONE RETURN")))
+		var return_causeway := route.get_node_or_null("ReturnCauseway") as Node3D
+		if return_causeway != null:
+			return_causeway.visible = not active or bool(run.get("shortcut_open", false))
+			var return_label := return_causeway.get_node_or_null("ReturnCausewayLabel") as Label3D
+			if return_label != null:
+				return_label.text = "RETURN CAUSEWAY\nCROSSED" if bool(run.get("return_checkpoint_crossed", false)) else "RETURN CAUSEWAY\nCROSS AFTER CAPSTONE"
 		var pressure := route.get_node_or_null("RoutePressure") as Node3D
 		if pressure != null:
 			var pressure_active := active and bool(run.get("stake_active", false))
@@ -2019,7 +2118,7 @@ func _build_hud() -> void:
 	joystick.size = Vector2(156, 156)
 	joystick.visible = DisplayServer.is_touchscreen_available()
 	root.add_child(joystick)
-	joystick.vector_changed.connect(Callable(player, "set_joystick_vector"))
+	joystick.vector_changed.connect(Callable(self, "_on_joystick_vector_changed"))
 	_build_settings_panel(root)
 	_build_reference_hud(root)
 	_layout_hud()
@@ -2279,6 +2378,8 @@ func _reference_action_button(text_value: String, callback: Callable, width: flo
 func _reference_slot_button(key_text: String, label_text: String, callback: Callable) -> Button:
 	var button := Button.new()
 	button.name = "ReferenceSlot_%s" % label_text
+	button.set_meta("action_key", key_text)
+	button.set_meta("action_label", label_text)
 	button.text = ""
 	button.custom_minimum_size = Vector2(78, 50)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2502,6 +2603,8 @@ func _apply_player_settings() -> void:
 		audio_director.call("apply_settings", stored_settings)
 
 func _toggle_settings() -> void:
+	if interior_transitioning:
+		return
 	settings_open = not settings_open
 	if settings_panel != null:
 		settings_panel.visible = settings_open
@@ -3748,7 +3851,8 @@ func _create_expedition_inscription(parent: Node3D, position: Vector3, inscripti
 		glyph.mesh = glyph_mesh
 		glyph.material_override = _material(palette["violet"].darkened(0.16), 0.88, false, true)
 		glyph.position = Vector3(0.0, 1.36 - float(index) * 0.18, -0.125)
-		inscription.add_child(glyph)
+		glyph_lines.add_child(glyph)
+	inscription.add_child(glyph_lines)
 	var label := _label3d("INSCRIPTION\n%s" % str(definition.get("title", "LORE")), 0.13, palette["cream"])
 	label.name = "InscriptionLabel"
 	label.position = Vector3(0.0, 2.02, 0.0)
@@ -4528,6 +4632,8 @@ func _cycle_stat_selection() -> void:
 	_show_toast("Stat selected: %s  |  %s" % [selected_stat, str(session.call("stat_effect_summary", selected_stat))], 2.0)
 
 func _toggle_pause() -> void:
+	if interior_transitioning:
+		return
 	if settings_open:
 		# The HUD pause button is reachable while the settings modal is open.
 		# Close the modal first so the button cannot leave an invisible settings
@@ -4551,8 +4657,16 @@ func _reset_manual_input() -> void:
 	if hud_joystick != null and hud_joystick.has_method("reset_input"):
 		hud_joystick.call("reset_input")
 
+func _on_joystick_vector_changed(value: Vector2) -> void:
+	if interior_transitioning:
+		if player != null:
+			player.call("set_joystick_vector", Vector2.ZERO)
+		return
+	if player != null:
+		player.call("set_joystick_vector", value)
+
 func _toggle_utilities() -> void:
-	if get_tree().paused or is_player_input_locked():
+	if get_tree().paused or is_player_input_locked() or interior_active:
 		return
 	utilities_open = not utilities_open
 	_show_toast("Ledger opened: effort, save, and ability points." if utilities_open else "Ledger closed.", 1.4)
@@ -4617,7 +4731,7 @@ func _update_world_motion(delta: float) -> void:
 		pickup.rotation.y += delta * 0.7
 
 func is_player_input_locked() -> bool:
-	return session != null and session.has_method("has_active_fishing") and bool(session.call("has_active_fishing"))
+	return interior_transitioning or (session != null and session.has_method("has_active_fishing") and bool(session.call("has_active_fishing")))
 
 func _fishing_visual_spot(spot_id: String = "") -> Node3D:
 	if spot_id.is_empty() and session != null:
@@ -4749,12 +4863,17 @@ func _update_lighting() -> void:
 	var daylight := clampf(sin((hour - 6.0) / 14.0 * PI), 0.12, 1.0)
 	sun_light.light_energy = 0.22 + daylight * 0.62
 	sun_light.light_color = Color("#ffd39d").lerp(Color("#7890b7"), 1.0 - daylight)
+	var key_direction := (-sun_light.global_basis.z).normalized()
+	if sanctuary_style != null and sanctuary_style.has_method("set_key_light_direction"):
+		sanctuary_style.call("set_key_light_direction", key_direction)
+	if building_interior != null and building_interior.has_method("set_key_light_direction"):
+		building_interior.call("set_key_light_direction", key_direction)
 	if hearth_fill != null:
-		hearth_fill.visible = current_zone == "Sanctuary"
-		hearth_fill.light_energy = 2.2 if current_zone == "Sanctuary" else 0.0
+		hearth_fill.visible = current_zone == "Sanctuary" and not interior_active
+		hearth_fill.light_energy = 2.2 if current_zone == "Sanctuary" and not interior_active else 0.0
 	var sanctuary_sky_fill := get_node_or_null("SanctuarySkyFill") as OmniLight3D
 	if sanctuary_sky_fill != null:
-		sanctuary_sky_fill.visible = current_zone == "Sanctuary"
+		sanctuary_sky_fill.visible = current_zone == "Sanctuary" and not interior_active
 		sanctuary_sky_fill.light_energy = 0.42 if current_zone == "Sanctuary" else 0.0
 
 func _update_expedition_hazard(delta: float) -> void:
@@ -4821,7 +4940,7 @@ func _update_audio_context() -> void:
 	if audio_director == null or player == null:
 		return
 	var surface := _current_surface()
-	var indoor := current_zone == "Sanctuary" and absf(player.position.x) < 2.15 and player.position.z < -2.0 and player.position.z > -5.8
+	var indoor := interior_active or (current_zone == "Sanctuary" and absf(player.position.x) < 2.15 and player.position.z < -2.0 and player.position.z > -5.8)
 	var near_furnace := furnace_active and current_zone == "Sanctuary" and _ground_distance(player.global_position, furnace.global_position) < 6.0
 	audio_director.call("set_environment", current_zone, surface, hour, weather, indoor, near_furnace)
 	if furnace != null:
@@ -4886,7 +5005,7 @@ func _update_hud() -> void:
 		return
 	zone_label.text = current_zone
 	if hud_title_label != null:
-		hud_title_label.text = "SANCTUARY" if current_zone == "Sanctuary" else "PRODEWTY"
+		hud_title_label.text = "WORKSHOP" if interior_active else ("SANCTUARY" if current_zone == "Sanctuary" else "PRODEWTY")
 	var total_minutes := int(hour * 60.0)
 	var display_hour := int(hour) % 24
 	var minute := total_minutes % 60
@@ -4896,7 +5015,7 @@ func _update_hud() -> void:
 	if reference_name_label != null:
 		reference_name_label.text = "PRODEWTY" if current_zone != "Sanctuary" else "WAYFARER"
 		reference_level_label.text = "LV. %d  •  DAY %d  •  %02d:%02d" % [int(session.get("level")) if session != null else 1, day, display_hour, minute]
-		reference_zone_label.text = current_zone.to_upper()
+		reference_zone_label.text = "WORKSHOP" if interior_active else current_zone.to_upper()
 		reference_objective_label.text = _reference_objective_text()
 		reference_health_bar.value = int(player.get("health"))
 		reference_energy_bar.value = energy
@@ -4985,6 +5104,8 @@ func _update_hud() -> void:
 				nearby_name = "Expedition Inscription"
 			elif nearest.is_in_group("wildlife_track"):
 				nearby_name = "Fresh Wildlife Tracks"
+			elif nearest.is_in_group("building_interior_station"):
+				nearby_name = str(nearest.get_meta("interior_station_id", "Workshop Station")).replace("_", " ").capitalize()
 			elif label_value != null:
 				nearby_name = str(label_value)
 			status_label.text = "Nearby: %s  |  Press E" % nearby_name
@@ -4996,7 +5117,7 @@ func _update_hud() -> void:
 		hud_bag_panel.visible = utilities_open
 	if hud_quest_panel != null:
 		hud_quest_panel.visible = utilities_open
-	var sanctuary_showcase_hud := current_zone == "Sanctuary" and not utilities_open
+	var sanctuary_showcase_hud := current_zone == "Sanctuary" and not utilities_open and not interior_active
 	var reference_gameplay_hud := not utilities_open and not settings_open
 	if reference_hud != null:
 		reference_hud.visible = reference_gameplay_hud
@@ -5018,9 +5139,10 @@ func _update_hud() -> void:
 		var fishing_active := fishing_locked
 		var fishing_phase := str(session.get("fishing_attempt").get("phase", "idle")) if fishing_active and session != null else ""
 		interact_button.text = ("Hook / Reel" if fishing_phase in ["bite", "reeling"] else "Wait for Bite") if fishing_active else ("Confirm placement" if placement_mode else "Interact")
-		interact_button.disabled = get_tree().paused
+		interact_button.disabled = get_tree().paused or interior_transitioning
 	if pause_button != null:
 		pause_button.text = "Resume" if get_tree().paused else "Pause"
+		pause_button.disabled = interior_transitioning
 	if smelt_button != null:
 		smelt_button.text = "Stop Furnace" if furnace_active else "Start Furnace"
 	var context_node := _nearest_interactable()
@@ -5034,7 +5156,7 @@ func _update_hud() -> void:
 		if interact_button != null:
 			reference_action_text = str(interact_button.text).replace("  [E]", "")
 		reference_context_button.text = "%s  [E]" % reference_action_text
-		reference_context_button.disabled = get_tree().paused
+		reference_context_button.disabled = get_tree().paused or interior_transitioning
 	# Management controls remain top-right. Context-sensitive gameplay buttons
 	# occupy their own bottom-right dock so touch movement and actions stay on
 	# opposite thumbs without covering the Sanctuary composition.
@@ -5044,7 +5166,7 @@ func _update_hud() -> void:
 		hud_action_panel.visible = not reference_gameplay_hud and _visible_hud_button_count(hud_action_box) > 0
 	if explore_button != null:
 		var nearby_route: bool = context_node != null and context_node.has_meta("destination_id")
-		explore_button.visible = current_zone == "Sanctuary" and nearby_route
+		explore_button.visible = current_zone == "Sanctuary" and not interior_active and nearby_route
 		var nearby_destination := str(context_node.get_meta("destination_id")) if nearby_route else ""
 		var nearby_unlocked := nearby_route and session != null and session.has_method("route_is_unlocked") and bool(session.call("route_is_unlocked", nearby_destination))
 		explore_button.text = ("Enter %s" % nearby_destination) if nearby_unlocked else ("Route locked: %s" % nearby_destination if nearby_route else "Walk to a route gate")
@@ -5054,8 +5176,10 @@ func _update_hud() -> void:
 		return_button.visible = current_zone != "Sanctuary"
 		var extraction_point := Vector3(0.0, 1.0, 7.5)
 		var at_extraction := current_zone != "Sanctuary" and player != null and _ground_distance(player.global_position, extraction_point) <= 2.8
-		return_button.disabled = not at_extraction
-		return_button.text = "Extract cargo" if at_extraction else "Reach extraction beacon"
+		var return_route_blocked := session != null and session.has_method("expedition_return_checkpoint_required") and bool(session.call("expedition_return_checkpoint_required"))
+		var return_landmark_label := "Return Footbridge" if current_zone == "Whisperwood" else "Return Causeway"
+		return_button.disabled = not at_extraction or return_route_blocked
+		return_button.text = "Cross %s" % return_landmark_label if return_route_blocked and at_extraction else ("Extract cargo" if at_extraction else "Reach extraction beacon")
 	if attack_button != null:
 		var near_guardian := false
 		if current_zone != "Sanctuary" and player != null:
@@ -5066,12 +5190,12 @@ func _update_hud() -> void:
 		attack_button.visible = near_guardian
 	if sleep_button != null:
 		var at_hearth := current_zone == "Sanctuary" and furnace != null and player != null and _ground_distance(player.global_position, furnace.global_position) <= 7.0
-		sleep_button.visible = at_hearth and not is_player_input_locked()
+		sleep_button.visible = at_hearth and not interior_active and not is_player_input_locked()
 		sleep_button.disabled = not at_hearth
 	if dodge_button != null:
 		dodge_button.visible = current_zone != "Sanctuary"
 	if farm_button != null:
-		farm_button.visible = not fishing_locked and current_zone == "Sanctuary" and context_node == farm_plot
+		farm_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and context_node == farm_plot
 	var field_supplies_available: bool = session != null and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition"))
 	if food_button != null:
 		food_button.visible = not fishing_locked and (utilities_open or current_zone != "Sanctuary" and field_supplies_available)
@@ -5080,26 +5204,26 @@ func _update_hud() -> void:
 		water_button.visible = not fishing_locked and (utilities_open or current_zone != "Sanctuary" and field_supplies_available)
 		water_button.text = "Drink Water  [H]  (%d)" % int(inventory.get("water", 0))
 	if livestock_button != null:
-		var livestock_context := current_zone == "Sanctuary" and (context_node == livestock_pen or _is_player_structure_kind(context_node, "livestock_pen"))
+		var livestock_context := not interior_active and current_zone == "Sanctuary" and (context_node == livestock_pen or _is_player_structure_kind(context_node, "livestock_pen"))
 		livestock_button.visible = not fishing_locked and livestock_context
 		var pen_built := session != null and bool(session.get("built").get("livestock_pen", false))
 		livestock_button.text = "Collect / Feed Clover" if pen_built else "Place Livestock Pen Blueprint"
 	if repair_button != null:
-		repair_button.visible = not fishing_locked and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
+		repair_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
 	if recipe_button != null:
-		recipe_button.visible = not fishing_locked and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop")) and session != null and bool(session.get("built").get("workshop", false))
+		recipe_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop")) and session != null and bool(session.get("built").get("workshop", false))
 		recipe_button.text = "Recipe: %s  [Q]" % selected_recipe.capitalize()
 	if structure_button != null:
-		structure_button.visible = not fishing_locked and current_zone == "Sanctuary" and (utilities_open or context_node != null)
+		structure_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (utilities_open or context_node != null)
 		structure_button.text = "Cancel Placement  [B]" if placement_mode else "Place %s  [B]" % _structure_display_name(placement_structure_id)
 	if blueprint_button != null:
-		blueprint_button.visible = not fishing_locked and current_zone == "Sanctuary" and (utilities_open or context_node != null)
+		blueprint_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (utilities_open or context_node != null)
 		blueprint_button.text = "Blueprint: %s  [N]" % _structure_display_name(placement_structure_id)
 	if rotate_button != null:
-		rotate_button.visible = not fishing_locked and current_zone == "Sanctuary" and placement_mode
+		rotate_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and placement_mode
 		rotate_button.text = "Rotate Blueprint  [X]  %d°" % (placement_rotation_quarter_turns * 90)
 	if build_button != null:
-		var workshop_context := current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
+		var workshop_context := not interior_active and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
 		build_button.visible = not fishing_locked and workshop_context
 		var construction_state := "none"
 		if session != null:
@@ -5110,9 +5234,9 @@ func _update_hud() -> void:
 		else:
 			build_button.text = "Workshop Built" if session != null and bool(session.get("built").get("workshop", false)) else ("Finish Workshop" if construction_state == "ready" else ("Building... Sleep to advance" if construction_state == "building" else "Place Workshop Blueprint"))
 	if smelt_button != null:
-		smelt_button.visible = not fishing_locked and current_zone == "Sanctuary" and furnace != null and _ground_distance(player.global_position, furnace.global_position) < 5.0
+		smelt_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and furnace != null and _ground_distance(player.global_position, furnace.global_position) < 5.0
 	if utilities_button != null:
-		utilities_button.visible = not fishing_locked
+		utilities_button.visible = not fishing_locked and not interior_active
 		utilities_button.text = "Close Ledger" if utilities_open else "Open Ledger"
 	if activity_button != null:
 		activity_button.visible = not fishing_locked and utilities_open
@@ -5144,7 +5268,9 @@ func _update_hud() -> void:
 		stat_cycle_button.visible = not fishing_locked and utilities_open
 		stat_cycle_button.text = "Stat: %s  [O]" % selected_stat
 	if action_hint != null:
-		if placement_mode:
+		if interior_active:
+			action_hint.text = "Workshop interior  |  Move between stations  |  Interact at the door to leave"
+		elif placement_mode:
 			action_hint.text = "Blueprint mode  |  Move to a clear footprint  |  Rotate [X]  |  Confirm placement or cancel"
 		elif current_zone == "Sanctuary":
 			action_hint.text = "WASD / joystick to move  |  Walk to a route gate, resource, villager, or build site to reveal the next action"
@@ -5157,7 +5283,8 @@ func _update_hud() -> void:
 				var objective_target := int(route_state.get("objective_target", 0))
 				var objective_progress := int(route_state.get("objective_progress", 0))
 				var objective_text := "CAPSTONE READY" if bool(route_state.get("objective_complete", false)) else ("OBJECTIVE %d/%d  |  %s" % [objective_progress, objective_target, str(route_definition.get("summary", "Gather supplies and read the terrain."))] if objective_target > 0 else str(route_definition.get("summary", "Gather supplies and read the terrain.")))
-				expedition_hint = "%s  |  %s  |  Extract at the beacon" % [branch_text, objective_text]
+				var return_hint := ("Cross the Return Footbridge, then extract" if current_zone == "Whisperwood" else "Cross the Return Causeway, then extract") if bool(route_state.get("shortcut_open", false)) and str(route_state.get("route_phase", "")) == "shortcut" else "Extract at the beacon"
+				expedition_hint = "%s  |  %s  |  %s" % [branch_text, objective_text, return_hint]
 				if _is_player_in_route_shelter():
 					expedition_hint += "  |  Shade pauses heat pressure"
 			action_hint.text = expedition_hint
@@ -5165,11 +5292,12 @@ func _update_hud() -> void:
 		if button_box == null:
 			continue
 		for child in button_box.get_children():
-			if child is Button and child != pause_button:
-				(child as Button).disabled = get_tree().paused
+			if child is Button and child != pause_button and child != interact_button:
+				(child as Button).disabled = get_tree().paused or interior_transitioning or interior_active
 	for slot in reference_slots:
 		if slot != null:
-			slot.disabled = get_tree().paused
+			var interior_safe := str(slot.get_meta("action_label", "")) == "USE"
+			slot.disabled = get_tree().paused or interior_transitioning or (interior_active and not interior_safe)
 	_refresh_hud_layout_if_needed()
 
 func _update_interaction_marker(delta: float) -> void:
@@ -5251,6 +5379,7 @@ func _consume_energy(cost: int) -> bool:
 func _nearest_interactable() -> Node:
 	var nearest: Node = null
 	var nearest_distance := _interaction_range()
+	var nearest_priority := -1
 	for candidate in get_tree().get_nodes_in_group("interactable"):
 		if not is_instance_valid(candidate) or not candidate.is_visible_in_tree():
 			continue
@@ -5258,10 +5387,33 @@ func _nearest_interactable() -> Node:
 		if resource_node == null:
 			continue
 		var distance := _interaction_distance(resource_node)
-		if distance < nearest_distance:
+		if distance > _interaction_range():
+			continue
+		var priority := _interaction_priority(candidate)
+		if priority > nearest_priority or (priority == nearest_priority and distance < nearest_distance):
 			nearest = candidate
 			nearest_distance = distance
+			nearest_priority = priority
 	return nearest
+
+func _interaction_priority(candidate: Node) -> int:
+	# Proximity remains the tie-breaker, but a live objective must not be
+	# shadowed by optional flavour interactions that happen to be closer. This
+	# is a gameplay focus rule, not a collision-radius expansion: every candidate
+	# still has to be inside its measured interaction range.
+	if session != null and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition")):
+		var run: Dictionary = session.get("expedition_run")
+		var branch_id := str(run.get("branch_id", ""))
+		var route_id := str(run.get("biome_id", ""))
+		if candidate.is_in_group("expedition_pickup"):
+			return 30
+		if str(candidate.get("station_id")) == "map_capstone" and str(candidate.get_meta("route_branch", "")) == branch_id and str(current_zone) == route_id and bool(run.get("objective_complete", false)):
+			return 25
+		if candidate.is_in_group("resource_node") and str(candidate.get_meta("route_branch", "")) == branch_id and str(current_zone) == route_id:
+			return 20
+		if candidate.is_in_group("wildlife_track"):
+			return 0
+	return 10
 
 func _interaction_range(base_range: float = 2.35, grace: float = 0.0) -> float:
 	var range_value := base_range
@@ -5274,6 +5426,11 @@ func _interaction_anchor_position(node: Node3D) -> Vector3:
 		return Vector3.ZERO
 	var zones: Variant = node.get_meta("access_zones", [])
 	if zones is Array and not (zones as Array).is_empty() and player != null:
+		if node.has_meta("construction_id"):
+			var door_zone := _first_access_zone(zones as Array, "door")
+			var door_center: Array = door_zone.get("center", [])
+			if door_center.size() >= 3:
+				return node.to_global(Vector3(float(door_center[0]), 0.0, float(door_center[2])))
 		var nearest := node.global_position
 		var nearest_distance := INF
 		for zone_value in zones:
@@ -5290,6 +5447,39 @@ func _interaction_anchor_position(node: Node3D) -> Vector3:
 				nearest_distance = distance
 		return nearest
 	return node.global_position
+
+func _first_access_zone(zones: Array, zone_kind: String) -> Dictionary:
+	for zone_value in zones:
+		if zone_value is Dictionary and str((zone_value as Dictionary).get("kind", "")) == zone_kind:
+			return (zone_value as Dictionary).duplicate(true)
+	return {}
+
+func _access_zone_by_id(zones: Array, zone_id: String) -> Dictionary:
+	if zone_id.is_empty():
+		return {}
+	for zone_value in zones:
+		if zone_value is Dictionary and str((zone_value as Dictionary).get("id", "")) == zone_id:
+			return (zone_value as Dictionary).duplicate(true)
+	return {}
+
+func _world_access_zone(structure_node: Node3D, zone_kind: String, zone_id := "") -> Dictionary:
+	if structure_node == null:
+		return {}
+	var zones: Variant = structure_node.get_meta("access_zones", [])
+	if not zones is Array:
+		return {}
+	var zone := _access_zone_by_id(zones as Array, zone_id) if not zone_id.is_empty() else _first_access_zone(zones as Array, zone_kind)
+	if zone.is_empty():
+		return {}
+	var center: Array = zone.get("center", [])
+	var facing: Array = zone.get("facing", [])
+	if center.size() < 3 or facing.size() < 3:
+		return {}
+	var local_center := Vector3(float(center[0]), 0.0, float(center[2]))
+	var local_facing := Vector3(float(facing[0]), 0.0, float(facing[2])).normalized()
+	zone["world_center"] = structure_node.to_global(local_center)
+	zone["world_facing"] = (structure_node.global_basis * local_facing).normalized()
+	return zone
 
 func _ground_distance(first: Vector3, second: Vector3) -> float:
 	return Vector2(first.x - second.x, first.z - second.z).length()
@@ -5342,6 +5532,9 @@ func _interact() -> void:
 		return
 	if player != null and player.has_method("cancel_navigation"):
 		player.call("cancel_navigation", true)
+	if interior_active:
+		_interior_interact()
+		return
 	var nearest := _nearest_interactable()
 	if nearest == null:
 		_show_toast("Nothing close enough to interact with.", 1.8)
@@ -5406,7 +5599,7 @@ func _livestock_contextual_action() -> void:
 	_livestock_interact(context_node if context_node != null else livestock_pen)
 
 func _contextual_interact() -> void:
-	if get_tree().paused:
+	if get_tree().paused or interior_transitioning:
 		return
 	if is_player_input_locked():
 		_fishing_action()
@@ -5425,7 +5618,7 @@ func _construction_interact(structure_node: Node3D) -> void:
 	var kind := str(structure.get("kind", ""))
 	if state == "operational":
 		if kind == "workshop":
-			_workshop_use(structure_node)
+			_enter_building_interior(structure_node)
 			return
 		if kind == "archive":
 			_library_interact(structure_node)
@@ -5479,6 +5672,226 @@ func _construction_interact(structure_node: Node3D) -> void:
 		else:
 			_show_toast("Delivered %d %s. The scaffold now shows the material on site." % [delivery_amount, str(material_id).capitalize()], 2.0)
 		return
+
+func _enter_building_interior(structure_node: Node3D) -> void:
+	if get_tree().paused or interior_active or interior_transitioning or structure_node == null or building_interior == null or player == null:
+		return
+	if not structure_node.has_meta("construction_id") or str(structure_node.get_meta("structure_kind", "")) != "workshop":
+		return
+	var interior_profile: Dictionary = SanctuaryAssetCatalog.structure_definition("workshop").get("interior_profile", {})
+	var entry_zone_id := str(interior_profile.get("entry_zone_id", ""))
+	var door_zone := _world_access_zone(structure_node, "door", entry_zone_id)
+	var has_door := not door_zone.is_empty() and door_zone.has("world_center")
+	var door_world: Vector3 = door_zone.get("world_center", Vector3.ZERO)
+	var door_outward: Vector3 = door_zone.get("world_facing", Vector3(0.0, 0.0, 1.0))
+	if not has_door or str(door_zone.get("kind", "")) != "door" or door_outward.length_squared() < 0.01:
+		_show_toast("This Workshop has no measured front door.", 2.2)
+		return
+	if _ground_distance(player.global_position, door_world) > _interaction_range(2.35, 0.15):
+		_show_toast("Approach the Workshop's front door to enter.", 2.2)
+		return
+	var instance_id := str(structure_node.get_meta("construction_id", ""))
+	var structure: Dictionary = session.get("structures").get(instance_id, {}) if session != null else {}
+	if str(structure.get("state", "")) != "operational":
+		return
+	var measurement: Dictionary = structure_node.get_meta("source_measurement", {})
+	var access_zones: Array = SanctuaryAssetCatalog.structure_access_zones("workshop", 0)
+	if not building_interior.call("configure_for_structure", "workshop", measurement, access_zones, interior_profile):
+		_show_toast("The Workshop interior is unavailable until its measured shell is valid.", 2.6)
+		return
+	var old_interior_kind := interior_kind
+	var old_interior_instance_id := interior_instance_id
+	var old_return_position := interior_return_position
+	var old_return_facing := interior_return_facing
+	var old_transitioning := interior_transitioning
+	var old_placement_mode := placement_mode
+	var old_utilities_open := utilities_open
+	var old_marker_visible := build_marker != null and build_marker.visible
+	_reset_manual_input()
+	placement_mode = false
+	utilities_open = false
+	if build_marker != null:
+		build_marker.visible = false
+	interior_kind = "workshop"
+	interior_instance_id = instance_id
+	interior_return_position = _measured_door_egress_position(structure_node, measurement, door_zone, interior_profile)
+	interior_return_facing = door_outward
+	interior_transitioning = true
+	var started := bool(building_interior.call("transition_to", true, interior_kind, interior_instance_id, Callable(self, "_finish_enter_building_interior")))
+	if not started:
+		# Entry is a transaction: a failed fade/room activation must not leave
+		# identity, camera return data, placement state, or HUD state half-mutated.
+		interior_kind = old_interior_kind
+		interior_instance_id = old_interior_instance_id
+		interior_return_position = old_return_position
+		interior_return_facing = old_return_facing
+		interior_transitioning = old_transitioning
+		placement_mode = old_placement_mode
+		utilities_open = old_utilities_open
+		if build_marker != null:
+			build_marker.visible = old_marker_visible
+
+func _measured_door_egress_position(structure_node: Node3D, measurement: Dictionary, door_zone: Dictionary, interior_profile: Dictionary) -> Vector3:
+	var fitted_bounds: AABB = measurement.get("fitted_bounds", AABB())
+	var local_center := Vector3.ZERO
+	var center_value: Array = door_zone.get("center", [])
+	if center_value.size() >= 3:
+		local_center = Vector3(float(center_value[0]), 0.0, float(center_value[2]))
+	var local_facing := Vector3(0.0, 0.0, 1.0)
+	var facing_value: Array = door_zone.get("facing", [])
+	if facing_value.size() >= 3:
+		local_facing = Vector3(float(facing_value[0]), 0.0, float(facing_value[2])).normalized()
+	var support := local_center
+	if absf(local_facing.x) > absf(local_facing.z):
+		support.x = fitted_bounds.end.x if local_facing.x >= 0.0 else fitted_bounds.position.x
+		support.z = clampf(support.z, fitted_bounds.position.z, fitted_bounds.end.z)
+	else:
+		support.z = fitted_bounds.end.z if local_facing.z >= 0.0 else fitted_bounds.position.z
+		support.x = clampf(support.x, fitted_bounds.position.x, fitted_bounds.end.x)
+	var horizontal_extent := minf(fitted_bounds.size.x, fitted_bounds.size.z)
+	var egress_ratio := clampf(float(interior_profile.get("egress_clearance_ratio", 0.18)), 0.10, 0.30)
+	var egress_clearance := clampf(horizontal_extent * egress_ratio, 0.70, 1.30)
+	var outward_world := (structure_node.global_basis * local_facing).normalized()
+	var egress := structure_node.to_global(support) + outward_world * egress_clearance
+	egress.y = 1.0
+	return egress
+
+func _finish_enter_building_interior() -> void:
+	if player == null or building_interior == null:
+		interior_transitioning = false
+		return
+	if sanctuary_zone != null:
+		sanctuary_zone.visible = false
+		_set_zone_collisions(sanctuary_zone, false)
+	if sanctuary_style != null:
+		sanctuary_style.visible = false
+	if sanctuary_district != null:
+		sanctuary_district.visible = false
+	var environment_node := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if environment_node != null and environment_node.environment != null:
+		# Interior presentation owns the background tone while the Sanctuary is
+		# hidden. This keeps the authored room card readable at its measured scale
+		# instead of exposing the outdoor teal clear color around its edges.
+		environment_node.environment.background_color = Color("#162127")
+	interior_active = true
+	player.global_position = building_interior.call("entry_position")
+	player.set("last_direction", building_interior.call("entry_facing"))
+	player.call("cancel_navigation", true)
+	player.call("set_joystick_vector", Vector2.ZERO)
+	if camera != null:
+		var room_dimensions: Vector3 = building_interior.call("room_dimensions")
+		camera.size = maxf(8.8, room_dimensions.z * 1.78)
+	camera_anchor_initialized = false
+	_show_toast("Workshop entered  |  Furnace, bench, anvil and storage are ready.", 2.8)
+
+func _exit_building_interior() -> void:
+	if get_tree().paused or not interior_active or interior_transitioning or building_interior == null:
+		return
+	_reset_manual_input()
+	interior_transitioning = true
+	var started := bool(building_interior.call("transition_to", false, "", "", Callable(self, "_finish_exit_building_interior")))
+	if not started:
+		interior_transitioning = false
+
+func _finish_exit_building_interior() -> void:
+	interior_active = false
+	var environment_node := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if environment_node != null and environment_node.environment != null:
+		environment_node.environment.background_color = _zone_background(current_zone)
+	# The normal fade already deactivates the room before this callback. Keep the
+	# callback idempotent as well so a failed-exit recovery or a direct runtime
+	# harness cannot leave station colliders active in the Sanctuary.
+	if building_interior != null:
+		building_interior.call("set_room_active", false)
+	if sanctuary_zone != null:
+		sanctuary_zone.visible = true
+		_set_zone_collisions(sanctuary_zone, true)
+	if sanctuary_style != null:
+		sanctuary_style.visible = true
+	if sanctuary_district != null:
+		sanctuary_district.visible = false
+	if player != null:
+		var egress_result: Dictionary = _resolve_egress_position(interior_return_position, interior_return_facing)
+		if not bool(egress_result.get("valid", false)):
+			# Never leave the player inside an unverified obstacle. Re-open the room
+			# and keep the exterior hidden until a later exit attempt can find a
+			# complete capsule-sized clearance.
+			interior_active = true
+			if sanctuary_zone != null:
+				sanctuary_zone.visible = false
+				_set_zone_collisions(sanctuary_zone, false)
+			if sanctuary_style != null:
+				sanctuary_style.visible = false
+			if building_interior != null:
+				building_interior.call("set_room_active", true, interior_kind, interior_instance_id)
+			_show_toast("The doorway is blocked. Clear the entrance and try again.", 2.6)
+			return
+		interior_return_position = egress_result.get("position", interior_return_position)
+		player.global_position = interior_return_position
+		player.set("last_direction", interior_return_facing)
+		player.call("cancel_navigation", true)
+		player.call("set_joystick_vector", Vector2.ZERO)
+	if camera != null:
+		camera.size = SANCTUARY_CAMERA_SIZE
+	camera_anchor_initialized = false
+	interior_kind = ""
+	interior_instance_id = ""
+	_show_toast("Back in the Sanctuary.", 1.8)
+
+func _resolve_egress_position(candidate: Vector3, outward: Vector3) -> Dictionary:
+	if get_world_3d() == null or player == null:
+		return {"valid": false, "reason": "missing_world_or_player"}
+	var space_state := get_world_3d().direct_space_state
+	if space_state == null:
+		return {"valid": false, "reason": "missing_space_state"}
+	# Match the actual player collider instead of probing a small ground sphere.
+	# This catches low walls, doorway posts, and any obstacle that would overlap
+	# the player's full standing capsule after the fade completes.
+	var player_collision := _player_movement_collision()
+	var player_capsule := player_collision.shape as CapsuleShape3D if player_collision != null else null
+	if player_collision == null or player_capsule == null:
+		return {"valid": false, "reason": "player_capsule_unavailable"}
+	var probe := player_capsule.duplicate() as CapsuleShape3D
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = probe
+	query.collision_mask = 1
+	query.exclude = [player.get_rid()]
+	var direction := outward.normalized() if outward.length_squared() > 0.01 else Vector3(0.0, 0.0, 1.0)
+	var resolved := candidate
+	for step in 10:
+		query.transform = Transform3D(Basis.IDENTITY, resolved) * player_collision.transform
+		var hits := space_state.intersect_shape(query, 8)
+		if hits.is_empty():
+			return {"valid": true, "position": resolved, "steps": step}
+		resolved += direction * 0.42
+	return {"valid": false, "reason": "no_capsule_clearance", "attempts": 10}
+
+func _player_movement_collision() -> CollisionShape3D:
+	if player == null:
+		return null
+	for value in player.find_children("*", "CollisionShape3D", true, false):
+		var collision := value as CollisionShape3D
+		if collision != null and collision.shape is CapsuleShape3D:
+			return collision
+	return null
+
+func _interior_interact() -> void:
+	if not interior_active or interior_transitioning or building_interior == null:
+		return
+	var nearest := _nearest_interactable()
+	if nearest == null:
+		_show_toast("Move closer to a workshop station.", 1.8)
+		return
+	var action := str(nearest.get_meta("interior_action", ""))
+	match action:
+		"exit":
+			_exit_building_interior()
+		"storage":
+			_show_toast("Material Storage  |  Your banked resources are available from the Workshop.", 2.4)
+		"workshop":
+			_workshop_use()
+		_:
+			_show_toast("This station is not operational yet.", 1.8)
 
 func _is_live_resource_node(node: Node) -> bool:
 	if node == null or not is_instance_valid(node) or not node.is_in_group("resource_node") or not node.is_visible_in_tree():
@@ -5649,7 +6062,8 @@ func _commit_expedition_harvest(node: Node, pickup: Dictionary, before_harvest: 
 	if pickup_id.is_empty():
 		return false
 	_spawn_expedition_pickup(pickup)
-	if not bool(session.call("save_game")):
+	var harvest_saved := bool(session.call("save_game"))
+	if not harvest_saved:
 		if not before_harvest.is_empty():
 			session.call("restore_state", before_harvest)
 		_clear_expedition_pickup_visuals()
@@ -5948,7 +6362,8 @@ func _workshop_use(source: Node3D = null) -> void:
 	if source == workshop and _has_operational_player_structure("workshop"):
 		_show_toast("This is the old workshop shell. Use the Workshop you placed in the Sanctuary.", 2.6)
 		return
-	if not bool(session.get("built").get("workshop", false)):
+	var placed_workshop_available := _has_operational_player_structure("workshop")
+	if not bool(session.get("built").get("workshop", false)) and not placed_workshop_available:
 		_show_toast("This is a shell. Place and finish a Workshop blueprint first.", 2.5)
 		return
 	var job: Dictionary = session.get("station_job")
@@ -6452,8 +6867,10 @@ func _map_branch_interact(station: Node) -> void:
 	var selected_index := 0 if player.global_position.x <= 0.0 else 1
 	var branch_id := str(options[selected_index])
 	var before_branch: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	if session.call("commit_expedition_branch", branch_id):
-		if not bool(session.call("save_game")):
+	var committed := bool(session.call("commit_expedition_branch", branch_id))
+	if committed:
+		var branch_saved := bool(session.call("save_game"))
+		if not branch_saved:
 			if not before_branch.is_empty():
 				session.call("restore_state", before_branch)
 			_copy_session_to_runtime()
@@ -6687,7 +7104,7 @@ func _structure_display_name(structure_id: String) -> String:
 	return structure_id.replace("_", " ").capitalize()
 
 func _cycle_structure_selection() -> void:
-	if is_player_input_locked() or current_zone != "Sanctuary" or placement_mode:
+	if is_player_input_locked() or interior_active or current_zone != "Sanctuary" or placement_mode:
 		if placement_mode:
 			_show_toast("Cancel the current placement before changing its blueprint.", 2.0)
 		return
@@ -6708,7 +7125,7 @@ func _cycle_structure_selection() -> void:
 	_show_toast("Blueprint selected: %s  |  %s" % [_structure_display_name(placement_structure_id), " + ".join(cost_parts)], 2.8)
 
 func _toggle_structure_placement() -> void:
-	if get_tree().paused or is_player_input_locked() or current_zone != "Sanctuary" or session == null:
+	if get_tree().paused or is_player_input_locked() or interior_active or current_zone != "Sanctuary" or session == null:
 		return
 	if placement_mode:
 		placement_mode = false
@@ -6738,7 +7155,7 @@ func _toggle_structure_placement() -> void:
 	_show_toast("Place the %s blueprint on a clear grid cell. Press E to confirm or B to cancel." % _structure_display_name(placement_structure_id), 3.0)
 
 func _rotate_structure_placement() -> void:
-	if get_tree().paused or is_player_input_locked() or not placement_mode:
+	if get_tree().paused or is_player_input_locked() or interior_active or not placement_mode:
 		return
 	placement_rotation_quarter_turns = posmod(placement_rotation_quarter_turns + 1, 4)
 	_update_structure_preview()
@@ -6817,7 +7234,7 @@ func _update_structure_preview() -> void:
 		sanctuary_style.call("set_placement_preview", build_marker.global_position, footprint, valid, placement_rotation_quarter_turns, true)
 
 func _place_structure() -> void:
-	if get_tree().paused or is_player_input_locked() or not placement_mode or session == null or current_zone != "Sanctuary":
+	if get_tree().paused or is_player_input_locked() or interior_active or not placement_mode or session == null or current_zone != "Sanctuary":
 		return
 	var cell := _preview_structure_cell()
 	if not _structure_preview_valid(cell):
@@ -7513,6 +7930,12 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var display_name := _structure_display_name(kind).to_upper()
 	var state := str(data.get("state", "building"))
 	var definition := ContentRegistry.structure_definition(kind)
+	# A generated directional family is the sole operational silhouette. Keep
+	# gameplay utility roots alive, but never let their legacy walls/roofs become
+	# a second visible building after a save refresh.
+	var generated_operational_presentation := state == "operational" \
+		and str(definition.get("operational_art_mode", "")) == "illustrated_2_5d" \
+		and not SanctuaryAssetCatalog.structure_directional_variant(kind, 0).is_empty()
 	var cost: Dictionary = definition.get("cost", {})
 	var delivered: Dictionary = data.get("delivered_materials", {})
 	var wood_delivered := int(delivered.get("wood", 0))
@@ -7536,10 +7959,10 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 		roof.visible = state == "operational" and not kind in ["workshop", "storage_shed", "archive"]
 	var gabled_roof := structure.get_node_or_null("GabledRoof") as Node3D
 	if gabled_roof != null:
-		gabled_roof.visible = state == "operational" and kind in ["workshop", "storage_shed", "archive"]
+		gabled_roof.visible = state == "operational" and kind in ["workshop", "storage_shed", "archive"] and not generated_operational_presentation
 	var timber_frame := structure.get_node_or_null("TimberFrame") as Node3D
 	if timber_frame != null:
-		timber_frame.visible = state == "operational" and kind in ["workshop", "storage_shed", "archive"]
+		timber_frame.visible = state == "operational" and kind in ["workshop", "storage_shed", "archive"] and not generated_operational_presentation
 	var utility := structure.get_node_or_null("StructureUtility") as Node3D
 	if utility != null:
 		utility.visible = kind != "rain_cistern" and state == "operational"
@@ -7560,9 +7983,9 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var finished_source_building := structure.get_node_or_null("FinishedSourceBuilding") as Node3D
 	var has_finished_source := finished_source_building != null and finished_source_building.get_child_count() > 0
 	if finished_source_building != null:
-		finished_source_building.visible = state == "operational" and has_finished_source
+		finished_source_building.visible = state == "operational" and has_finished_source and not generated_operational_presentation
 	if finished_walls != null:
-		finished_walls.visible = state == "operational" and not has_finished_source
+		finished_walls.visible = state == "operational" and not has_finished_source and not generated_operational_presentation
 	var blueprint_stakes := structure.get_node_or_null("BlueprintStakes") as Node3D
 	if blueprint_stakes != null:
 		blueprint_stakes.visible = state == "blueprint"
@@ -7729,19 +8152,12 @@ func _return_home() -> void:
 	if player == null or _ground_distance(player.global_position, extraction_point) > 2.8:
 		_show_toast("Reach the expedition beacon before extracting your cargo.", 2.5)
 		return
+	if session != null and session.has_method("expedition_return_checkpoint_required") and bool(session.call("expedition_return_checkpoint_required")):
+		var return_landmark_label := "Return Footbridge" if current_zone == "Whisperwood" else "Return Causeway"
+		_show_toast("Cross the %s before the beacon. The shortcut is open, but the route is not yet safe." % return_landmark_label, 3.0)
+		return
 	_sync_expedition_anchor()
 	var before_extract: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
-	# The return footbridge is a real route beat after a Whisperwood cache. It is
-	# deliberately recorded before the beacon transaction so a failed save can
-	# roll the checkpoint and extraction back together.
-	if current_zone == "Whisperwood" and session != null and session.has_method("record_route_checkpoint"):
-		session.call("record_route_checkpoint", "return")
-		if not bool(session.call("save_game")):
-			if not before_extract.is_empty() and session.has_method("restore_state"):
-				session.call("restore_state", before_extract)
-			_copy_session_to_runtime()
-			_show_toast("The return checkpoint could not be secured. Your cargo remains in the run.", 3.0)
-			return
 	_sync_expedition_anchor()
 	var stranded_pickups := 0
 	if session != null and session.has_method("finish_expedition"):
@@ -7819,11 +8235,15 @@ func _restore_active_expedition_nodes() -> void:
 		return
 	var depleted: Array = []
 	var defeated_guardians: Array = []
+	var guardian_states: Dictionary = {}
 	var expedition_contact_progress: Dictionary = {}
 	if session.has_method("has_active_expedition") and session.call("has_active_expedition"):
 		var run: Dictionary = session.get("expedition_run")
 		depleted = run.get("depleted_ids", [])
 		defeated_guardians = run.get("defeated_guardian_ids", [])
+		var stored_guardian_states: Variant = run.get("guardian_states", {})
+		if stored_guardian_states is Dictionary:
+			guardian_states = stored_guardian_states
 		var stored_progress: Variant = run.get("contact_progress", {})
 		if stored_progress is Dictionary:
 			expedition_contact_progress = stored_progress
@@ -7841,7 +8261,13 @@ func _restore_active_expedition_nodes() -> void:
 				resource_node.call("set_contact_progress", int(expedition_contact_progress.get(node_id, 0)))
 	for guardian_node in get_tree().get_nodes_in_group("guardian"):
 		if guardian_node.has_method("set_defeated_from_save"):
-			guardian_node.call("set_defeated_from_save", defeated_guardians.has(str(guardian_node.get("guardian_id"))))
+			var guardian_id := str(guardian_node.get("guardian_id"))
+			if defeated_guardians.has(guardian_id):
+				guardian_node.call("set_defeated_from_save", true)
+			elif guardian_states.has(guardian_id) and guardian_node.has_method("restore_from_saved_state"):
+				guardian_node.call("restore_from_saved_state", guardian_states[guardian_id])
+			else:
+				guardian_node.call("set_defeated_from_save", false)
 	_refresh_whisperwood_route()
 	_refresh_expedition_pickups()
 
@@ -8201,6 +8627,18 @@ func _find_player_attack_contact() -> Node:
 			return candidate
 	return closest
 
+func _persist_guardian_combat_state(guardian: Node) -> bool:
+	if session == null or guardian == null or not session.has_method("record_guardian_combat_state") or not session.has_method("save_game"):
+		return false
+	var guardian_id := str(guardian.get("guardian_id"))
+	var guardian_position := guardian as Node3D
+	if guardian_position == null or int(guardian.get("health")) <= 0 or not guardian.is_visible_in_tree():
+		return false
+	var position := [guardian_position.global_position.x, 1.0, guardian_position.global_position.z]
+	if not bool(session.call("record_guardian_combat_state", guardian_id, int(guardian.get("health")), position)):
+		return false
+	return bool(session.call("save_game"))
+
 func _resolve_player_attack_hit() -> void:
 	var target := _find_player_attack_contact()
 	if target == null:
@@ -8211,6 +8649,8 @@ func _resolve_player_attack_hit() -> void:
 	player_made_noise(player.global_position, 5.0)
 	var combo_step := attack_combo_count + 1
 	var target_health := int(target.get("health"))
+	var before_attack: Dictionary = session.call("snapshot_state") if session != null and session.has_method("snapshot_state") else {}
+	var before_target: Dictionary = target.call("capture_combat_state") if target.has_method("capture_combat_state") else {}
 	var target_unaware := not bool(target.get("alerted")) and float(target.get("attack_windup")) <= 0.0
 	var damage := 7 + strength * 2
 	var attack_resolution: Dictionary = {}
@@ -8226,6 +8666,18 @@ func _resolve_player_attack_hit() -> void:
 	elif session != null and session.has_method("resolve_attack_damage"):
 		damage = int(session.call("resolve_attack_damage", damage))
 	target.call("take_damage", damage, attack_resolution)
+	# Non-fatal guardian damage is a durable expedition fact. If the save cannot
+	# secure it, roll back the resource spend and the runtime combat mutation so
+	# a reload can never grant free damage or silently heal a half-finished fight.
+	if target.is_visible_in_tree() and int(target.get("health")) > 0:
+		if not _persist_guardian_combat_state(target):
+			if session != null and not before_attack.is_empty():
+				session.call("restore_state", before_attack)
+			if target.has_method("restore_combat_state"):
+				target.call("restore_combat_state", before_target)
+			_copy_session_to_runtime()
+			_show_toast("The strike could not be secured. No damage was committed.", 2.2)
+			return
 	attack_combo_count = combo_step if combo_step < 3 else 0
 	attack_combo_timer = ATTACK_COMBO_WINDOW if attack_combo_count > 0 else 0.0
 	camera_shake = 0.06
