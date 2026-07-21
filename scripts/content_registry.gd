@@ -71,6 +71,19 @@ const WHISPERWOOD_LANDMARKS := {
 	"return": [0.0, 8.7],
 }
 
+## Every expedition owns a small physical route grammar. The renderer uses
+## these measured sockets for its beat floors, checkpoints, and branch
+## endpoints; GameSession uses the same ids when validating durable progress.
+## Keeping later routes here prevents their scene dressing from drifting back
+## into a generic fork/capstone arena as more content is added.
+const EXPEDITION_ROUTE_LAYOUTS := {
+	"Whisperwood": {"arrival": [0.0, 5.2], "fork": [0.0, -1.9], "grove": [-12.5, -8.6], "clearing": [12.5, -8.6], "return": [0.0, 8.7]},
+	"Sunlit Beach": {"arrival": [0.0, 7.2], "fork": [0.0, -1.9], "tidepool": [-8.4, -5.0], "wreck": [8.4, -4.6], "return": [0.0, 8.7]},
+	"Ember Ridge": {"arrival": [0.0, 7.2], "fork": [0.0, -1.9], "quarry": [-8.5, -5.0], "high_pass": [8.5, -4.4], "return": [0.0, 8.7]},
+	"Glass Desert": {"arrival": [0.0, 7.2], "fork": [0.0, -1.9], "oasis": [-8.0, -4.8], "glassway": [8.6, -4.5], "return": [0.0, 8.7]},
+	"Sunken Dungeon": {"arrival": [0.0, 7.2], "fork": [0.0, -1.9], "vault": [-8.2, -4.6], "crypt": [8.2, -4.8], "return": [0.0, 8.7]},
+}
+
 ## One authoritative definition for the physical Sanctuary trailheads. The
 ## world renderer owns presentation, while the session owns placement safety;
 ## both read these same sockets so player construction cannot seal a road that
@@ -399,6 +412,13 @@ static func expedition_branch_ids(expedition_id: String) -> Array:
 static func whisperwood_landmark(landmark_id: String) -> Vector3:
 	var socket: Array = WHISPERWOOD_LANDMARKS.get(landmark_id, [])
 	if socket.size() != 2:
+		return Vector3.ZERO
+	return Vector3(float(socket[0]), 0.0, float(socket[1]))
+
+static func expedition_route_socket(expedition_id: String, socket_id: String) -> Vector3:
+	var layout: Dictionary = EXPEDITION_ROUTE_LAYOUTS.get(expedition_id, {})
+	var socket: Variant = layout.get(socket_id, [])
+	if not (socket is Array) or (socket as Array).size() < 2:
 		return Vector3.ZERO
 	return Vector3(float(socket[0]), 0.0, float(socket[1]))
 

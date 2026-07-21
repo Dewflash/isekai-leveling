@@ -87,9 +87,9 @@ func _run() -> void:
 	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "out-of-order checkpoints are rejected")
 	invalid_run["route_checkpoints"] = ["arrival", "arrival"]
 	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "duplicate checkpoints are rejected")
-	invalid_run["route_checkpoints"] = ["arrival"]
+	invalid_run["route_checkpoints"] = ["return"]
 	invalid_run["biome_id"] = "Sunlit Beach"
-	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "Whisperwood checkpoints cannot leak into another biome")
+	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "a later route cannot skip to its return checkpoint")
 	invalid_run["biome_id"] = "Whisperwood"
 	invalid_run["route_checkpoints"] = ["return"]
 	_check(not bool(reloaded.call("_save_shape_is_supported", invalid_payload)), "return cannot appear without the ordered route prefix")

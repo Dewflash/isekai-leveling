@@ -28,7 +28,6 @@ func _process(delta: float) -> void:
 	_update_expedition_pressure(delta)
 	_ensure_whisperwood_shortcut_gate()
 	_update_whisperwood_shortcut_gate()
-	_update_whisperwood_endpoint()
 	_update_expedition_pickups()
 	call_deferred("_restore_resource_contact_labels")
 
@@ -302,47 +301,17 @@ func _decorate_guardian_pickups(run: Dictionary) -> void:
 	var pickups: Variant = run.get("pickups", [])
 	if not pickups is Array:
 		return
+	var route_id := str(run.get("biome_id", "")).replace(" ", "")
 	for pickup_value in pickups:
 		if not pickup_value is Dictionary or str(pickup_value.get("pickup_kind", "resource")) != "guardian_reward":
 			continue
 		var pickup_id := str(pickup_value.get("pickup_id", ""))
-		var pickup_node := world.get_node_or_null("Whisperwood/FieldPickup_%s" % pickup_id.replace(":", "_"))
+		var pickup_node := world.get_node_or_null("%s/FieldPickup_%s" % [route_id, pickup_id.replace(":", "_")])
 		if pickup_node == null:
 			continue
 		var label := pickup_node.get_node_or_null("PickupLabel") as Label3D
 		if label != null:
 			label.text = "GUARDIAN REWARD  x%d" % int(pickup_value.get("amount", 0))
-
-func _update_whisperwood_endpoint() -> void:
-	if not is_instance_valid(world) or str(world.get("current_zone")) != "Whisperwood":
-		return
-	var session := world.get("session") as Node
-	var player := world.get("player") as Node3D
-	if session == null or player == null or not session.has_method("record_expedition_endpoint") or not bool(session.call("has_active_expedition")):
-		return
-	var run: Dictionary = session.get("expedition_run") if session.get("expedition_run") is Dictionary else {}
-	if str(run.get("route_phase", "")) != "branch":
-		return
-	var branch_id := str(run.get("branch_id", ""))
-	var endpoint_name := "FernGrove" if branch_id == "grove" else "GuardianClearing" if branch_id == "clearing" else ""
-	if endpoint_name.is_empty():
-		return
-	var endpoint := world.get_node_or_null("Whisperwood/WhisperwoodRoute/AuthoredTopology/%s/Checkpoint" % endpoint_name) as Area3D
-	if endpoint == null:
-		return
-	var distance := Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(endpoint.global_position.x, endpoint.global_position.z))
-	if distance > float(endpoint.get_meta("checkpoint_radius", 3.0)):
-		return
-	var before_endpoint: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	if not bool(session.call("record_expedition_endpoint", branch_id)):
-		return
-	if not bool(session.call("save_game")):
-		if not before_endpoint.is_empty() and session.has_method("restore_state"):
-			session.call("restore_state", before_endpoint)
-		world.call("_copy_session_to_runtime")
-		world.call("_show_toast", "The endpoint could not be secured. The objective remains ahead.", 2.6)
-		return
-	world.call("_refresh_whisperwood_route")
 
 func _restore_resource_contact_labels() -> void:
 	if not is_instance_valid(world):

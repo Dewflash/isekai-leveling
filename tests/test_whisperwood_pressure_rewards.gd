@@ -37,12 +37,15 @@ func _new_session(slot: String) -> Node:
 	session.expedition_run = {"status": "none"}
 	return session
 
+func _reach_endpoint(session: Node, branch_id: String) -> void:
+	_check(bool(session.call("record_route_checkpoint", "arrival")), "route records arrival before branch")
+	_check(bool(session.call("record_route_checkpoint", "fork")), "route records fork before branch")
+	_check(bool(session.call("commit_expedition_branch", branch_id)), "route commits at the fork")
+	_check(bool(session.call("record_expedition_endpoint", branch_id)), "route records the physical endpoint")
+
 func _prepare_cache_run(session: Node) -> void:
 	_check(bool(session.call("start_expedition", "Whisperwood")), "pressure run starts")
-	_check(bool(session.call("record_route_checkpoint", "arrival")), "pressure run records arrival")
-	_check(bool(session.call("record_route_checkpoint", "fork")), "pressure run records fork")
-	_check(bool(session.call("commit_expedition_branch", "clearing")), "clearing branch commits")
-	_check(bool(session.call("record_expedition_endpoint", "clearing")), "clearing endpoint records")
+	_reach_endpoint(session, "clearing")
 	session.expedition_run["objective_progress"] = int(session.expedition_run.get("objective_target", 1))
 	session.expedition_run["objective_complete"] = true
 	session.expedition_run["route_phase"] = "capstone"
@@ -76,8 +79,7 @@ func _run() -> void:
 
 	var guardian := _new_session("qa_whisperwood_guardian_drop")
 	_check(bool(guardian.call("start_expedition", "Whisperwood")), "guardian run starts")
-	_check(bool(guardian.call("commit_expedition_branch", "clearing")), "guardian branch commits")
-	_check(bool(guardian.call("record_expedition_endpoint", "clearing")), "guardian endpoint records")
+	_reach_endpoint(guardian, "clearing")
 	guardian.expedition_run["cargo"] = {"wood": int(guardian.get("cargo_capacity"))}
 	var dropped: Dictionary = guardian.call("resolve_guardian_defeat", "forest_slime")
 	_check(bool(dropped.get("deferred_pickup", false)), "full satchel defers guardian reward")

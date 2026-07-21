@@ -509,16 +509,31 @@ Updated: 2026-07-21, Asia/Singapore
   11 before the test script starts, so this checkpoint is static-verified and
   not runtime-verified. No renderer-backed visual claim is being made.
 
+## 2026-07-22 expedition route-state checkpoint
+
+- The later expeditions now use the same registry-owned physical route grammar
+  as Whisperwood: arrival, fork, branch endpoint, capstone, and return causeway
+  sockets are published in `ContentRegistry` and instantiated by the scene.
+- `GameSession` now owns one exact route-state contract across all five maps.
+  Branches require the fork, objectives require the physical endpoint, capstones
+  require a completed objective, and cached returns require the durable return
+  checkpoint. The former duplicate autoload endpoint writer was removed.
+- Save schema v26 migrates active v25 route runs by deriving only the traversal
+  prefix implied by their existing phase. It does not invent cargo, rewards,
+  objective progress, or unlocks. The new route contract test covers every
+  later expedition, mismatched endpoint rejection, reload, and v25 migration.
+- The editor/import scan passes. The focused runtime test remains blocked by
+  the known macOS Godot SPIR-V→MSL signal 11 before the script starts, so this
+  checkpoint is static-verified and not runtime-verified.
+
 ## Next actions (the project is not being called finished)
 
 1. Keep the Sanctuary gate active: strengthen lived-in activity density,
    building-specific silhouettes, directional character variants, and real
    touch-device capture before calling the reference bar accepted.
-2. Harden the remaining expedition edge case at scene level: mid-combat reload
-   semantics are now implemented and covered by the full loop; continue
-   failure-injection coverage around durable combat saves. The complete
-   resource/cache/pressure/reload/return/extract loop, full-satchel guardian
-   recovery, and physical shortcut distance proof are green.
+2. Continue the expedition pass with renderer-backed traversal, public-action
+   coverage, and failure-injection tests once the Godot runtime crash is
+   removed. The generalized route state is static-verified, not runtime-green.
 3. Repeat the physical walk from Hearth through every Sanctuary route in both
    saved player layouts, then capture the avatar/roof occlusion and touch-safe
    HUD on a real device while preserving the shared collision model.

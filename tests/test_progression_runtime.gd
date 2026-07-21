@@ -247,7 +247,7 @@ func _test_legacy_activity_migration(session: Node) -> void:
 	for legacy_key in ["activity_receipts", "activity_cursor", "activity_minutes_total", "activity_stat_gains", "activity_stat_minutes", "activity_last_manual_epoch"]:
 		legacy_payload.erase(legacy_key)
 	var migrated: Dictionary = session.call("_migrate_payload", legacy_payload)
-	_check(str(migrated.get("save_version", "")) == "25", "legacy activity migration upgrades the save version")
+	_check(str(migrated.get("save_version", "")) == "26", "legacy activity migration upgrades the save version")
 	var migrated_events: Array = migrated.get("activity_events", [])
 	if migrated_events.size() == 1:
 		_check(not str((migrated_events[0] as Dictionary).get("payload_hash", "")).is_empty(), "legacy empty payload hashes are normalized")
@@ -457,7 +457,10 @@ func _test_playable_mastery_effects() -> void:
 	translator.coins = 1000
 	translator.energy = translator.max_energy
 	_check(translator.start_expedition("Whisperwood"), "a translator can enter the authored forest route")
+	_check(translator.record_route_checkpoint("arrival"), "a translator reaches the route arrival")
+	_check(translator.record_route_checkpoint("fork"), "a translator reaches the route fork")
 	_check(translator.commit_expedition_branch("grove"), "a translator can commit the inscription's branch")
+	_check(translator.record_expedition_endpoint("grove"), "a translator reaches the inscription endpoint")
 	_check(translator.expedition_inscription_status("whisperwood_root_oath").get("reason", "") == "language_locked", "an untranslated plaque stays locked before Context Reader")
 	_check(translator.read_expedition_inscription("whisperwood_root_oath").is_empty(), "a language-locked inscription cannot mint rewards")
 	translator.masteries["Language"] = 45
@@ -480,7 +483,10 @@ func _test_playable_mastery_effects() -> void:
 	polyglot.energy = polyglot.max_energy
 	polyglot.unlocked_routes.append("Sunken Dungeon")
 	_check(polyglot.start_expedition("Sunken Dungeon"), "a polyglot can enter the authored dungeon route")
+	_check(polyglot.record_route_checkpoint("arrival"), "a polyglot reaches the dungeon arrival")
+	_check(polyglot.record_route_checkpoint("fork"), "a polyglot reaches the dungeon fork")
 	_check(polyglot.commit_expedition_branch("vault"), "a polyglot can commit the ancient inscription's branch")
+	_check(polyglot.record_expedition_endpoint("vault"), "a polyglot reaches the ancient inscription endpoint")
 	polyglot.masteries["Language"] = 45
 	polyglot.call("_sync_mastery_permissions")
 	_check(polyglot.read_expedition_inscription("sunken_vault_verse").is_empty(), "ancient lore stays closed before World Polyglot")

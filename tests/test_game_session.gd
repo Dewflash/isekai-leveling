@@ -8,6 +8,15 @@ func _install_operational_workshop(session: Node) -> void:
 	session.interior_stations[structure_id] = {"workbench_legacy": {"id": "workbench_legacy", "structure_id": structure_id, "kind": "workbench", "cell": [-2, -1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}}}
 	session.call("_recalculate_structure_effects")
 
+func _reach_fork(session: Node) -> void:
+	assert(session.record_route_checkpoint("arrival"))
+	assert(session.record_route_checkpoint("fork"))
+
+func _reach_endpoint(session: Node, branch_id: String) -> void:
+	_reach_fork(session)
+	assert(session.commit_expedition_branch(branch_id))
+	assert(session.record_expedition_endpoint(branch_id))
+
 func _init() -> void:
 	var qa_dir := DirAccess.open("user://")
 	if qa_dir != null:
@@ -242,7 +251,7 @@ func _init() -> void:
 	physical_tideglass.unlocked_routes.clear()
 	physical_tideglass.unlocked_routes.append("Sunlit Beach")
 	assert(physical_tideglass.start_expedition("Sunlit Beach"))
-	assert(physical_tideglass.commit_expedition_branch("tidepool"))
+	_reach_endpoint(physical_tideglass, "tidepool")
 	var tideglass_drop: Dictionary = physical_tideglass.harvest_expedition_resource("SunlitBeach:TideglassShell", "shell", 1, 1, [2.0, 1.0, 1.0], "Tideglass")
 	assert(not tideglass_drop.is_empty())
 	assert(not physical_tideglass.collect_expedition_pickup(str(tideglass_drop["pickup_id"])).is_empty())
@@ -269,7 +278,7 @@ func _init() -> void:
 	var energy_before_full := pressure.energy
 	assert(not pressure.collect_expedition_resource("Whisperwood:large", "wood", 2))
 	assert(pressure.energy == energy_before_full)
-	assert(pressure.commit_expedition_branch("clearing"))
+	_reach_endpoint(pressure, "clearing")
 	var guardian_reward: Dictionary = pressure.resolve_guardian_defeat("forest_slime")
 	assert(guardian_reward["reward_id"] == "slime_gel")
 	assert(pressure.expedition_cargo_used() == 2)
@@ -293,7 +302,9 @@ func _init() -> void:
 	malformed_run.save_slot = "qa_malformed_run"
 	root.add_child(malformed_run)
 	assert(malformed_run.start_expedition("Whisperwood"))
+	_reach_fork(malformed_run)
 	assert(malformed_run.commit_expedition_branch("grove"))
+	assert(malformed_run.record_expedition_endpoint("grove"))
 	var malformed_payload: Dictionary = malformed_run.call("_to_dict")
 	malformed_payload["expedition_run"]["objective_target"] = 0
 	malformed_payload["expedition_run"]["objective_progress"] = 0
@@ -306,7 +317,7 @@ func _init() -> void:
 	stake.save_slot = "qa_stake"
 	root.add_child(stake)
 	assert(stake.start_expedition("Whisperwood"))
-	assert(stake.commit_expedition_branch("clearing"))
+	_reach_endpoint(stake, "clearing")
 	assert(not stake.resolve_guardian_defeat("forest_slime").is_empty())
 	assert(not stake.open_expedition_cache().is_empty())
 	var stake_energy := stake.energy
@@ -556,6 +567,7 @@ func _init() -> void:
 	assert(route_chain.record_route_checkpoint("arrival"))
 	assert(route_chain.record_route_checkpoint("fork"))
 	assert(route_chain.commit_expedition_branch("grove"))
+	assert(route_chain.record_expedition_endpoint("grove"))
 	assert(route_chain.complete_expedition_resource("Whisperglass:chain", "berries", 1, 1))
 	assert(not route_chain.open_expedition_capstone().is_empty())
 	assert(route_chain.record_route_checkpoint("return"))
@@ -571,7 +583,7 @@ func _init() -> void:
 	assert(is_equal_approx(float(wide_anchor.expedition_run["anchor"][2]), 14.0))
 	route_chain.energy = 24
 	assert(route_chain.start_expedition("Sunlit Beach"))
-	assert(route_chain.commit_expedition_branch("tidepool"))
+	_reach_endpoint(route_chain, "tidepool")
 	assert(route_chain.collect_expedition_resource("SunlitBeach:TideglassShell", "shell", 1))
 	assert(not bool(route_chain.expedition_run.get("objective_complete", false)))
 	assert(route_chain.collect_expedition_resource("SunlitBeach:TideglassShell:pool", "shell", 1))
@@ -582,7 +594,7 @@ func _init() -> void:
 	assert(route_chain.route_is_unlocked("Ember Ridge"))
 	route_chain.energy = 24
 	assert(route_chain.start_expedition("Ember Ridge"))
-	assert(route_chain.commit_expedition_branch("quarry"))
+	_reach_endpoint(route_chain, "quarry")
 	assert(route_chain.collect_expedition_resource("EmberRidge:quarry", "ore", 1))
 	assert(route_chain.collect_expedition_resource("EmberRidge:quarry:2", "ore", 1))
 	assert(route_chain.collect_expedition_resource("EmberRidge:quarry:3", "ore", 1))
@@ -593,7 +605,7 @@ func _init() -> void:
 	assert(route_chain.route_is_unlocked("Glass Desert"))
 	route_chain.energy = 24
 	assert(route_chain.start_expedition("Glass Desert"))
-	assert(route_chain.commit_expedition_branch("oasis"))
+	_reach_endpoint(route_chain, "oasis")
 	for index in 4:
 		assert(route_chain.collect_expedition_resource("GlassDesert:oasis:%d" % index, "fiber", 1))
 	assert(bool(route_chain.expedition_run.get("objective_complete", false)))
@@ -617,7 +629,7 @@ func _init() -> void:
 	for route_id in all_routes:
 		authored_routes.get("unlocked_routes").append(route_id)
 	assert(authored_routes.start_expedition("Sunlit Beach"))
-	assert(authored_routes.commit_expedition_branch("tidepool"))
+	_reach_endpoint(authored_routes, "tidepool")
 	assert(authored_routes.collect_expedition_resource("SunlitBeach:tidepool:1", "shell", 1))
 	assert(not bool(authored_routes.expedition_run.get("objective_complete", false)))
 	assert(authored_routes.save_game())
@@ -634,7 +646,7 @@ func _init() -> void:
 	assert(authored_routes.finish_expedition().get("shell", 0) >= 1)
 	authored_routes.energy = 24
 	assert(authored_routes.start_expedition("Ember Ridge"))
-	assert(authored_routes.commit_expedition_branch("quarry"))
+	_reach_endpoint(authored_routes, "quarry")
 	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry", "ore", 1))
 	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry:2", "ore", 1))
 	assert(authored_routes.collect_expedition_resource("EmberRidge:quarry:3", "ore", 1))
@@ -644,7 +656,7 @@ func _init() -> void:
 	assert(authored_routes.finish_expedition().get("ore", 0) >= 1)
 	authored_routes.energy = 24
 	assert(authored_routes.start_expedition("Glass Desert"))
-	assert(authored_routes.commit_expedition_branch("oasis"))
+	_reach_endpoint(authored_routes, "oasis")
 	for index in 4:
 		assert(authored_routes.collect_expedition_resource("GlassDesert:oasis:%d" % index, "fiber", 1))
 	assert(not authored_routes.open_expedition_capstone().is_empty())
@@ -652,7 +664,7 @@ func _init() -> void:
 	assert(authored_routes.finish_expedition().get("fiber", 0) >= 1)
 	authored_routes.energy = 24
 	assert(authored_routes.start_expedition("Sunken Dungeon"))
-	assert(authored_routes.commit_expedition_branch("vault"))
+	_reach_endpoint(authored_routes, "vault")
 	assert(authored_routes.record_discovery("Aether Relic"))
 	assert(not authored_routes.open_expedition_capstone().is_empty())
 	assert(authored_routes.record_expedition_return_checkpoint([0.0, 1.0, 8.7]))
@@ -1048,6 +1060,7 @@ func _init() -> void:
 	assert(grove_route.record_route_checkpoint("arrival"))
 	assert(grove_route.record_route_checkpoint("fork"))
 	assert(grove_route.commit_expedition_branch("grove"))
+	assert(grove_route.record_expedition_endpoint("grove"))
 	assert(not grove_route.commit_expedition_branch("clearing"))
 	assert(grove_route.complete_expedition_resource("Whisperglass:route-capstone", "berries", 1, 1))
 	assert(grove_route.record_discovery("Whisperglass"))
@@ -1070,7 +1083,7 @@ func _init() -> void:
 	clearing_route.energy = 24
 	clearing_route.expedition_run = {"status": "none"}
 	assert(clearing_route.start_expedition("Whisperwood"))
-	assert(clearing_route.commit_expedition_branch("clearing"))
+	_reach_endpoint(clearing_route, "clearing")
 	assert(not clearing_route.expedition_run["objective_complete"])
 	assert(not clearing_route.resolve_guardian_defeat("forest_slime").is_empty())
 	assert(bool(clearing_route.expedition_run["objective_complete"]))

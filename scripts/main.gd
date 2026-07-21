@@ -352,8 +352,7 @@ func _process(delta: float) -> void:
 	_update_world_motion(delta)
 	_update_player_structure_motion(delta)
 	_update_resource_action(delta)
-	_update_whisperwood_route_progress()
-	_update_expedition_route_progress()
+	_update_authored_route_progress()
 	_update_attack_action(delta)
 	_update_structure_preview()
 	_update_interior_station_preview()
@@ -1173,10 +1172,14 @@ func _refresh_whisperwood_route() -> void:
 	if shortcut != null:
 		shortcut.visible = active and shortcut_open
 
-func _record_whisperwood_checkpoint(node_name: String, checkpoint_id: String) -> bool:
+func _route_checkpoint_node(route_id: String, node_name: String) -> Area3D:
+	var route_root := "%s/WhisperwoodRoute/AuthoredTopology" % route_id if route_id == "Whisperwood" else "%s/ExpeditionRoute/AuthoredTopology" % route_id.replace(" ", "")
+	return get_node_or_null("%s/%s/Checkpoint" % [route_root, node_name]) as Area3D
+
+func _record_route_checkpoint(route_id: String, node_name: String, checkpoint_id: String) -> bool:
 	if session == null or player == null or not session.has_method("record_route_checkpoint"):
 		return false
-	var checkpoint := get_node_or_null("Whisperwood/WhisperwoodRoute/AuthoredTopology/%s/Checkpoint" % node_name) as Area3D
+	var checkpoint := _route_checkpoint_node(route_id, node_name)
 	if checkpoint == null:
 		return false
 	var flat_distance := Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(checkpoint.global_position.x, checkpoint.global_position.z))
@@ -1188,77 +1191,71 @@ func _record_whisperwood_checkpoint(node_name: String, checkpoint_id: String) ->
 	if not bool(session.call("save_game")):
 		if not before_checkpoint.is_empty() and session.has_method("restore_state"):
 			session.call("restore_state", before_checkpoint)
-		_copy_session_to_runtime()
-		_refresh_whisperwood_route()
+			_copy_session_to_runtime()
+		if route_id == "Whisperwood":
+			_refresh_whisperwood_route()
+		else:
+			_refresh_expedition_routes()
 		_show_toast("The route checkpoint could not be secured. Keep moving; the beat remains ahead.", 2.6)
 		return false
-	_refresh_whisperwood_route()
+	if route_id == "Whisperwood":
+		_refresh_whisperwood_route()
+	else:
+		_refresh_expedition_routes()
 	return true
 
-func _update_whisperwood_route_progress() -> void:
-	if current_zone != "Whisperwood" or session == null or player == null or not session.call("has_active_expedition"):
+func _record_whisperwood_checkpoint(node_name: String, checkpoint_id: String) -> bool:
+	return _record_route_checkpoint("Whisperwood", node_name, checkpoint_id)
+
+func _update_authored_route_progress() -> void:
+	if current_zone == "Sanctuary" or session == null or player == null or not session.call("has_active_expedition"):
 		return
 	var run: Dictionary = session.get("expedition_run")
-	if str(run.get("biome_id", "")) != "Whisperwood":
+	var route_id := str(run.get("biome_id", ""))
+	if route_id != current_zone:
 		return
 	var route_phase := str(run.get("route_phase", "approach"))
 	# The first two route beats are physical traversal state. They are written
 	# through GameSession so a reload cannot silently skip the forest's entry or
 	# fork even if the player closes the game between interactions.
 	if route_phase == "approach":
-		_record_whisperwood_checkpoint("ArrivalGrove", "arrival")
+		_record_route_checkpoint(route_id, "ArrivalGrove" if route_id == "Whisperwood" else "RouteBeatArrival", "arrival")
 		return
 	if route_phase == "arrival":
-		_record_whisperwood_checkpoint("OldTrailFork", "fork")
+		_record_route_checkpoint(route_id, "OldTrailFork" if route_id == "Whisperwood" else "RouteBeatFork", "fork")
 		return
 	if route_phase == "shortcut":
-		_record_whisperwood_checkpoint("ReturnFootbridge", "return")
+		_record_route_checkpoint(route_id, "ReturnFootbridge" if route_id == "Whisperwood" else "RouteBeatReturn", "return")
 		return
 	var branch_id := str(run.get("branch_id", ""))
 	if branch_id.is_empty() or route_phase != "branch":
 		return
-	var endpoint_name := "FernGrove" if branch_id == "grove" else "GuardianClearing"
-	var endpoint := get_node_or_null("Whisperwood/WhisperwoodRoute/AuthoredTopology/%s/Checkpoint" % endpoint_name) as Area3D
+	var endpoint_name := "FernGrove" if branch_id == "grove" else "GuardianClearing" if branch_id == "clearing" else "RouteBeatEndpoint_%s" % branch_id
+	var endpoint := _route_checkpoint_node(route_id, endpoint_name)
 	if endpoint == null:
 		return
 	var flat_distance := Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(endpoint.global_position.x, endpoint.global_position.z))
 	if flat_distance > float(endpoint.get_meta("checkpoint_radius", 2.5)):
 		return
 	# The route state moves from the fork to the objective only when the player
-	# physically reaches the committed endpoint. The resource/guardian systems
-	# remain authoritative for objective completion and rewards.
-	var previous_phase := str(run.get("route_phase", "branch"))
-	run["route_phase"] = "objective"
-	if not bool(session.call("save_game")):
-		run["route_phase"] = previous_phase
-		return
-	_refresh_whisperwood_route()
-
-func _update_expedition_route_progress() -> void:
-	if current_zone in ["Sanctuary", "Whisperwood"] or session == null or player == null or not session.has_method("record_expedition_return_checkpoint") or not bool(session.call("has_active_expedition")):
-		return
-	var run: Dictionary = session.get("expedition_run")
-	if str(run.get("biome_id", "")) != current_zone or str(run.get("route_phase", "")) != "shortcut":
-		return
-	var route := get_node_or_null("%s/ExpeditionRoute" % current_zone.replace(" ", "")) as Node3D
-	var causeway := route.get_node_or_null("ReturnCauseway") as Node3D if route != null else null
-	if causeway == null:
-		return
-	var causeway_radius := float(causeway.get_meta("checkpoint_radius", 2.8))
-	if _ground_distance(player.global_position, causeway.global_position) > causeway_radius:
-		return
-	var before_checkpoint: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	if not bool(session.call("record_expedition_return_checkpoint", [player.global_position.x, 1.0, player.global_position.z])):
+	# physically reaches the committed endpoint. The session remains the
+	# authority for the transition; the renderer only supplies proximity.
+	var before_endpoint: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	if not bool(session.call("record_expedition_endpoint", branch_id)):
 		return
 	if not bool(session.call("save_game")):
-		if not before_checkpoint.is_empty() and session.has_method("restore_state"):
-			session.call("restore_state", before_checkpoint)
+		if not before_endpoint.is_empty():
+			session.call("restore_state", before_endpoint)
 		_copy_session_to_runtime()
-		_refresh_expedition_routes()
-		_show_toast("The return causeway could not be secured. Keep moving; the route remains open.", 2.6)
 		return
-	_refresh_expedition_routes()
-	_show_toast("Return causeway crossed  |  The beacon is safe to reach.", 2.4)
+	if route_id == "Whisperwood":
+		_refresh_whisperwood_route()
+	else:
+		_refresh_expedition_routes()
+
+func _update_whisperwood_route_progress() -> void:
+	# Compatibility entry point for existing scene-level tests and tools.
+	_update_authored_route_progress()
 
 func _create_beach_landmarks(parent: Node3D) -> void:
 	var sea := Node3D.new()
@@ -1562,21 +1559,22 @@ func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent
 	route.name = "ExpeditionRoute"
 	route.set_meta("route_id", route_id)
 	parent.add_child(route)
-	_create_route_pressure_visual(route, route_id, accent)
-	_create_expedition_return_causeway(route, accent)
-	_create_path(route, Vector3(0.0, 0.045, -1.9), Vector3(3.4, 0.07, 1.0), accent.darkened(0.18))
-	_create_path(route, Vector3(-3.5, 0.045, -2.85), Vector3(5.8, 0.07, 1.0), accent.darkened(0.26))
-	_create_path(route, Vector3(3.5, 0.045, -2.85), Vector3(5.8, 0.07, 1.0), accent.darkened(0.26))
 	var options: Array = ContentRegistry.expedition_branch_ids(route_id)
 	if options.size() < 2:
 		return
+	_create_route_pressure_visual(route, route_id, accent)
+	_create_expedition_route_topology(route, route_id, options, accent)
+	_create_expedition_return_causeway(route, route_id, accent)
+	var fork_socket := ContentRegistry.expedition_route_socket(route_id, "fork")
+	var arrival_socket := ContentRegistry.expedition_route_socket(route_id, "arrival")
+	_create_path(route, Vector3(fork_socket.x, 0.045, (arrival_socket.z + fork_socket.z) * 0.5), Vector3(3.4, 0.07, absf(arrival_socket.z - fork_socket.z)), accent.darkened(0.18))
 	var marker := StationScript.new() as Node3D
 	marker.name = "RouteChoiceMarker"
 	marker.set("world", self)
 	marker.set("station_id", "map_branch")
 	marker.set_meta("route_id", route_id)
 	marker.add_to_group("interactable")
-	marker.position = Vector3(0.0, 0.0, -1.9)
+	marker.position = fork_socket
 	route.add_child(marker)
 	for side in [-1.0, 1.0]:
 		_structure_box(marker, "ChoicePost_%s" % side, Vector3(0.16, 1.55, 0.16), Vector3(side * 1.25, 0.78, 0.0), accent.darkened(0.4))
@@ -1588,8 +1586,9 @@ func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent
 	for index in 2:
 		var branch_id := str(options[index])
 		var definition: Dictionary = ContentRegistry.expedition_route_definition(route_id, branch_id)
-		var side := -1.0 if index == 0 else 1.0
-		_create_route_barrier(route, Vector3(side * 3.45, 0.0, -2.85), branch_id, accent if index == 0 else accent.lightened(0.16))
+		var endpoint_socket := ContentRegistry.expedition_route_socket(route_id, branch_id)
+		var barrier_socket := fork_socket.lerp(endpoint_socket, 0.38)
+		_create_route_barrier(route, barrier_socket, branch_id, accent if index == 0 else accent.lightened(0.16))
 		var barrier := route.get_node_or_null("WhisperwoodBarrier_" + branch_id.capitalize()) as StaticBody3D
 		if barrier != null:
 			barrier.name = "RouteBarrier_" + branch_id.capitalize()
@@ -1600,7 +1599,7 @@ func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent
 		capstone.set_meta("route_id", route_id)
 		capstone.set_meta("route_branch", branch_id)
 		capstone.add_to_group("interactable")
-		capstone.position = Vector3(side * 8.1, 0.0, -4.8)
+		capstone.position = endpoint_socket
 		route.add_child(capstone)
 		_structure_box(capstone, "CapstoneStone", Vector3(1.2, 0.45, 1.0), Vector3(0.0, 0.24, 0.0), palette["stone"])
 		_structure_box(capstone, "CapstoneSigil", Vector3(0.55, 0.10, 0.18), Vector3(0.0, 0.62, 0.0), accent)
@@ -1613,13 +1612,71 @@ func _create_expedition_route_landmarks(parent: Node3D, route_id: String, accent
 	route_title.position = Vector3(0.0, 1.8, -0.8)
 	route.add_child(route_title)
 
-func _create_expedition_return_causeway(route: Node3D, accent: Color) -> void:
+func _create_expedition_route_topology(parent: Node3D, route_id: String, options: Array, accent: Color) -> void:
+	var topology := Node3D.new()
+	topology.name = "AuthoredTopology"
+	parent.add_child(topology)
+	var beats: Array[Dictionary] = [
+		{"node_name": "RouteBeatArrival", "socket": "arrival", "label": "%s ARRIVAL" % route_id.to_upper(), "radius": 3.4},
+		{"node_name": "RouteBeatFork", "socket": "fork", "label": "OLD TRAIL FORK", "radius": 2.4},
+	]
+	for branch_value in options:
+		var branch_id := str(branch_value)
+		var definition := ContentRegistry.expedition_route_definition(route_id, branch_id)
+		beats.append({"node_name": "RouteBeatEndpoint_%s" % branch_id, "socket": branch_id, "label": str(definition.get("label", branch_id.to_upper())), "radius": 3.2, "branch_id": branch_id})
+	beats.append({"node_name": "RouteBeatReturn", "socket": "return", "label": "RETURN CAUSEWAY", "radius": 2.8})
+	for beat_data in beats:
+		var beat := Node3D.new()
+		beat.name = str(beat_data.get("node_name", "RouteBeat"))
+		beat.set_meta("route_beat", beat.name)
+		beat.set_meta("route_socket", str(beat_data.get("socket", "")))
+		if beat_data.has("branch_id"):
+			beat.set_meta("route_branch", str(beat_data.get("branch_id", "")))
+		beat.position = ContentRegistry.expedition_route_socket(route_id, str(beat_data.get("socket", ""))) + Vector3(0.0, 0.04, 0.0)
+		topology.add_child(beat)
+		var checkpoint := Area3D.new()
+		checkpoint.name = "Checkpoint"
+		checkpoint.collision_layer = 0
+		checkpoint.collision_mask = 0
+		checkpoint.set_meta("route_socket", str(beat_data.get("socket", "")))
+		checkpoint.set_meta("checkpoint_radius", float(beat_data.get("radius", 2.8)))
+		var checkpoint_shape := CollisionShape3D.new()
+		checkpoint_shape.name = "CheckpointCollision"
+		var checkpoint_sphere := SphereShape3D.new()
+		checkpoint_sphere.radius = float(beat_data.get("radius", 2.8))
+		checkpoint_shape.shape = checkpoint_sphere
+		checkpoint.add_child(checkpoint_shape)
+		beat.add_child(checkpoint)
+		var floor := MeshInstance3D.new()
+		floor.name = "BeatFloor"
+		var floor_mesh := CylinderMesh.new()
+		floor_mesh.top_radius = float(beat_data.get("radius", 2.8))
+		floor_mesh.bottom_radius = float(beat_data.get("radius", 2.8))
+		floor_mesh.height = 0.06
+		floor_mesh.radial_segments = 24
+		floor.mesh = floor_mesh
+		floor.material_override = _material(accent.darkened(0.18 if beat_data.has("branch_id") else 0.30), 0.86)
+		beat.add_child(floor)
+		var label := _label3d(str(beat_data.get("label", "ROUTE BEAT")), 0.14, palette["cream"])
+		label.name = "BeatLabel"
+		label.position.y = 0.42
+		beat.add_child(label)
+	var arrival := ContentRegistry.expedition_route_socket(route_id, "arrival")
+	var fork := ContentRegistry.expedition_route_socket(route_id, "fork")
+	var return_socket := ContentRegistry.expedition_route_socket(route_id, "return")
+	_create_path(topology, Vector3(arrival.x, 0.08, (arrival.z + fork.z) * 0.5), Vector3(2.35, 0.10, absf(arrival.z - fork.z)), accent.darkened(0.28))
+	for branch_value in options:
+		var endpoint := ContentRegistry.expedition_route_socket(route_id, str(branch_value))
+		_create_path(topology, Vector3((fork.x + endpoint.x) * 0.5, 0.08, (fork.z + endpoint.z) * 0.5), Vector3(absf(fork.x - endpoint.x), 0.10, 1.15), accent.darkened(0.22))
+	_create_path(topology, Vector3(return_socket.x, 0.08, (return_socket.z + arrival.z) * 0.5), Vector3(2.0, 0.10, absf(return_socket.z - arrival.z)), accent.darkened(0.16))
+
+func _create_expedition_return_causeway(route: Node3D, route_id: String, accent: Color) -> void:
 	# Every later expedition has a physical return beat. It remains inert until
 	# the branch capstone opens the shortcut, then the same world-space marker is
 	# used by the route progress command and the extraction contract.
 	var causeway := Node3D.new()
 	causeway.name = "ReturnCauseway"
-	causeway.position = Vector3(0.0, 0.0, 8.7)
+	causeway.position = ContentRegistry.expedition_route_socket(route_id, "return")
 	causeway.set_meta("checkpoint_radius", 2.8)
 	route.add_child(causeway)
 	_create_path(causeway, Vector3(0.0, 0.045, 0.0), Vector3(3.0, 0.08, 3.2), accent.darkened(0.12))
@@ -1697,6 +1754,24 @@ func _refresh_expedition_routes() -> void:
 			var choice_label := choice_marker.get_node_or_null("RouteChoiceLabel") as Label3D
 			if choice_label != null:
 				choice_label.text = "ROUTE FORK\nCHOOSE A TRAIL" if branch_id.is_empty() else "ROUTE COMMITTED\n" + branch_id.to_upper()
+		var topology := route.get_node_or_null("AuthoredTopology") as Node3D
+		if topology != null:
+			for beat_node in topology.get_children():
+				var beat := beat_node as Node3D
+				if beat == null:
+					continue
+				var beat_branch := str(beat.get_meta("route_branch", ""))
+				var beat_socket := str(beat.get_meta("route_socket", ""))
+				if beat_branch.is_empty():
+					beat.visible = not active or beat_socket != "return" or bool(run.get("shortcut_open", false))
+				else:
+					beat.visible = not active or branch_id.is_empty() or beat_branch == branch_id
+				var beat_label := beat.get_node_or_null("BeatLabel") as Label3D
+				if beat_label != null and active:
+					if beat_branch != "" and beat_branch == branch_id:
+						beat_label.text = beat_label.text.split("\n")[0] + ("\nCAPSTONE READY" if objective_complete else "\nOBJECTIVE")
+					elif beat_socket == "return":
+						beat_label.text = "RETURN CAUSEWAY\n" + ("CROSSED" if bool(run.get("return_checkpoint_crossed", false)) else "CROSS AFTER CAPSTONE")
 		for child in route.get_children():
 			var barrier := child as StaticBody3D
 			if barrier != null and barrier.has_meta("blocked_branch"):
@@ -7075,15 +7150,16 @@ func _whisper_branch_interact(_station: Node) -> void:
 	if not str(run.get("branch_id", "")).is_empty():
 		_show_toast("This route is committed to the %s." % ("Grove" if str(run.get("branch_id")) == "grove" else "Clearing"), 2.3)
 		return
+	var route_phase := str(run.get("route_phase", ""))
+	if route_phase == "arrival" and bool(session.call("record_route_checkpoint", "fork")):
+		route_phase = "fork"
+	if route_phase != "fork":
+		_show_toast("Reach the old trail marker before choosing a branch.", 2.4)
+		return
 	# Spatial choice: stand to the left of the marker for the fern grove or to
 	# the right for the guardian clearing. The decision is stored in the run.
 	var branch_id := "grove" if player.global_position.x <= 0.0 else "clearing"
 	var before_branch: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	# Interaction is the safety net for a low-frame-rate or freshly reloaded
-	# client; the normal per-frame route tracker records the same beat while the
-	# player walks into the fork.
-	if str(run.get("route_phase", "approach")) == "arrival":
-		session.call("record_route_checkpoint", "fork")
 	if session.call("commit_expedition_branch", branch_id):
 		if not bool(session.call("save_game")):
 			if not before_branch.is_empty():
@@ -7131,6 +7207,9 @@ func _map_branch_interact(station: Node) -> void:
 	var run: Dictionary = session.get("expedition_run")
 	if str(run.get("biome_id", "")) != current_zone or not str(run.get("branch_id", "")).is_empty():
 		_show_toast("This route is already committed. The other trail is closed for this run.", 2.4)
+		return
+	if str(run.get("route_phase", "")) != "fork":
+		_show_toast("Reach the route fork before choosing a trail.", 2.4)
 		return
 	var options: Array = session.call("expedition_branch_options", current_zone)
 	if options.size() < 2:

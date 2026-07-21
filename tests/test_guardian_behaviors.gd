@@ -16,6 +16,12 @@ func _distance_to_player(world: Node, guardian: Node3D) -> float:
 		return INF
 	return Vector2(player.global_position.x - guardian.global_position.x, player.global_position.z - guardian.global_position.z).length()
 
+func _reach_endpoint(session: Node, branch_id: String) -> void:
+	session.call("record_route_checkpoint", "arrival")
+	session.call("record_route_checkpoint", "fork")
+	session.call("commit_expedition_branch", branch_id)
+	session.call("record_expedition_endpoint", branch_id)
+
 func _run() -> void:
 	ProjectSettings.set_setting("prodewty/save_slot", "qa_guardian_behaviors")
 	for save_path in ["user://qa_guardian_behaviors.json", "user://qa_guardian_behaviors.backup.json", "user://qa_guardian_behaviors.tmp.json"]:
@@ -37,7 +43,7 @@ func _run() -> void:
 	if session != null:
 		session.expedition_run = {"status": "none"}
 		session.call("start_expedition", "Whisperwood")
-		session.call("commit_expedition_branch", "clearing")
+		_reach_endpoint(session, "clearing")
 	world.call("_set_zone", "Whisperwood")
 	await physics_frame
 	var player := world.get("player") as Node3D
@@ -80,7 +86,7 @@ func _run() -> void:
 			session.expedition_run = {"status": "none"}
 			session.energy = 24
 			session.call("start_expedition", "Ember Ridge")
-			session.call("commit_expedition_branch", "quarry")
+			_reach_endpoint(session, "quarry")
 		world.call("_set_zone", "Ember Ridge")
 		await physics_frame
 		bruiser.call("set_active", true)
@@ -99,7 +105,7 @@ func _run() -> void:
 			session.expedition_run = {"status": "none"}
 			session.energy = 24
 			session.call("start_expedition", "Sunlit Beach")
-			session.call("commit_expedition_branch", "tidepool")
+			_reach_endpoint(session, "tidepool")
 		world.call("_set_zone", "Sunlit Beach")
 		await physics_frame
 		skirmisher.call("set_active", true)
@@ -124,7 +130,7 @@ func _run() -> void:
 			session.expedition_run = {"status": "none"}
 			session.energy = 24
 			session.call("start_expedition", "Sunken Dungeon")
-			session.call("commit_expedition_branch", "vault")
+			_reach_endpoint(session, "vault")
 		world.call("_set_zone", "Sunken Dungeon")
 		await physics_frame
 		sentinel.call("set_active", true)

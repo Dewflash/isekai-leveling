@@ -12,7 +12,7 @@ const InteriorGrid = preload("res://scripts/interior_grid.gd")
 signal state_changed
 signal feedback_requested(kind: String, payload: Dictionary)
 
-const SAVE_VERSION := 25
+const SAVE_VERSION := 26
 const CONTENT_VERSION := 1
 const CHANCE_ROLL_VERSION := 1
 const DEFAULT_WORLD_SEED := "isekai-leveling-sanctuary-v1"
@@ -33,7 +33,10 @@ const INVENTORY_IDS := [
 	"wood", "stone", "fiber", "slime_gel", "ore", "sunstone", "relic", "berries", "shell", "fish",
 	"wheat", "flour", "bread", "omelette", "tonic", "egg", "plank", "ingot", "water",
 ]
-const WHISPERWOOD_ROUTE_CHECKPOINTS := ["arrival", "fork", "return"]
+const EXPEDITION_ROUTE_CHECKPOINTS := ["arrival", "fork", "return"]
+## Compatibility alias retained for older tests and migrated callers. The
+## ordered contract now applies to every expedition, not only Whisperwood.
+const WHISPERWOOD_ROUTE_CHECKPOINTS := EXPEDITION_ROUTE_CHECKPOINTS
 const EXPEDITION_ROUTE_PHASES := ["none", "approach", "arrival", "fork", "branch", "objective", "capstone", "shortcut", "return"]
 
 var day := 1
@@ -1797,7 +1800,7 @@ func expedition_branch_options(biome_id: String = "") -> Array:
 	return ContentRegistry.expedition_branch_ids(route_id)
 
 func _complete_route_objective(objective_id: String) -> bool:
-	if not has_active_expedition() or str(expedition_run.get("objective_id", "")) != objective_id or bool(expedition_run.get("objective_complete", false)):
+	if not has_active_expedition() or str(expedition_run.get("route_phase", "")) != "objective" or str(expedition_run.get("objective_id", "")) != objective_id or bool(expedition_run.get("objective_complete", false)):
 		return false
 	expedition_run["objective_progress"] = int(expedition_run.get("objective_target", 1))
 	expedition_run["objective_complete"] = true
@@ -1810,7 +1813,7 @@ func _maybe_complete_resource_objective(resource_id: String) -> void:
 	_advance_expedition_objective("resource", resource_id, 1)
 
 func _advance_expedition_objective(objective_kind: String, objective_id: String, amount: int) -> bool:
-	if amount <= 0 or not has_active_expedition() or bool(expedition_run.get("objective_complete", false)):
+	if amount <= 0 or not has_active_expedition() or str(expedition_run.get("route_phase", "")) != "objective" or bool(expedition_run.get("objective_complete", false)):
 		return false
 	if str(expedition_run.get("objective_kind", "")) != objective_kind or str(expedition_run.get("objective_id", "")) != objective_id:
 		return false
@@ -1841,6 +1844,65 @@ func _route_objective_is_off_branch(objective_kind: String, objective_id: String
 	var objective_branch := _route_objective_branch(objective_kind, objective_id)
 	return not objective_branch.is_empty() and objective_branch != str(expedition_run.get("branch_id", ""))
 
+func _expedition_route_state_is_supported(run: Dictionary, allow_active: bool = false) -> bool:
+	## The route is a small state machine. Keeping this validator beside the
+	## command methods means a save, reload, or direct caller cannot create a
+	## phase that the authored map could never produce.
+	var status := str(run.get("status", "none"))
+	if status == "none":
+		return str(run.get("route_phase", "none")) == "none" and str(run.get("biome_id", "")).is_empty() and str(run.get("branch_id", "")).is_empty() and str(run.get("objective_id", "")).is_empty() and str(run.get("objective_kind", "")).is_empty() and int(run.get("objective_progress", 0)) == 0 and int(run.get("objective_target", 0)) == 0 and not bool(run.get("objective_complete", false)) and not bool(run.get("shortcut_open", false)) and not bool(run.get("cache_claimed", false)) and not bool(run.get("return_checkpoint_crossed", false)) and (run.get("route_checkpoints", []) is Array and (run.get("route_checkpoints", []) as Array).is_empty())
+	if status != "active" or not allow_active:
+		return false
+	var route_id := str(run.get("biome_id", ""))
+	if not ContentRegistry.EXPEDITION_ROUTE_DEFINITIONS.has(route_id):
+		return false
+	var phase := str(run.get("route_phase", ""))
+	if not EXPEDITION_ROUTE_PHASES.has(phase) or phase == "none":
+		return false
+	var checkpoints_value: Variant = run.get("route_checkpoints", [])
+	if not (checkpoints_value is Array):
+		return false
+	var checkpoints: Array = checkpoints_value
+	var expected_checkpoints: Array = []
+	match phase:
+		"arrival": expected_checkpoints = ["arrival"]
+		"fork", "branch", "objective", "capstone", "shortcut": expected_checkpoints = ["arrival", "fork"]
+		"return": expected_checkpoints = ["arrival", "fork", "return"]
+		"approach": expected_checkpoints = []
+		_: return false
+	if checkpoints != expected_checkpoints:
+		return false
+	var branch_id := str(run.get("branch_id", ""))
+	var objective_id := str(run.get("objective_id", ""))
+	var objective_kind := str(run.get("objective_kind", ""))
+	var objective_progress := int(run.get("objective_progress", 0))
+	var objective_target := int(run.get("objective_target", 0))
+	var objective_complete := bool(run.get("objective_complete", false))
+	var shortcut_open := bool(run.get("shortcut_open", false))
+	var cache_claimed := bool(run.get("cache_claimed", false))
+	var return_crossed := bool(run.get("return_checkpoint_crossed", false))
+	if cache_claimed != shortcut_open or return_crossed != (phase == "return"):
+		return false
+	if phase in ["approach", "arrival", "fork"]:
+		return branch_id.is_empty() and objective_id.is_empty() and objective_kind.is_empty() and objective_progress == 0 and objective_target == 0 and not objective_complete and not shortcut_open and not cache_claimed
+	if branch_id.is_empty():
+		return false
+	var definition := ContentRegistry.expedition_route_definition(route_id, branch_id)
+	if definition.is_empty() or objective_id != str(definition.get("objective_id", "")) or objective_kind != str(definition.get("objective_kind", "")):
+		return false
+	var expected_target := maxi(1, int(definition.get("objective_target", 1)))
+	if objective_target != expected_target or objective_progress < 0 or objective_progress > objective_target:
+		return false
+	if phase in ["branch", "objective"]:
+		return not objective_complete and not shortcut_open and not cache_claimed and (phase == "branch" or objective_progress < objective_target)
+	if phase == "capstone":
+		return objective_complete and objective_progress == objective_target and not shortcut_open and not cache_claimed
+	if phase == "shortcut":
+		return objective_complete and objective_progress == objective_target and shortcut_open and cache_claimed
+	if phase == "return":
+		return objective_complete and objective_progress == objective_target and shortcut_open and cache_claimed
+	return false
+
 func can_record_expedition_discovery(discovery_id: String) -> bool:
 	return not _route_objective_is_off_branch("discovery", discovery_id)
 
@@ -1870,7 +1932,7 @@ func _unlock_route_after_extraction(run: Dictionary, cargo: Dictionary) -> void:
 		_unlock_route(next_route)
 
 func commit_expedition_branch(branch_id: String) -> bool:
-	if not has_active_expedition() or not ContentRegistry.EXPEDITION_ROUTE_DEFINITIONS.has(str(expedition_run.get("biome_id", ""))) or ContentRegistry.expedition_route_definition(str(expedition_run.get("biome_id", "")), branch_id).is_empty():
+	if not has_active_expedition() or str(expedition_run.get("route_phase", "")) != "fork" or not _expedition_route_state_is_supported(expedition_run, true) or not ContentRegistry.EXPEDITION_ROUTE_DEFINITIONS.has(str(expedition_run.get("biome_id", ""))) or ContentRegistry.expedition_route_definition(str(expedition_run.get("biome_id", "")), branch_id).is_empty():
 		return false
 	if not str(expedition_run.get("branch_id", "")).is_empty():
 		return false
@@ -1890,9 +1952,10 @@ func record_route_checkpoint(checkpoint_id: String) -> bool:
 	## Route landmarks are durable traversal state, not presentation-only labels.
 	## The renderer can detect proximity, but only this method advances the
 	## ordered expedition journey and emits a save-visible checkpoint event.
-	if not has_active_expedition() or str(expedition_run.get("biome_id", "")) != "Whisperwood":
+	var route_id := str(expedition_run.get("biome_id", ""))
+	if not has_active_expedition() or not ContentRegistry.EXPEDITION_ROUTE_DEFINITIONS.has(route_id) or not _expedition_route_state_is_supported(expedition_run, true):
 		return false
-	if not WHISPERWOOD_ROUTE_CHECKPOINTS.has(checkpoint_id):
+	if not EXPEDITION_ROUTE_CHECKPOINTS.has(checkpoint_id):
 		return false
 	var stored_checkpoints: Variant = expedition_run.get("route_checkpoints", [])
 	if not (stored_checkpoints is Array):
@@ -1924,7 +1987,7 @@ func record_route_checkpoint(checkpoint_id: String) -> bool:
 		"return":
 			expedition_run["route_phase"] = "return"
 			expedition_run["return_checkpoint_crossed"] = true
-	feedback_requested.emit("route_checkpoint", {"route": "Whisperwood", "checkpoint": checkpoint_id, "phase": str(expedition_run.get("route_phase", ""))})
+	feedback_requested.emit("route_checkpoint", {"route": route_id, "checkpoint": checkpoint_id, "phase": str(expedition_run.get("route_phase", ""))})
 	state_changed.emit()
 	return true
 
@@ -1932,18 +1995,15 @@ func record_expedition_return_checkpoint(position: Array) -> bool:
 	if not has_active_expedition() or position.size() < 3:
 		return false
 	var biome_id := str(expedition_run.get("biome_id", ""))
-	if biome_id == "Whisperwood" or not bool(expedition_run.get("cache_claimed", false)) or not bool(expedition_run.get("shortcut_open", false)) or str(expedition_run.get("route_phase", "")) != "shortcut":
+	if not bool(expedition_run.get("cache_claimed", false)) or not bool(expedition_run.get("shortcut_open", false)) or str(expedition_run.get("route_phase", "")) != "shortcut":
 		return false
 	for coordinate in position.slice(0, 3):
 		if not _valid_number(coordinate, -100000.0, 100000.0):
 			return false
-	if Vector2(float(position[0]), float(position[2])).distance_to(Vector2(0.0, 8.7)) > 2.8:
+	var return_socket := ContentRegistry.expedition_route_socket(biome_id, "return")
+	if return_socket == Vector3.ZERO or Vector2(float(position[0]), float(position[2])).distance_to(Vector2(return_socket.x, return_socket.z)) > 2.8:
 		return false
-	expedition_run["return_checkpoint_crossed"] = true
-	expedition_run["route_phase"] = "return"
-	feedback_requested.emit("route_checkpoint", {"route": biome_id, "checkpoint": "return_causeway", "phase": "return"})
-	state_changed.emit()
-	return true
+	return record_route_checkpoint("return")
 
 func expedition_return_checkpoint_required() -> bool:
 	## Once a Whisperwood capstone opens the shortcut, the return is an authored
@@ -1952,41 +2012,24 @@ func expedition_return_checkpoint_required() -> bool:
 	## its pressure-bearing cargo can be banked.
 	if not has_active_expedition():
 		return false
-	var biome_id := str(expedition_run.get("biome_id", ""))
-	var cache_claimed := bool(expedition_run.get("cache_claimed", false))
-	var shortcut_open := bool(expedition_run.get("shortcut_open", false))
-	var checkpoints: Variant = expedition_run.get("route_checkpoints", [])
-	if cache_claimed != shortcut_open:
+	if not _expedition_route_state_is_supported(expedition_run, true):
 		return true
-	if biome_id != "Whisperwood":
-		var return_crossed := bool(expedition_run.get("return_checkpoint_crossed", false))
-		if return_crossed and not cache_claimed:
-			return true
-		return cache_claimed and not return_crossed
-	if not cache_claimed:
-		var ordinary_phase := str(expedition_run.get("route_phase", "approach"))
-		return ordinary_phase in ["shortcut", "return"] or (checkpoints is Array and (checkpoints as Array).has("return"))
-	if not checkpoints is Array:
-		return true
-	var ordered_checkpoints: Array = checkpoints
-	var phase := str(expedition_run.get("route_phase", "approach"))
-	if phase == "return" and ordered_checkpoints == ["arrival", "fork", "return"]:
-		return false
-	return true
+	return str(expedition_run.get("route_phase", "")) == "shortcut"
 
 func record_expedition_endpoint(branch_id: String) -> bool:
 	## Endpoint arrival is a durable domain transition. The scene may detect
 	## proximity, but it cannot complete the branch by changing route_phase
 	## directly.
-	if not has_active_expedition() or str(expedition_run.get("biome_id", "")) != "Whisperwood":
+	var route_id := str(expedition_run.get("biome_id", ""))
+	if not has_active_expedition() or not ContentRegistry.EXPEDITION_ROUTE_DEFINITIONS.has(route_id) or not _expedition_route_state_is_supported(expedition_run, true):
 		return false
 	if str(expedition_run.get("route_phase", "")) != "branch" or str(expedition_run.get("branch_id", "")) != branch_id:
 		return false
-	var definition := ContentRegistry.expedition_route_definition("Whisperwood", branch_id)
+	var definition := ContentRegistry.expedition_route_definition(route_id, branch_id)
 	if definition.is_empty():
 		return false
 	expedition_run["route_phase"] = "objective"
-	feedback_requested.emit("route_endpoint", {"route": "Whisperwood", "branch": branch_id, "label": str(definition.get("label", branch_id))})
+	feedback_requested.emit("route_endpoint", {"route": route_id, "branch": branch_id, "label": str(definition.get("label", branch_id))})
 	state_changed.emit()
 	return true
 
@@ -2016,7 +2059,7 @@ func expedition_route_snapshot() -> Dictionary:
 	}
 
 func open_expedition_cache() -> Dictionary:
-	if not has_active_expedition() or str(expedition_run.get("biome_id", "")) != "Whisperwood":
+	if not has_active_expedition() or str(expedition_run.get("biome_id", "")) != "Whisperwood" or str(expedition_run.get("route_phase", "")) != "capstone" or not _expedition_route_state_is_supported(expedition_run, true):
 		return {}
 	var branch_id := str(expedition_run.get("branch_id", ""))
 	if branch_id.is_empty() or not bool(expedition_run.get("objective_complete", false)) or bool(expedition_run.get("cache_claimed", false)):
@@ -2050,7 +2093,7 @@ func open_expedition_capstone() -> Dictionary:
 	if str(expedition_run.get("biome_id", "")) == "Whisperwood":
 		return open_expedition_cache()
 	var branch_id := str(expedition_run.get("branch_id", ""))
-	if branch_id.is_empty() or not bool(expedition_run.get("objective_complete", false)) or bool(expedition_run.get("cache_claimed", false)):
+	if branch_id.is_empty() or str(expedition_run.get("route_phase", "")) != "capstone" or not _expedition_route_state_is_supported(expedition_run, true) or not bool(expedition_run.get("objective_complete", false)) or bool(expedition_run.get("cache_claimed", false)):
 		return {}
 	var reward: Dictionary = expedition_route_definition().get("capstone_reward", {})
 	if reward.is_empty():
@@ -3571,6 +3614,54 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 			else:
 				migrated_job = {"kind": "none", "structure_id": "", "station_id": "", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": "plank", "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
 			data["station_job"] = migrated_job
+	if version < 26:
+		# v26 makes physical expedition route beats durable on every map. Older
+		# saves could contain a valid branch/objective without those checkpoints;
+		# migrate only the traversal prefix implied by the already-owned phase.
+		# No cargo, objective progress, reward, or unlock is created here.
+		var route_migration: Variant = data.get("expedition_run", {})
+		if route_migration is Dictionary:
+			var migrated_route: Dictionary = route_migration
+			var migrated_status := str(migrated_route.get("status", "none"))
+			if migrated_status == "none":
+				migrated_route["route_phase"] = "none"
+				migrated_route["biome_id"] = ""
+				migrated_route["branch_id"] = ""
+				migrated_route["objective_id"] = ""
+				migrated_route["objective_kind"] = ""
+				migrated_route["objective_progress"] = 0
+				migrated_route["objective_target"] = 0
+				migrated_route["objective_complete"] = false
+				migrated_route["shortcut_open"] = false
+				migrated_route["cache_claimed"] = false
+				migrated_route["return_checkpoint_crossed"] = false
+				migrated_route["route_checkpoints"] = []
+			elif migrated_status == "active":
+				var migrated_phase := str(migrated_route.get("route_phase", "approach"))
+				var existing_checkpoints: Variant = migrated_route.get("route_checkpoints", [])
+				var valid_existing_prefix := existing_checkpoints is Array and (existing_checkpoints as Array) in [[], ["arrival"], ["arrival", "fork"], ["arrival", "fork", "return"]]
+				var migrated_checkpoints: Array = existing_checkpoints.duplicate(true) if valid_existing_prefix else []
+				if not valid_existing_prefix:
+					match migrated_phase:
+						"arrival": migrated_checkpoints = ["arrival"]
+						"fork", "branch", "objective", "capstone", "shortcut": migrated_checkpoints = ["arrival", "fork"]
+						"return": migrated_checkpoints = ["arrival", "fork", "return"]
+						_: migrated_checkpoints = []
+				if bool(migrated_route.get("return_checkpoint_crossed", false)):
+					migrated_checkpoints = ["arrival", "fork", "return"]
+					migrated_phase = "return"
+				migrated_route["route_checkpoints"] = migrated_checkpoints
+				migrated_route["route_phase"] = migrated_phase if EXPEDITION_ROUTE_PHASES.has(migrated_phase) and migrated_phase != "none" else "approach"
+				migrated_route["branch_id"] = str(migrated_route.get("branch_id", ""))
+				migrated_route["objective_id"] = str(migrated_route.get("objective_id", ""))
+				migrated_route["objective_kind"] = str(migrated_route.get("objective_kind", ""))
+				migrated_route["objective_progress"] = maxi(0, int(migrated_route.get("objective_progress", 0)))
+				migrated_route["objective_target"] = maxi(0, int(migrated_route.get("objective_target", 0)))
+				migrated_route["objective_complete"] = bool(migrated_route.get("objective_complete", false))
+				migrated_route["shortcut_open"] = bool(migrated_route.get("shortcut_open", false))
+				migrated_route["cache_claimed"] = bool(migrated_route.get("cache_claimed", false))
+				migrated_route["return_checkpoint_crossed"] = bool(migrated_route.get("return_checkpoint_crossed", false)) or migrated_route["route_phase"] == "return"
+			data["expedition_run"] = migrated_route
 	if version < SAVE_VERSION:
 		if not data.has("world_seed") or not (data["world_seed"] is String) or str(data["world_seed"]).strip_edges().is_empty():
 			data["world_seed"] = DEFAULT_WORLD_SEED
@@ -4199,6 +4290,8 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 			return false
 		if expedition.has("second_wind_used") and not (expedition["second_wind_used"] is bool):
 			return false
+		if not _expedition_route_state_is_supported(expedition, expedition_status == "active"):
+			return false
 		var expedition_biome := str(expedition.get("biome_id", ""))
 		var branch_id := str(expedition.get("branch_id", ""))
 		if not branch_id.is_empty() and ContentRegistry.expedition_route_definition(expedition_biome, branch_id).is_empty():
@@ -4207,54 +4300,8 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 			var objective_definition := ContentRegistry.expedition_route_definition(expedition_biome, branch_id)
 			if branch_id.is_empty() or str(objective_definition.get("objective_id", "")) != str(expedition.get("objective_id", "")):
 				return false
-		if expedition.has("route_phase") and not EXPEDITION_ROUTE_PHASES.has(str(expedition.get("route_phase", "approach"))):
-			return false
-		if expedition.has("route_checkpoints"):
-			var route_checkpoints: Variant = expedition.get("route_checkpoints", [])
-			if not (route_checkpoints is Array):
-				return false
-			var seen_route_checkpoints := {}
-			var previous_checkpoint_index := -1
-			for checkpoint_value in route_checkpoints:
-				if not (checkpoint_value is String) or not WHISPERWOOD_ROUTE_CHECKPOINTS.has(str(checkpoint_value)) or seen_route_checkpoints.has(str(checkpoint_value)):
-					return false
-				if expedition_biome != "Whisperwood":
-					return false
-				var checkpoint_index := WHISPERWOOD_ROUTE_CHECKPOINTS.find(str(checkpoint_value))
-				if checkpoint_index <= previous_checkpoint_index:
-					return false
-				previous_checkpoint_index = checkpoint_index
-				seen_route_checkpoints[str(checkpoint_value)] = true
 		for route_flag in ["objective_complete", "shortcut_open", "cache_claimed", "return_checkpoint_crossed"]:
 			if expedition.has(route_flag) and not (expedition[route_flag] is bool):
-				return false
-		var route_phase_value := str(expedition.get("route_phase", "approach"))
-		var cache_claimed := bool(expedition.get("cache_claimed", false))
-		var shortcut_open := bool(expedition.get("shortcut_open", false))
-		if expedition_biome == "Whisperwood":
-			var route_checkpoints_value: Variant = expedition.get("route_checkpoints", [])
-			if not (route_checkpoints_value is Array):
-				return false
-			var route_checkpoints: Array = route_checkpoints_value
-			var objective_complete := bool(expedition.get("objective_complete", false))
-			if cache_claimed != shortcut_open:
-				return false
-			if shortcut_open:
-				if not objective_complete or route_phase_value not in ["shortcut", "return"]:
-					return false
-				if route_phase_value == "shortcut" and route_checkpoints != ["arrival", "fork"]:
-					return false
-				if route_phase_value == "return" and route_checkpoints != ["arrival", "fork", "return"]:
-					return false
-			elif route_phase_value in ["shortcut", "return"] or route_checkpoints.has("return"):
-				return false
-		else:
-			var return_checkpoint_crossed := bool(expedition.get("return_checkpoint_crossed", false))
-			if return_checkpoint_crossed and (not cache_claimed or not shortcut_open or route_phase_value != "return"):
-				return false
-			if route_phase_value == "return" and not return_checkpoint_crossed:
-				return false
-			if shortcut_open and route_phase_value not in ["shortcut", "return"]:
 				return false
 		if expedition.has("stake_active") and not (expedition["stake_active"] is bool):
 			return false
@@ -4689,7 +4736,7 @@ func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 		if stored_route_checkpoints is Array:
 			for checkpoint_value in stored_route_checkpoints:
 				var checkpoint_id := str(checkpoint_value)
-				if checkpoint_value is String and WHISPERWOOD_ROUTE_CHECKPOINTS.has(checkpoint_id) and not normalized_route_checkpoints.has(checkpoint_id):
+				if checkpoint_value is String and EXPEDITION_ROUTE_CHECKPOINTS.has(checkpoint_id) and not normalized_route_checkpoints.has(checkpoint_id):
 					normalized_route_checkpoints.append(checkpoint_id)
 		expedition_run["route_checkpoints"] = normalized_route_checkpoints
 		expedition_run["branch_id"] = str(expedition_run.get("branch_id", ""))
