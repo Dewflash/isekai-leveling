@@ -56,6 +56,22 @@ const STRUCTURES := {
 			"walls": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-walls.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q3.png"},
 			"roof": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-roof.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q3.png"},
 		},
+		# The q0 Workshop build presentation is assembled from measured regions of
+		# one authored kit. Each region is a visible contributor; the old complete
+		# stage PNGs remain the explicit directional fallback for q1-q3 until their
+		# matching kits are authored. `world_height` and `position` are presentation
+		# anchors, not gameplay or collision dimensions.
+		"layered_construction": {
+			"asset_path": "res://assets/generated/sanctuary/workshop/workshop-construction-kit.png",
+			"source_size": [1254, 1254],
+			"layers": {
+				"foundation": {"region": [0, 118, 640, 366], "world_height": 4.02, "position": [0.0, 0.0, 0.0], "render_priority": 1},
+				"frame": {"region": [630, 0, 624, 500], "world_height": 5.42, "position": [0.02, 0.15, -0.05], "render_priority": 2},
+				"walls": {"region": [0, 470, 620, 450], "world_height": 5.30, "position": [0.0, 0.13, 0.02], "render_priority": 3},
+				"roof": {"region": [600, 470, 654, 470], "world_height": 5.30, "position": [0.02, 2.55, -0.08], "render_priority": 4},
+				"fittings": {"region": [50, 880, 760, 374], "world_height": 2.34, "position": [0.05, 0.10, 0.60], "render_priority": 5},
+			},
+		},
 		"directional_variants": [
 			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q0.png", "facing": [0.0, 0.0, 1.0]},
 			{"quarter_turn": 1, "variant_id": "workshop_q1_pos_x", "asset_id": "sanctuary/player_structures/workshop/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q1.png", "facing": [1.0, 0.0, 0.0]},

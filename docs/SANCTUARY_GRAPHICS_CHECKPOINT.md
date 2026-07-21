@@ -1,6 +1,6 @@
 # Sanctuary graphics checkpoint
 
-Updated: 2026-07-21
+Updated: 2026-07-22
 
 Sanctuary is the current art gate for Isekai Leveling. The other biome
 presentations remain frozen until this scene reaches the saved reference's
@@ -142,6 +142,19 @@ free to choose the actual building layout.
   material milestones: frame through 50% progress, walls through 76%, then roof
   to completion. The renderer derives each cutout's placement from its measured
   alpha envelope and the source-measured projected shell.
+- Added the first real layered Workshop construction renderer. The q0 direction
+  now assembles a generated, alpha-measured AtlasTexture kit into separate
+  foundation, timber-frame, wall, roof, and forge-fitting contributors. The
+  blueprint/build path no longer uses a single full-building construction card;
+  the q1–q3 directional PNG family remains an explicit fallback until matching
+  component kits are authored.
+- Disabled the legacy rectangular procedural base and finished-source shell
+  during layered construction. Non-operational construction remains traversable
+  and the measured operational shell is the only active structure collision,
+  preventing invisible finished walls from disagreeing with the visible build.
+- Added renderer-backed Workshop layer evidence at
+  `/private/tmp/isekai-sanctuary-layered-v4/`, including blueprint, early frame,
+  wall, roof, operational, motion/occlusion, and two player-authored layouts.
 - Added a fresh live display-backed Storage Shed evidence set at
   `docs/evidence/sanctuary-scale-v26/`, including the placement preview,
   construction phases, operation, motion/occlusion, and two genuinely different
@@ -183,7 +196,7 @@ free to choose the actual building layout.
 
 ## Verification
 
-- `tests/test_sanctuary_visual_contract.gd`: pass, 5,127 checks across all five
+- `tests/test_sanctuary_visual_contract.gd`: pass, 5,473 checks across all five
   structure kinds and all four rotations, including authored layouts, generated
   pivots/opaque bounds, player-safe access zones, source-measured runtime
   collision centers/sizes, construction metadata, and Mira motion
@@ -209,8 +222,9 @@ free to choose the actual building layout.
   and the authored shell
 - `tests/test_workshop_interior_runtime.gd`: pass, 63 checks covering entry,
   room-centered interior movement, interaction, egress clearance, and exit
-- `tests/test_workshop_stage_visuals.gd`: pass, 134 checks covering authored
-  Workshop construction stages and motion
+- `tests/test_workshop_stage_visuals.gd`: pass, 146 checks covering the q0
+  layered Workshop construction stages, q1–q3 directional fallback, measured
+  alpha coverage, and motion
 - `tests/test_camera_controls.gd`: pass
 - `tests/test_reference_hud.gd`: pass, 18 checks covering gameplay visibility,
   portrait/status content, first-run objective, sourced belt texture,

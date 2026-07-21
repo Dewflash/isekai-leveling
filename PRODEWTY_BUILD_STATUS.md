@@ -1,6 +1,6 @@
 # Prodewty Build Status
 
-Updated: 2026-07-21, Asia/Singapore
+Updated: 2026-07-22, Asia/Singapore
 
 ## Current target
 
@@ -525,6 +525,26 @@ Updated: 2026-07-21, Asia/Singapore
 - The editor/import scan passes. The focused runtime test remains blocked by
   the known macOS Godot SPIR-V→MSL signal 11 before the script starts, so this
   checkpoint is static-verified and not runtime-verified.
+
+## 2026-07-22 layered Workshop graphics checkpoint
+
+- Workshop q0 construction now uses a Codex-generated, chroma-cleaned atlas
+  kit assembled as measured foundation, timber frame, walls, roof, and forge
+  fitting layers. Blueprint, early frame, wall, and roof captures are now
+  visibly additive instead of one flattened construction card.
+- The old procedural rectangular base is hidden during layered construction.
+  Construction remains traversable until operational state, where the imported
+  source-measured compound shell becomes the sole active structure collision.
+- Verification: `test_workshop_stage_visuals.gd` passes 146 checks;
+  `test_sanctuary_visual_contract.gd` passes 5,473 checks;
+  `test_sanctuary_shader_integration.gd` passes 160 checks;
+  `test_asset_hitboxes.gd` passes 612 checks; the display-backed capture at
+  `/private/tmp/isekai-sanctuary-layered-v4/` passes all stage, motion,
+  occlusion, and player-layout checks.
+- This is a bounded graphics milestone, not a finished Sanctuary or full-game
+  claim. Workshop q1–q3 construction still uses the directional fallback
+  family; final Sanctuary density, all facility layered families, touch-device
+  capture, and five production expedition presentations remain open.
 
 ## Next actions (the project is not being called finished)
 

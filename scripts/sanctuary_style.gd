@@ -880,6 +880,121 @@ func _player_structure_stage_sprite(kind: String, stage_id: String, rotation_qua
 	add_child(sprite)
 	return sprite
 
+func _build_layered_workshop_construction(presentation: Node3D, structure: Node3D, state: String, data: Dictionary, footprint: Vector2, progress: float, rotation_quarter_turns: int) -> Sprite3D:
+	# The authored construction kit is a real layer source, not a second full
+	# building card. q0 is the first production direction; other rotations use
+	# the existing directional family until matching component kits are authored.
+	if presentation == null or structure == null or rotation_quarter_turns != 0:
+		return null
+	var definition := SanctuaryAssetCatalog.structure_definition("workshop")
+	var config: Dictionary = definition.get("layered_construction", {})
+	var asset_path := str(config.get("asset_path", ""))
+	if asset_path.is_empty() or not ResourceLoader.exists(asset_path):
+		return null
+	var texture := load(asset_path) as Texture2D
+	if texture == null:
+		return null
+	var source_image := texture.get_image()
+	if source_image == null:
+		return null
+	var layers: Dictionary = config.get("layers", {})
+	if layers.is_empty():
+		return null
+	var stage_id := "blueprint" if state == "blueprint" else _construction_stage_for_progress(progress)
+	var active_layers: Array[String] = ["foundation"]
+	if state == "building":
+		if progress >= 0.10:
+			active_layers.append("frame")
+		if progress >= 0.50:
+			active_layers.append("walls")
+		if progress >= 0.76:
+			active_layers.append("roof")
+		if progress >= 0.88:
+			active_layers.append("fittings")
+	var first_sprite: Sprite3D = null
+	var active_layer_ids: Array[String] = []
+	for layer_id in active_layers:
+		var layer_value: Variant = layers.get(layer_id, {})
+		if not (layer_value is Dictionary):
+			continue
+		var layer: Dictionary = layer_value
+		var region_data: Array = layer.get("region", [])
+		if region_data.size() < 4:
+			continue
+		var region := Rect2i(int(region_data[0]), int(region_data[1]), int(region_data[2]), int(region_data[3]))
+		var layer_sprite := _layered_workshop_sprite(source_image, region, layer_id, float(layer.get("world_height", 1.0)), asset_path)
+		if layer_sprite == null:
+			continue
+		var position_data: Array = layer.get("position", [0.0, 0.0, 0.0])
+		if position_data.size() >= 3:
+			layer_sprite.position = Vector3(float(position_data[0]), float(position_data[1]), float(position_data[2]))
+		layer_sprite.render_priority = int(layer.get("render_priority", active_layer_ids.size()))
+		layer_sprite.name = "IllustratedStateSprite" if first_sprite == null else "WorkshopConstructionLayer_%s" % layer_id
+		layer_sprite.modulate = Color(0.42, 1.0, 0.94, 0.48) if state == "blueprint" else Color.WHITE
+		layer_sprite.set_meta("construction_stage", stage_id)
+		layer_sprite.set_meta("construction_layer", layer_id)
+		layer_sprite.set_meta("layered_asset_path", asset_path)
+		layer_sprite.set_meta("directional_asset_path", asset_path)
+		layer_sprite.set_meta("opaque_measurement_source", "layer_region_texture_alpha_used_rect")
+		layer_sprite.set_meta("presentation_only", true)
+		layer_sprite.set_meta("collision_contributor", false)
+		layer_sprite.set_meta("collision_presentation_contract", "traversable_construction_layer_until_operational")
+		_set_structure_sprite_metadata(layer_sprite, structure, "workshop", state, "state" if first_sprite == null else "construction_layer_%s" % layer_id, footprint)
+		presentation.add_child(layer_sprite)
+		active_layer_ids.append(layer_id)
+		if first_sprite == null:
+			first_sprite = layer_sprite
+	structure.set_meta("construction_art_source", "generated_workshop_layered_kit" if first_sprite != null else "")
+	structure.set_meta("construction_art_asset_path", asset_path)
+	structure.set_meta("construction_art_rotation", rotation_quarter_turns)
+	structure.set_meta("construction_art_stage", stage_id)
+	structure.set_meta("construction_art_layers", active_layer_ids)
+	return first_sprite
+
+func _layered_workshop_sprite(source_image: Image, region: Rect2i, layer_id: String, world_height: float, asset_path: String) -> Sprite3D:
+	if source_image == null or world_height <= 0.0:
+		return null
+	var clipped := Rect2i(
+		clampi(region.position.x, 0, source_image.get_width() - 1),
+		clampi(region.position.y, 0, source_image.get_height() - 1),
+		clampi(region.size.x, 1, source_image.get_width() - region.position.x),
+		clampi(region.size.y, 1, source_image.get_height() - region.position.y)
+	)
+	var region_image := source_image.get_region(clipped)
+	var opaque_bounds := region_image.get_used_rect()
+	if opaque_bounds.size.x <= 0 or opaque_bounds.size.y <= 0:
+		return null
+	var source_texture := ImageTexture.create_from_image(source_image)
+	if source_texture == null:
+		return null
+	var atlas := AtlasTexture.new()
+	atlas.atlas = source_texture
+	atlas.region = Rect2(float(clipped.position.x), float(clipped.position.y), float(clipped.size.x), float(clipped.size.y))
+	atlas.filter_clip = true
+	var sprite := Sprite3D.new()
+	sprite.texture = atlas
+	sprite.centered = false
+	var transparent_bottom := float(maxi(0, region_image.get_height() - opaque_bounds.position.y - opaque_bounds.size.y))
+	sprite.offset = Vector2(-(float(opaque_bounds.position.x) + float(opaque_bounds.size.x) * 0.5), -transparent_bottom)
+	sprite.pixel_size = world_height / float(maxi(1, opaque_bounds.size.y))
+	sprite.axis = Vector3.AXIS_Z
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	sprite.shaded = true
+	sprite.material_override = _structure_sprite_material(atlas)
+	sprite.no_depth_test = false
+	sprite.sorting_use_aabb_center = false
+	sprite.sorting_offset = 0.0
+	var profile := {
+		"asset_id": "sanctuary/player_structures/workshop/construction/layer/%s" % layer_id,
+		"footprint_ratio": Vector2(0.92, 0.56),
+		"asset_path": asset_path,
+	}
+	_set_sprite_contract_metadata(sprite, profile, opaque_bounds, world_height)
+	sprite.set_meta("layer_id", layer_id)
+	sprite.set_meta("layer_texture_size", [region_image.get_width(), region_image.get_height()])
+	return sprite
+
 func _refresh_tracked_sprite_base_scale(sprite: Sprite3D) -> void:
 	for sway_data in swaying_nodes:
 		if sway_data.get("node") == sprite:
@@ -1151,13 +1266,18 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	var rotation_quarter_turns := int(structure.get_meta("rotation_quarter_turns", 0))
 	var measured_hero_world_size := _measured_hero_world_size(structure, kind, rotation_quarter_turns)
 	var directional_stage_art := false
+	var layered_construction_art := false
 	if not use_measured_3d_art:
 		if state == "blueprint" or state == "building":
 			var stage_id := "blueprint" if state == "blueprint" else _construction_stage_for_progress(build_progress)
-			var stage_asset_path := SanctuaryAssetCatalog.structure_construction_stage_asset(kind, stage_id, rotation_quarter_turns)
-			var stage_world_size := _measured_stage_family_world_size(structure, kind, stage_id, measured_hero_world_size)
-			sprite = _player_structure_stage_sprite(kind, stage_id, rotation_quarter_turns, stage_world_size)
-			directional_stage_art = sprite != null
+			if kind == "workshop":
+				sprite = _build_layered_workshop_construction(presentation, structure, state, data, structure_footprint, build_progress, rotation_quarter_turns)
+				layered_construction_art = sprite != null
+			if not layered_construction_art:
+				var stage_asset_path := SanctuaryAssetCatalog.structure_construction_stage_asset(kind, stage_id, rotation_quarter_turns)
+				var stage_world_size := _measured_stage_family_world_size(structure, kind, stage_id, measured_hero_world_size)
+				sprite = _player_structure_stage_sprite(kind, stage_id, rotation_quarter_turns, stage_world_size)
+				directional_stage_art = sprite != null
 		if sprite == null and use_player_structure_art and not (directional_art_required and (state == "blueprint" or state == "building")):
 			sprite = _player_structure_hero_sprite(kind, rotation_quarter_turns, measured_hero_world_size)
 		if sprite == null and not directional_art_required:
@@ -1169,12 +1289,17 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 		if sprite == null and not directional_art_required:
 			sprite = _sprite_from_sheet(prop_sheet, cell_index, Vector3.ZERO, _structure_world_size(kind))
 	if sprite != null:
-		sprite.name = "IllustratedStateSprite"
-		sprite.reparent(presentation)
-		sprite.position = Vector3.ZERO
-		sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
-		_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
-		if directional_stage_art:
+		if not layered_construction_art:
+			sprite.name = "IllustratedStateSprite"
+			sprite.reparent(presentation)
+			sprite.position = Vector3.ZERO
+		if not layered_construction_art:
+			sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
+			_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
+		if layered_construction_art:
+			structure.set_meta("operational_art_source", "generated_workshop_layered_construction")
+			structure.set_meta("visual_art_missing", false)
+		elif directional_stage_art:
 			structure.set_meta("operational_art_source", "generated_%s_construction_stage" % kind)
 		elif use_player_structure_art:
 			# The generated cutout is the single opaque operational silhouette. The
@@ -1228,7 +1353,16 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	# translucent square under a finished cutout. The contact shadow above is the
 	# only operational ground dressing; the slab remains faintly readable during
 	# blueprint/build states where it communicates the player-owned footprint.
-	base.material_override = _soft_material(Color(0.48, 0.58, 0.41, 0.12 if state != "operational" else 0.0), true, false)
+	var layered_construction := str(structure.get_meta("construction_art_source", "")) == "generated_workshop_layered_kit"
+	var legacy_structure_base := structure.get_node_or_null("CisternBase") as Node3D
+	if layered_construction and legacy_structure_base != null:
+		# The old procedural base is a rectangular slab. The layered kit already
+		# owns the measured foundation silhouette, so keeping both creates the exact
+		# square-card read this renderer is replacing.
+		legacy_structure_base.visible = false
+		_hide_render_tree(legacy_structure_base)
+	base.visible = not layered_construction or state == "blueprint"
+	base.material_override = _soft_material(Color(0.48, 0.58, 0.41, 0.04 if layered_construction else (0.12 if state != "operational" else 0.0)), true, false)
 	_build_structure_activity_dressing(presentation, structure, kind, state, data, structure_footprint)
 
 func _build_structure_activity_dressing(presentation: Node3D, structure: Node3D, kind: String, state: String, data: Dictionary, footprint: Vector2) -> void:

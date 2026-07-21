@@ -33,6 +33,22 @@ the Godot gameplay/session code.
   operational Workshop shell remains the sole measured gameplay collision
   authority
 
+## Codex-generated Workshop layered construction kit
+
+- Creator/source: Codex image generation, then locally chroma-key processed
+  into a transparent RGBA atlas
+- License/status: Original generated project artwork; no external asset license
+  dependency
+- Files: `assets/generated/sanctuary/workshop/workshop-construction-kit-source.png`
+  and `assets/generated/sanctuary/workshop/workshop-construction-kit.png`
+- Runtime use: q0 Workshop construction layers for the measured foundation,
+  timber frame, wall panels, roof, and forge fittings; the layers advance from
+  blueprint through the authoritative construction milestones
+- Runtime contract: each layer is an alpha-measured AtlasTexture region with a
+  feet pivot, explicit render order, and presentation-only collision metadata.
+  The q1–q3 directional construction family remains the explicit fallback until
+  matching component kits are authored.
+
 ## Codex-generated player facility sheet
 
 - Creator/source: Codex image generation guided by the saved Sanctuary
