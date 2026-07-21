@@ -488,6 +488,27 @@ Updated: 2026-07-21, Asia/Singapore
 - The full game, final Sanctuary art gate, interior visual capture, and five
   production expedition presentations remain open.
 
+## 2026-07-22 shared action-feedback checkpoint
+
+- The gameplay feedback contract is now explicit in
+  `scripts/feedback_event.gd`. A resolved action carries its action kind,
+  world position, flattened direction, clamped strength, surface, source,
+  audio mapping, camera response, haptic response, and metadata in one
+  transient event. Persistent state remains in `GameSession`.
+- `main.gd` now routes footsteps, gathering preparation/contact/harvest,
+  expedition pickups, construction deliveries, fishing phases, discovery,
+  dodge, combat impacts, and player damage through that event path. The
+  `AudioDirector` consumes the same event, and the main loop records the last
+  sequence for later particle/UI/analytics consumers instead of reimplementing
+  action-specific routing.
+- Duplicate direct audio, camera-shake, and haptic calls were removed from
+  those paths so one resolved action does not produce stacked feedback. A
+  focused contract test was added at `tests/test_feedback_event.gd`.
+- The editor/import scan parses the new global class and touched scripts. The
+  focused runtime test still hits the existing macOS Godot SPIR-V→MSL signal
+  11 before the test script starts, so this checkpoint is static-verified and
+  not runtime-verified. No renderer-backed visual claim is being made.
+
 ## Next actions (the project is not being called finished)
 
 1. Keep the Sanctuary gate active: strengthen lived-in activity density,

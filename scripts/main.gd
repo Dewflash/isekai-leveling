@@ -21,6 +21,7 @@ const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd"
 const SanctuaryAssetMeasurement = preload("res://scripts/sanctuary_asset_measurement.gd")
 const BuildingInteriorScript = preload("res://scripts/building_interior.gd")
 const InteriorGrid = preload("res://scripts/interior_grid.gd")
+const FeedbackEventScript = preload("res://scripts/feedback_event.gd")
 
 const SOURCED_TREE_ASSETS := {
 	"Sanctuary": "res://assets/quaternius-stylized-nature/glTF/CommonTree_2.gltf",
@@ -117,6 +118,8 @@ var strength := 1
 var attack_cooldown := 0.0
 var footstep_timer := 0.0
 var toast_timer := 0.0
+var feedback_event_sequence := 0
+var last_feedback_event: Dictionary = {}
 var toast_label: Label
 var hud_title_label: Label
 var zone_label: Label
@@ -4817,17 +4820,16 @@ func _update_fishing_action(delta: float) -> void:
 		return
 	var phase := str(result.get("phase", ""))
 	if phase == "bite":
-		if audio_director != null and active_spot != null:
-			audio_director.call("play_action_at", "fishing_bite", active_spot.global_position)
+		if active_spot != null:
+			_emit_feedback_event("fishing", active_spot.global_position, Vector3.ZERO, 0.8, "water", "fishing", {"audio_kind": "fishing_bite"})
 		_show_toast("BITE! Press Interact inside the hook window.", 1.0)
 	elif phase == "reeling" and str(result.get("status", "")) == "active":
-		if audio_director != null and bool(result.get("perfect_hook", false)):
-			if active_spot != null:
-				audio_director.call("play_action_at", "fishing_hook", active_spot.global_position)
+		if bool(result.get("perfect_hook", false)) and active_spot != null:
+			_emit_feedback_event("fishing", active_spot.global_position, Vector3.ZERO, 0.9, "water", "fishing", {"audio_kind": "fishing_hook", "perfect": true})
 		_show_toast("Hooked. Tap or hold Interact to reel; release before the line snaps.", 1.5)
 	elif str(result.get("status", "")) == "failed":
-		if audio_director != null and active_spot != null:
-			audio_director.call("play_action_at", "fishing_escape", active_spot.global_position)
+		if active_spot != null:
+			_emit_feedback_event("fishing", active_spot.global_position, Vector3.ZERO, 0.7, "water", "fishing", {"audio_kind": "fishing_escape"})
 		session.call("cancel_fishing")
 		if not bool(session.call("save_game")):
 			if not before_fishing_tick.is_empty():
@@ -4848,9 +4850,8 @@ func _update_fishing_action(delta: float) -> void:
 				session.call("restore_state", landed_snapshot)
 			_show_toast("The catch could not be secured. The fish remains claimable.", 2.4)
 			return
-		if audio_director != null:
-			if active_spot != null:
-				audio_director.call("play_action_at", "fishing_catch", active_spot.global_position)
+		if active_spot != null:
+			_emit_feedback_event("fishing", active_spot.global_position, Vector3.ZERO, 1.0, "water", "fishing", {"audio_kind": "fishing_catch", "amount": int(catch_result.get("amount", 0))})
 		var uncommon_text := "  |  +%d Shell from the tide" % int(catch_result.get("bonus_resource_amount", 0)) if bool(catch_result.get("uncommon_catch", false)) else ""
 		_show_toast("Catch landed  |  +%d Fish  |  Fishing mastery +8%s%s" % [int(catch_result.get("amount", 0)), "  |  Perfect" if bool(catch_result.get("perfect", false)) else "", uncommon_text], 2.8)
 
@@ -4862,9 +4863,8 @@ func _fishing_action() -> void:
 	var result: Dictionary = session.call("press_fishing_action", str(session.get("fishing_attempt").get("attempt_id", "")))
 	if result.is_empty():
 		return
-	if str(result.get("phase", "")) == "reeling" and audio_director != null:
-		if active_spot != null:
-			audio_director.call("play_action_at", "fishing_reel", active_spot.global_position)
+	if str(result.get("phase", "")) == "reeling" and active_spot != null:
+		_emit_feedback_event("fishing", active_spot.global_position, Vector3.ZERO, 0.55, "water", "fishing", {"audio_kind": "fishing_reel"})
 	if str(result.get("status", "")) == "failed":
 		session.call("cancel_fishing")
 		if not session.has_method("save_game") or not bool(session.call("save_game")):
@@ -5392,6 +5392,37 @@ func _show_toast(message: String, duration := 2.4) -> void:
 	toast_label.text = message
 	toast_timer = duration
 
+func _emit_feedback_event(action_kind: String, world_position: Vector3, direction: Vector3 = Vector3.ZERO, strength: float = 1.0, surface: String = "grass", source: String = "world", metadata: Dictionary = {}) -> Dictionary:
+	var event: Dictionary = FeedbackEventScript.make(action_kind, world_position, direction, strength, surface, source, metadata)
+	feedback_event_sequence += 1
+	event["sequence"] = feedback_event_sequence
+	last_feedback_event = event
+	if audio_director != null and audio_director.has_method("play_feedback"):
+		audio_director.call("play_feedback", event)
+	if screen_shake_enabled:
+		camera_shake = maxf(camera_shake, float(event.get("camera_shake", 0.0)))
+	var haptic_duration := int(event.get("haptic_duration_ms", 0))
+	if haptic_duration > 0:
+		_try_haptic(haptic_duration, float(event.get("haptic_amplitude", 0.0)))
+	return event
+
+func _resource_feedback_surface(resource_id: String) -> String:
+	match resource_id:
+		"wood", "fiber", "berries": return "foliage"
+		"stone", "ore", "sunstone": return "stone"
+		"shell": return "sand"
+		"fish", "water": return "water"
+	return "grass"
+
+func _player_feedback_direction() -> Vector3:
+	if player == null:
+		return Vector3.ZERO
+	var direction: Vector3 = player.get("last_direction")
+	return direction
+
+func feedback_event_snapshot() -> Dictionary:
+	return last_feedback_event.duplicate(true)
+
 func _consume_energy(cost: int) -> bool:
 	if session != null:
 		if not session.call("spend_energy", cost):
@@ -5695,9 +5726,6 @@ func _construction_interact(structure_node: Node3D) -> void:
 		if delivered_structure.is_empty():
 			_show_toast("That material could not be delivered.", 2.0)
 			return
-		if audio_director != null:
-			audio_director.call("play_action_at", "build", structure_node.global_position)
-		_spawn_material_delivery_feedback(str(material_id), structure_node)
 		var new_state := str(delivered_structure.get("state", "blueprint"))
 		_refresh_structure_visual(instance_id, delivered_structure)
 		if not bool(session.call("save_game")):
@@ -5707,6 +5735,8 @@ func _construction_interact(structure_node: Node3D) -> void:
 			_refresh_structure_visuals()
 			_show_toast("The material delivery could not be secured. Nothing was consumed.", 3.0)
 			return
+		_emit_feedback_event("build_delivery", structure_node.global_position, _player_feedback_direction(), 0.6, _resource_feedback_surface(str(material_id)), "construction", {"structure": kind, "material_id": str(material_id), "amount": delivery_amount})
+		_spawn_material_delivery_feedback(str(material_id), structure_node)
 		if new_state == "building":
 			_show_toast("Scaffold complete. Sleep to finish the %s frame." % _structure_display_name(kind), 3.0)
 		else:
@@ -6159,8 +6189,7 @@ func collect_resource(node: Node) -> bool:
 				_show_toast("The gathering effort could not be secured. Nothing was consumed.", 2.8)
 				return false
 			_show_toast("Contact %d / %d  |  Keep your footing." % [int(node.get("contacts")), int(node.get("required_contacts"))], 1.5)
-			if audio_director != null:
-				audio_director.call("play_action_at", "gather_wood", node.global_position)
+			_emit_feedback_event("gather_contact", node.global_position, Vector3.ZERO, 0.7, _resource_feedback_surface(id), "resource", {"resource_id": id, "contact": true})
 			if current_zone != "Sanctuary":
 				player_made_noise(node.global_position, 5.0)
 			return true
@@ -6206,8 +6235,7 @@ func collect_resource(node: Node) -> bool:
 					_show_toast("The gathering effort could not be secured. Nothing was consumed.", 2.8)
 					return false
 				_show_toast("Contact %d / %d  |  The forest is listening." % [int(node.get("contacts")), required_contacts], 1.5)
-				if audio_director != null:
-					audio_director.call("play_action_at", "gather_wood", node.global_position)
+				_emit_feedback_event("gather_contact", node.global_position, Vector3.ZERO, 0.7, _resource_feedback_surface(id), "resource", {"resource_id": id, "contact": true})
 				player_made_noise(node.global_position, 5.0)
 				return true
 			harvested_pickup = session.call("harvest_expedition_resource", node_id, id, amount, required_contacts, [node.global_position.x, node.global_position.y, node.global_position.z], discovery_id, true) if session != null and session.has_method("harvest_expedition_resource") else {}
@@ -6240,8 +6268,7 @@ func collect_resource(node: Node) -> bool:
 			_copy_session_to_runtime()
 			_show_toast("The gathering effort could not be secured. Nothing was taken.", 3.0)
 			return false
-	if audio_director != null:
-		audio_director.call("play_action_at", "gather_" + id, node.global_position)
+	_emit_feedback_event("gather_contact", node.global_position, Vector3.ZERO, 1.0, _resource_feedback_surface(id), "resource", {"resource_id": id, "contact": false})
 	_spawn_feedback_burst(node.global_position, palette["leaf"] if mastery_name == "Foraging" else palette["stone"])
 	if new_discovery:
 		_show_toast("Discovery: %s  |  Return to the Archive to understand it." % discovery_id, 3.2)
@@ -6278,8 +6305,7 @@ func _commit_expedition_harvest(node: Node, pickup: Dictionary, before_harvest: 
 		return false
 	if node != null and node.has_method("complete_depletion"):
 		node.call("complete_depletion")
-	if audio_director != null:
-		audio_director.call("play_action_at", "gather_" + resource_id, node_3d.global_position)
+	_emit_feedback_event("gather_contact", node_3d.global_position, Vector3.ZERO, 1.0, _resource_feedback_surface(resource_id), "resource", {"resource_id": resource_id, "contact": false, "expedition": true})
 	_spawn_feedback_burst(node_3d.global_position, palette["leaf"] if resource_id not in ["stone", "ore", "sunstone"] else palette["stone"])
 	player_made_noise(node_3d.global_position, 7.0 if resource_id in ["ore", "stone"] else 5.0)
 	_show_toast("Harvested %d %s. The bundle is on the ground; pick it up before you leave." % [amount, resource_label], 3.0)
@@ -6329,8 +6355,7 @@ func collect_expedition_pickup(pickup_node: Node) -> bool:
 		_show_toast("Discovery: %s  |  Return to the Archive to understand it." % discovery_id, 3.2)
 	else:
 		_show_toast("+%d %s  |  %s mastery +%d" % [amount, str(resolution.get("resource_label", resource_id.capitalize())), mastery_name, amount * 3], 2.2)
-	if audio_director != null:
-		audio_director.call("play_action_at", "pickup", pickup_node.global_position)
+	_emit_feedback_event("pickup", pickup_node.global_position, Vector3.ZERO, 0.6, _resource_feedback_surface(resource_id), "pickup", {"resource_id": resource_id})
 	return true
 
 func _route_resource_is_available(node: Node) -> bool:
@@ -6386,8 +6411,7 @@ func begin_resource_action(node: Node) -> void:
 	_show_toast("Gathering %s... hold your ground." % (resource_label if not resource_label.is_empty() else resource_id), 0.8)
 	if player != null and player.has_method("play_gather_feedback"):
 		player.call("play_gather_feedback", resource_id)
-	if audio_director != null:
-			audio_director.call("play_action_at", "gather_prepare", node.global_position)
+	_emit_feedback_event("gather_prepare", node.global_position, Vector3.ZERO, 0.35, _resource_feedback_surface(resource_id), "resource", {"resource_id": resource_id})
 
 func _update_resource_action(delta: float) -> void:
 	if resource_contact_node != null:
@@ -6836,8 +6860,7 @@ func _fishing_interact(station: Node = null) -> void:
 			_show_toast("The landed catch could not be secured. It is still waiting at the pond.", 2.8)
 			return
 		_copy_session_to_runtime()
-		if audio_director != null:
-			audio_director.call("play_action_at", "fishing_catch", visual_spot.global_position)
+		_emit_feedback_event("fishing", visual_spot.global_position, Vector3.ZERO, 1.0, "water", "fishing", {"audio_kind": "fishing_catch", "amount": int(catch_result.get("amount", 0))})
 		var uncommon_text := "  |  +%d Shell from the tide" % int(catch_result.get("bonus_resource_amount", 0)) if bool(catch_result.get("uncommon_catch", false)) else ""
 		_show_toast("Catch claimed  |  +%d Fish  |  Fishing mastery +8%s" % [int(catch_result.get("amount", 0)), uncommon_text], 2.6)
 		return
@@ -6870,8 +6893,7 @@ func _fishing_interact(station: Node = null) -> void:
 		_show_toast("The catch could not be secured. Bait and energy were returned.", 3.0)
 		return
 	_copy_session_to_runtime()
-	if audio_director != null:
-		audio_director.call("play_action_at", "fishing_cast", visual_spot.global_position)
+	_emit_feedback_event("fishing", visual_spot.global_position, Vector3.ZERO, 0.45, "water", "fishing", {"audio_kind": "fishing_cast"})
 	var tide_hint := "  |  Tide Reader sees uncommon shell catches" if spot_id == "sunlit_tidepool" and session.call("has_permission", "fishing_tide_reader") else ""
 	_show_toast("Cast. Watch the bobber, then press Interact when it dips.%s" % tide_hint, 2.4)
 
@@ -6971,10 +6993,9 @@ func _library_interact(source: Node3D = null) -> void:
 			return
 		_copy_session_to_runtime()
 		_refresh_station_visual()
-		if audio_director != null:
-			var research_anchor: Node3D = source if source != null else library_station
-			if research_anchor != null:
-				audio_director.call("play_action_at", "discovery", research_anchor.global_position)
+		var research_anchor: Node3D = source if source != null else library_station
+		if research_anchor != null:
+			_emit_feedback_event("discovery", research_anchor.global_position, Vector3.ZERO, 0.55, "wood", "archive")
 		var clue_suffix := ""
 		var clues_after: Variant = session.get("research_clues")
 		if clues_after is Array and clues_after.size() > clues_before.size():
@@ -8746,10 +8767,7 @@ func _player_dodge() -> void:
 		_show_toast("You need 1 Energy to dodge. Find a camp or return home.", 2.0)
 		return
 	if bool(player.call("start_dodge")):
-		camera_shake = 0.04
-		_try_haptic(28, 0.18)
-		if audio_director != null:
-			audio_director.call("play_action", "dodge")
+		_emit_feedback_event("dodge", player.global_position, _player_feedback_direction(), 0.7, _current_surface(), "player")
 		_show_toast("Dodge", 0.55)
 
 func _player_attack(_actor: Node) -> void:
@@ -8930,27 +8948,22 @@ func _resolve_player_attack_hit() -> void:
 			return
 	attack_combo_count = combo_step if combo_step < 3 else 0
 	attack_combo_timer = ATTACK_COMBO_WINDOW if attack_combo_count > 0 else 0.0
-	camera_shake = 0.06
+	var attack_surface := "metal" if bool(attack_resolution.get("guarded", false)) or bool(attack_resolution.get("guard_break", false)) else "grass"
+	_emit_feedback_event("attack_hit", target.global_position, _player_feedback_direction(), 1.0, attack_surface, "player", {
+		"guarded": bool(attack_resolution.get("guarded", false)),
+		"guard_break": bool(attack_resolution.get("guard_break", false)),
+		"heavy_attack": bool(attack_resolution.get("heavy_attack", false)),
+	})
 	if bool(attack_resolution.get("heavy_attack", false)):
-		camera_shake = 0.09
 		_show_toast("Heavy rhythm  |  %d damage" % damage, 0.9)
 	if bool(attack_resolution.get("guarded", false)):
-		camera_shake = 0.035
 		_show_toast("Guarded  |  %d damage  |  Wait for the opening" % damage, 1.0)
-		if audio_director != null:
-			audio_director.call("play_action_at", "guard", target.global_position)
 	if bool(attack_resolution.get("guard_break", false)):
-		camera_shake = 0.11
 		_show_toast("Guard broken  |  The guardian is staggered", 1.15)
-		if audio_director != null:
-			audio_director.call("play_action_at", "guard_break", target.global_position)
 	if bool(attack_resolution.get("vanguard_resolve", false)):
 		_show_toast("Vanguard Resolve  |  Finisher empowered", 1.2)
 	if bool(attack_resolution.get("clean_shot", false)):
 		_show_toast("Clean Shot  |  Opening stagger amplified", 1.15)
-	_try_haptic(30, 0.18)
-	if audio_director != null:
-		audio_director.call("play_action_at", "hit", target.global_position)
 
 func _cancel_player_attack() -> void:
 	pending_attack_target = null
@@ -8963,11 +8976,9 @@ func combat_feedback(target: Node, amount: int) -> void:
 	# Combat mastery is awarded once the authoritative guardian reward settles.
 	# Keeping hit feedback presentation-only prevents a rejected final blow (full
 	# cargo or failed persistence) from becoming a repeatable mastery exploit.
-	camera_shake = 0.08
 	var target_body := target as Node3D
 	if target_body != null:
 		_spawn_feedback_burst(target_body.global_position, palette["danger"])
-	_try_haptic(36, 0.24)
 	_show_toast("Impact  |  %s -%d HP" % [str(target.get("enemy_label")), amount], 1.0)
 
 func guardian_ambush_warning(guardian: Node) -> void:
@@ -8989,14 +9000,10 @@ func guardian_attack(guardian: Node) -> void:
 	if guardian_body == null or _ground_distance(player.global_position, guardian_body.global_position) > attack_range + 0.25:
 		return
 	if float(player.get("invulnerable_time")) > 0.0:
-		if audio_director != null:
-			audio_director.call("play_action", "dodge")
+		_emit_feedback_event("dodge", player.global_position, _player_feedback_direction(), 0.8, _current_surface(), "guardian")
 		_show_toast("Clean dodge", 0.9)
 		return
 	player.call("take_damage", maxi(1, int(guardian.get("attack_damage"))))
-	_try_haptic(48, 0.32)
-	if audio_director != null:
-		audio_director.call("play_action_at", "hit", guardian_body.global_position)
 
 func guardian_defeated(guardian: Node) -> bool:
 	var guardian_id := str(guardian.get("guardian_id"))
@@ -9042,6 +9049,8 @@ func player_took_damage(amount: int) -> void:
 	if pending_attack_target != null:
 		_cancel_player_attack()
 		_show_toast("Attack interrupted by impact.", 1.0)
+	var hit_position := player.global_position
+	var hit_surface := _current_surface()
 	var before_damage: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 	var result: Dictionary = session.call("apply_player_damage", amount)
 	player.set("health", int(result.get("health", player.get("health"))))
@@ -9051,7 +9060,7 @@ func player_took_damage(amount: int) -> void:
 			player.set("health", int(session.get("health")))
 		else:
 			player_fainted(before_damage)
-	_try_haptic(52, 0.35)
+	_emit_feedback_event("player_hit", hit_position, Vector3.ZERO, clampf(float(amount) / 12.0, 0.2, 1.5), hit_surface, "guardian", {"damage": amount})
 	if bool(result.get("second_wind", false)):
 		_show_toast("Second Wind  |  Your resolve kept the expedition alive.", 2.4)
 	else:
@@ -9100,8 +9109,7 @@ func player_moved(moving: bool) -> void:
 	if not moving or footstep_timer > 0.0:
 		return
 	footstep_timer = 0.27
-	if audio_director != null:
-		audio_director.call("play_action_at", "step_" + _current_surface(), player.global_position)
+	_emit_feedback_event("step", player.global_position, _player_feedback_direction(), 0.35, _current_surface(), "player")
 	player_made_noise(player.global_position, 2.6)
 
 func navigation_target_blocked() -> void:

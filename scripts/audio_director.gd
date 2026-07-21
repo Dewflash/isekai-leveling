@@ -213,6 +213,16 @@ func play_action_at(kind: String, world_position: Vector3) -> void:
 	player.volume_db = -12.0 if sampled_key == "step" else -8.0
 	player.play()
 
+func play_feedback(event: Dictionary) -> void:
+	if event.is_empty():
+		return
+	var kind := str(event.get("audio_kind", event.get("action", "ui")))
+	var position: Variant = event.get("position", Vector3.ZERO)
+	if bool(event.get("spatial", true)) and position is Vector3:
+		play_action_at(kind, position)
+	else:
+		play_action(kind)
+
 func play_ui(kind := "ui") -> void:
 	if ui_player == null or not _can_play_audio() or not _allow_action(kind):
 		return
