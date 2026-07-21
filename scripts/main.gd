@@ -8280,6 +8280,22 @@ func _refresh_structure_visual(instance_id: String, data: Dictionary) -> void:
 	var display_name := _structure_display_name(kind).to_upper()
 	var state := str(data.get("state", "building"))
 	var definition := ContentRegistry.structure_definition(kind)
+	# The imported-source compound shell describes the finished measured asset.
+	# Keeping it active under a blueprint or scaffold created invisible finished
+	# walls that disagreed with what the player could see. Until each construction
+	# stage has its own measured collision contributors, construction is visually
+	# traversable and only the operational state enables the measured shell.
+	var structure_collision_body := structure.get_node_or_null("StructureCollisionBody") as StaticBody3D
+	if structure_collision_body != null:
+		var operational_collision := state == "operational"
+		structure_collision_body.set_meta("collision_presentation_contract", "measured_operational_shell_only")
+		structure_collision_body.set_meta("active_construction_state", state)
+		for collision_value in structure_collision_body.find_children("Compound_*", "CollisionShape3D", false, false):
+			var collision_shape := collision_value as CollisionShape3D
+			if collision_shape == null:
+				continue
+			collision_shape.disabled = not operational_collision
+			collision_shape.set_meta("active_construction_state", state)
 	# A generated directional family is the sole operational silhouette. Keep
 	# gameplay utility roots alive, but never let their legacy walls/roofs become
 	# a second visible building after a save refresh.

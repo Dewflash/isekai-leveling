@@ -767,11 +767,34 @@ func _apply_station_state(station: Node3D, record: Dictionary) -> void:
 	var frame := station.get_node_or_null("ConstructionFrame") as Node3D
 	if frame != null:
 		frame.visible = state != "operational"
-		frame.modulate = Color(0.35, 0.93, 1.0, 0.90) if state == "blueprint" else Color(1.0, 0.70, 0.28, 0.96)
+		# Node3D has no CanvasItem-style modulate property. Apply the state tint
+		# to the authored frame meshes instead, keeping the frame root a pure
+		# grouping node for visibility and measurement traversal.
+		var frame_color := Color(0.35, 0.93, 1.0, 0.90) if state == "blueprint" else Color(1.0, 0.70, 0.28, 0.96)
+		for frame_mesh_value in frame.find_children("*", "MeshInstance3D", true, false):
+			var frame_mesh := frame_mesh_value as MeshInstance3D
+			if frame_mesh == null:
+				continue
+			var frame_material := frame_mesh.material_override as StandardMaterial3D
+			if frame_material == null:
+				continue
+			var tinted_material := frame_material.duplicate() as StandardMaterial3D
+			tinted_material.albedo_color = Color(frame_color.r, frame_color.g, frame_color.b, frame_material.albedo_color.a * frame_color.a)
+			frame_mesh.material_override = tinted_material
 	var materials := station.get_node_or_null("ConstructionMaterials") as Node3D
 	if materials != null:
 		materials.visible = state == "building" and assembly_progress > 0.0
-		materials.modulate.a = clampf(0.46 + assembly_progress * 0.54, 0.46, 1.0)
+		var material_alpha := clampf(0.46 + assembly_progress * 0.54, 0.46, 1.0)
+		for material_mesh_value in materials.find_children("*", "MeshInstance3D", true, false):
+			var material_mesh := material_mesh_value as MeshInstance3D
+			if material_mesh == null:
+				continue
+			var material_override := material_mesh.material_override as StandardMaterial3D
+			if material_override == null:
+				continue
+			var faded_material := material_override.duplicate() as StandardMaterial3D
+			faded_material.albedo_color.a = material_override.albedo_color.a * material_alpha
+			material_mesh.material_override = faded_material
 	_set_station_collision_active(station, state == "operational")
 
 func _station_material_progress(record: Dictionary) -> float:

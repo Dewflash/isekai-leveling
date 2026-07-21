@@ -223,6 +223,28 @@ func _check_operational_art(visual: Node3D, label: String) -> Node3D:
 	_check_structure_sprite_binding(visual, sprite, str(visual.get_meta("structure_kind", "")), "operational", "state", "%s fallback sprite" % label)
 	return sprite
 
+func _check_activity_dressing_contract(visual: Node3D, label: String) -> void:
+	if visual == null:
+		return
+	var presentation := visual.get_node_or_null("IllustratedStructurePresentation") as Node3D
+	if not _check(presentation != null, "%s requires an illustrated presentation root" % label):
+		return
+	var dressing := presentation.get_node_or_null("StructureActivityDressing") as Node3D
+	if not _check(dressing != null, "%s requires measured structure activity dressing" % label):
+		return
+	_check(bool(dressing.get_meta("presentation_only", false)), "%s activity dressing must be presentation-only" % label)
+	_check(str(dressing.get_meta("collision_authority", "")) == "none", "%s activity dressing must not own collision" % label)
+	_check(dressing.find_children("*", "StaticBody3D", true, false).is_empty(), "%s activity dressing must not contain physics bodies" % label)
+	var mesh_count := 0
+	for mesh_value in dressing.find_children("*", "MeshInstance3D", true, false):
+		var mesh := mesh_value as MeshInstance3D
+		if mesh == null:
+			continue
+		mesh_count += 1
+		_check(bool(mesh.get_meta("presentation_only", false)), "%s activity mesh %s must be presentation-only" % [label, mesh.name])
+		_check(int(mesh.get_meta("collision_layer", 0)) == 0, "%s activity mesh %s must declare collision layer 0" % [label, mesh.name])
+	_check(mesh_count > 0, "%s activity dressing must expose at least one authored activity prop" % label)
+
 func _atlas_region(sprite: Sprite3D) -> Rect2:
 	if sprite == null:
 		return Rect2()
@@ -707,6 +729,7 @@ func _check_rotation_and_collision_contract(world: Node, session: Node, origin: 
 	_array_triplet_matches(visual.get_meta("collision_fit_scale", []), Vector3.ONE, "rotation %d collision components must not be rescaled after root rotation" % rotation)
 	_check_runtime_measured_collision_shapes(body, AssetMeasurement.structure_collision_components(TEST_KIND, authored_footprint), "rotation %d" % rotation)
 	_check_operational_art(visual, "rotation %d operational" % rotation)
+	_check_activity_dressing_contract(visual, "rotation %d" % rotation)
 	return visual
 
 func _check_all_asset_collision_contract(world: Node) -> void:
@@ -976,6 +999,15 @@ func _check_delivery_scale(visual: Node3D, node_name: String, delivered: int, re
 	_approx(node.scale.z, expected_scale, "%s staged scale z" % label)
 
 func _check_stage_presentation(visual: Node3D, label: String, expected_state: String, wall_layers: int, roof_layers: int) -> Sprite3D:
+	var body := visual.get_node_or_null("StructureCollisionBody") as StaticBody3D if visual != null else null
+	if _check(body != null, "%s measured structure collision body is required" % label):
+		_check(str(body.get_meta("active_construction_state", "")) == expected_state, "%s collision state must match presentation state" % label)
+		var collisions := body.find_children("Compound_*", "CollisionShape3D", false, false)
+		for collision_value in collisions:
+			var collision := collision_value as CollisionShape3D
+			if collision == null:
+				continue
+			_check(collision.disabled == (expected_state != "operational"), "%s finished shell collision must be %s during %s" % [label, "disabled" if expected_state != "operational" else "active", expected_state])
 	if expected_state == "operational" and str(visual.get_meta("operational_art_source", "")) == "measured_3d_source":
 		_check_operational_art(visual, label)
 		_check_role_count(visual, "IllustratedPlotBase", 1, "%s plot base" % label)

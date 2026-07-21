@@ -145,6 +145,7 @@ var elapsed := 0.0
 var swaying_nodes: Array[Dictionary] = []
 var pulsing_nodes: Array[Dictionary] = []
 var fire_lights: Array[Dictionary] = []
+var activity_motion_nodes: Array[Dictionary] = []
 var resource_visual_roots: Array[Node3D] = []
 var canonical_landmark_roots: Dictionary = {}
 var key_light_direction := Vector3(-0.42, 0.84, 0.34)
@@ -236,6 +237,18 @@ func _process(delta: float) -> void:
 			continue
 		var light_base := float(fire_data.get("energy", 0.8))
 		light.light_energy = light_base + sin(elapsed * 5.0 + float(fire_data.get("phase", 0.0))) * 0.16 + sin(elapsed * 8.1) * 0.08
+	for activity_data in activity_motion_nodes:
+		var raw_activity_node: Variant = activity_data.get("node")
+		if not is_instance_valid(raw_activity_node):
+			continue
+		var activity_node := raw_activity_node as Node3D
+		if activity_node == null:
+			continue
+		var base_position: Vector3 = activity_data.get("base_position", activity_node.position)
+		var phase := float(activity_data.get("phase", 0.0))
+		var lift := float(activity_data.get("lift", 0.025))
+		activity_node.position = base_position + Vector3(0.0, sin(elapsed * 1.35 + phase) * lift, 0.0)
+		activity_node.rotation.y = float(activity_data.get("base_rotation", activity_node.rotation.y)) + sin(elapsed * 0.82 + phase) * 0.035
 
 func _hide_replaced_presentation(legacy_nodes: Array) -> void:
 	for legacy_node in legacy_nodes:
@@ -1036,6 +1049,13 @@ func set_placement_preview(center: Vector3, footprint: Vector2i, valid: bool, ro
 func apply_structure_visual(structure: Node3D, kind: String, state: String, data: Dictionary) -> void:
 	if structure == null:
 		return
+	# Refreshes replace the complete presentation layer. Remove motion records
+	# for freed presentation children first so repeated save/load or delivery
+	# refreshes cannot grow an unbounded animation list.
+	for motion_index in range(activity_motion_nodes.size() - 1, -1, -1):
+		var motion_node: Variant = activity_motion_nodes[motion_index].get("node")
+		if not is_instance_valid(motion_node) or (motion_node as Node3D).get_parent() == null:
+			activity_motion_nodes.remove_at(motion_index)
 	var presentation := structure.get_node_or_null("IllustratedStructurePresentation") as Node3D
 	if presentation == null:
 		presentation = Node3D.new()
@@ -1196,13 +1216,119 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 					roof_ghost.render_priority = -2
 					_set_structure_sprite_metadata(roof_ghost, structure, kind, state, "partial_roof", structure_footprint)
 	var kind_size := _structure_world_size(kind)
-	_add_contact_shadow(presentation, Vector3(0.0, 0.025, 0.10), Vector2(maxf(1.7, kind_size * 0.76), maxf(1.5, kind_size * 0.43)), 0.0)
-	var base := _soft_box(presentation, "IllustratedPlotBase", Vector3(maxf(1.6, kind_size * 0.72), 0.04, maxf(1.6, kind_size * 0.58)), Vector3(0.0, 0.04, 0.0), Color(0.46, 0.56, 0.38, 0.22), true)
+	# The collision envelope is the single scale authority. The former
+	# world_size fallback made a 5x4m shed receive a workshop-sized visual slab,
+	# which read as floating art and made the hitbox/asset relationship look wrong.
+	var shadow_size := Vector2(maxf(1.7, structure_footprint.x * 1.04), maxf(1.35, structure_footprint.y * 0.78))
+	_add_contact_shadow(presentation, Vector3(0.0, 0.025, 0.10), shadow_size, 0.0)
+	var plot_width := maxf(1.6, structure_footprint.x + 0.18)
+	var plot_depth := maxf(1.45, structure_footprint.y + 0.16)
+	var base := _soft_box(presentation, "IllustratedPlotBase", Vector3(plot_width, 0.04, plot_depth), Vector3(0.0, 0.04, 0.0), Color(0.46, 0.56, 0.38, 0.22), true)
 	# Keep the named plot-base hook for construction tooling, but do not leave a
 	# translucent square under a finished cutout. The contact shadow above is the
 	# only operational ground dressing; the slab remains faintly readable during
 	# blueprint/build states where it communicates the player-owned footprint.
 	base.material_override = _soft_material(Color(0.48, 0.58, 0.41, 0.12 if state != "operational" else 0.0), true, false)
+	_build_structure_activity_dressing(presentation, structure, kind, state, data, structure_footprint)
+
+func _build_structure_activity_dressing(presentation: Node3D, structure: Node3D, kind: String, state: String, data: Dictionary, footprint: Vector2) -> void:
+	if presentation == null or structure == null:
+		return
+	var dressing := Node3D.new()
+	dressing.name = "StructureActivityDressing"
+	dressing.set_meta("presentation_only", true)
+	dressing.set_meta("collision_authority", "none")
+	presentation.add_child(dressing)
+	var front_zone := _structure_access_zone(kind, "front_door", Vector3(0.0, 0.0, footprint.y * 0.54))
+	var service_zone := _structure_access_zone(kind, "service", Vector3(footprint.x * 0.54, 0.0, 0.0))
+	var side_anchor := Vector3(footprint.x * 0.58, 0.0, -footprint.y * 0.18)
+	var rear_anchor := Vector3(-footprint.x * 0.46, 0.0, -footprint.y * 0.54)
+	if state != "operational":
+		_add_construction_material_dressing(dressing, data, footprint, front_zone, side_anchor, rear_anchor)
+		return
+	match kind:
+		"workshop":
+			_add_activity_box(dressing, "WorkshopBench", Vector3(1.28, 0.18, 0.46), front_zone + Vector3(-footprint.x * 0.20, 0.13, 0.32), Color("#8d593e"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "WorkshopBenchTop", Vector3(1.38, 0.08, 0.52), front_zone + Vector3(-footprint.x * 0.20, 0.26, 0.32), Color("#bd8452"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "WorkshopLogRack", Vector3(0.88, 0.62, 0.54), rear_anchor + Vector3(0.0, 0.31, 0.0), Color("#734936"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "WorkshopLogTop", Vector3(0.98, 0.10, 0.60), rear_anchor + Vector3(0.0, 0.66, 0.0), Color("#a76843"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "WorkshopAnvil", Vector3(0.34, 0.38, 0.30), service_zone + Vector3(0.34, 0.19, 0.0), Color("#45505a"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_lamp(dressing, "WorkshopForgeLamp", service_zone + Vector3(0.0, 1.05, 0.0), Color("#ffb45d"))
+		"archive":
+			_add_activity_box(dressing, "ArchiveReadingTable", Vector3(1.18, 0.16, 0.52), front_zone + Vector3(0.0, 0.12, 0.34), Color("#8d593e"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "ArchiveLedgerStack", Vector3(0.34, 0.24, 0.28), front_zone + Vector3(0.18, 0.31, 0.28), Color("#d8b56f"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "ArchiveBookCrate", Vector3(0.62, 0.42, 0.46), service_zone + Vector3(-0.24, 0.21, 0.0), Color("#6f4d3f"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_lamp(dressing, "ArchiveLantern", service_zone + Vector3(0.0, 0.92, 0.0), Color("#ffe2a0"))
+		"storage_shed":
+			_add_activity_box(dressing, "StoragePallet", Vector3(1.24, 0.13, 0.62), service_zone + Vector3(0.28, 0.10, 0.0), Color("#8d593e"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "StorageCrateA", Vector3(0.48, 0.42, 0.48), service_zone + Vector3(-0.08, 0.38, 0.0), Color("#b47448"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "StorageCrateB", Vector3(0.42, 0.34, 0.42), service_zone + Vector3(0.40, 0.34, 0.06), Color("#7b503b"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_lamp(dressing, "StorageLantern", front_zone + Vector3(footprint.x * 0.32, 0.78, 0.22), Color("#ffd27d"))
+		"livestock_pen":
+			_add_activity_box(dressing, "LivestockTrough", Vector3(1.10, 0.24, 0.42), service_zone + Vector3(0.26, 0.18, 0.0), Color("#a96b47"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "LivestockHayBale", Vector3(0.56, 0.46, 0.48), side_anchor + Vector3(0.0, 0.23, 0.0), Color("#d4aa5c"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "LivestockHayBaleTop", Vector3(0.60, 0.08, 0.50), side_anchor + Vector3(0.0, 0.50, 0.0), Color("#edca78"), Vector3(0.0, 0.0, 0.0))
+		"rain_cistern":
+			_add_activity_box(dressing, "CisternBucket", Vector3(0.42, 0.34, 0.42), front_zone + Vector3(0.48, 0.18, 0.26), Color("#9a6245"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_box(dressing, "CisternRopeCoil", Vector3(0.52, 0.12, 0.52), front_zone + Vector3(-0.46, 0.10, 0.26), Color("#d1ad68"), Vector3(0.0, 0.0, 0.0))
+			_add_activity_lamp(dressing, "CisternLantern", side_anchor + Vector3(0.0, 0.78, 0.0), Color("#8edbd5"))
+
+func _structure_access_zone(kind: String, zone_id: String, fallback: Vector3) -> Vector3:
+	for zone_value in SanctuaryAssetCatalog.structure_access_zones(kind, 0):
+		if not (zone_value is Dictionary):
+			continue
+		var zone := zone_value as Dictionary
+		if str(zone.get("id", "")) != zone_id and not (zone_id == "service" and str(zone.get("kind", "")) == "service"):
+			continue
+		var center: Array = zone.get("center", [])
+		if center.size() >= 3:
+			return Vector3(float(center[0]), float(center[1]), float(center[2]))
+	return fallback
+
+func _add_construction_material_dressing(parent: Node3D, data: Dictionary, footprint: Vector2, front_zone: Vector3, side_anchor: Vector3, rear_anchor: Vector3) -> void:
+	var delivered: Dictionary = data.get("delivered_materials", {})
+	var wood_count := mini(4, int(delivered.get("wood", 0)))
+	var plank_count := mini(4, int(delivered.get("plank", 0)))
+	var stone_count := mini(4, int(delivered.get("stone", 0)))
+	var fiber_count := mini(4, int(delivered.get("fiber", 0)))
+	for index in wood_count:
+		_add_activity_box(parent, "DeliveredWood_%d" % index, Vector3(minf(1.18, footprint.x * 0.28), 0.14, 0.20), rear_anchor + Vector3(float(index) * 0.16, 0.16 + float(index % 2) * 0.15, 0.0), Color("#a76843"), Vector3(0.0, float(index) * 0.12, 0.0))
+	for index in plank_count:
+		_add_activity_box(parent, "DeliveredPlank_%d" % index, Vector3(0.72, 0.09, 0.24), side_anchor + Vector3(0.0, 0.12 + float(index) * 0.11, float(index) * 0.12), Color("#d1a068"), Vector3(0.0, float(index) * 0.08, 0.0))
+	for index in stone_count:
+		_add_activity_box(parent, "DeliveredStone_%d" % index, Vector3(0.24, 0.20, 0.28), front_zone + Vector3(-footprint.x * 0.42 + float(index % 2) * 0.28, 0.10 + float(index / 2) * 0.16, 0.24), Color("#84939a"), Vector3(0.0, float(index) * 0.16, 0.0))
+	for index in fiber_count:
+		_add_activity_box(parent, "DeliveredFiber_%d" % index, Vector3(0.28, 0.22, 0.28), side_anchor + Vector3(0.28 + float(index % 2) * 0.18, 0.12 + float(index / 2) * 0.18, 0.18), Color("#c7b86b"), Vector3(0.0, float(index) * 0.1, 0.0))
+
+func _add_activity_box(parent: Node3D, node_name: String, size: Vector3, position: Vector3, color: Color, rotation_degrees: Vector3) -> MeshInstance3D:
+	var prop := MeshInstance3D.new()
+	prop.name = node_name
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	prop.mesh = mesh
+	prop.position = position
+	prop.rotation_degrees = rotation_degrees
+	prop.material_override = _soft_material(color, false, false)
+	prop.set_meta("presentation_only", true)
+	prop.set_meta("collision_layer", 0)
+	parent.add_child(prop)
+	return prop
+
+func _add_activity_lamp(parent: Node3D, node_name: String, position: Vector3, color: Color) -> void:
+	var lamp := MeshInstance3D.new()
+	lamp.name = node_name
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.12
+	mesh.height = 0.24
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	lamp.mesh = mesh
+	lamp.position = position
+	lamp.material_override = _soft_material(color, false, true)
+	lamp.set_meta("presentation_only", true)
+	lamp.set_meta("collision_layer", 0)
+	parent.add_child(lamp)
+	activity_motion_nodes.append({"node": lamp, "base_position": position, "phase": position.x * 0.8 + position.z * 0.4, "lift": 0.015, "base_rotation": 0.0})
 
 func _structure_world_size(kind: String) -> float:
 	return float(SanctuaryAssetCatalog.structure_definition(kind).get("world_size", 4.0))
