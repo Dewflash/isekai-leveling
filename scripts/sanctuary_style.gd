@@ -1248,12 +1248,24 @@ func _build_structure_activity_dressing(presentation: Node3D, structure: Node3D,
 		return
 	match kind:
 		"workshop":
-			_add_activity_box(dressing, "WorkshopBench", Vector3(1.28, 0.18, 0.46), front_zone + Vector3(-footprint.x * 0.20, 0.13, 0.32), Color("#8d593e"), Vector3(0.0, 0.0, 0.0))
-			_add_activity_box(dressing, "WorkshopBenchTop", Vector3(1.38, 0.08, 0.52), front_zone + Vector3(-footprint.x * 0.20, 0.26, 0.32), Color("#bd8452"), Vector3(0.0, 0.0, 0.0))
-			_add_activity_box(dressing, "WorkshopLogRack", Vector3(0.88, 0.62, 0.54), rear_anchor + Vector3(0.0, 0.31, 0.0), Color("#734936"), Vector3(0.0, 0.0, 0.0))
-			_add_activity_box(dressing, "WorkshopLogTop", Vector3(0.98, 0.10, 0.60), rear_anchor + Vector3(0.0, 0.66, 0.0), Color("#a76843"), Vector3(0.0, 0.0, 0.0))
-			_add_activity_box(dressing, "WorkshopAnvil", Vector3(0.34, 0.38, 0.30), service_zone + Vector3(0.34, 0.19, 0.0), Color("#45505a"), Vector3(0.0, 0.0, 0.0))
-			_add_activity_lamp(dressing, "WorkshopForgeLamp", service_zone + Vector3(0.0, 1.05, 0.0), Color("#ffb45d"))
+			var yard_kit_size := maxf(2.4, footprint.y * 0.72)
+			var yard_kit := _authored_cutout_sprite(
+				dressing,
+				"res://assets/generated/sanctuary/workshop/workshop-yard-kit.png",
+				"sanctuary/player_structures/workshop/activity/yard_kit_v1",
+				front_zone + Vector3(0.0, 0.02, 0.74),
+				yard_kit_size,
+				Vector2(0.94, 0.48)
+			)
+			if yard_kit == null:
+				# Keep the deterministic primitive dressing as a safe fallback if an
+				# imported/generated activity asset is unavailable on a clean build.
+				_add_activity_box(dressing, "WorkshopBench", Vector3(1.28, 0.18, 0.46), front_zone + Vector3(-footprint.x * 0.20, 0.13, 0.32), Color("#8d593e"), Vector3(0.0, 0.0, 0.0))
+				_add_activity_box(dressing, "WorkshopBenchTop", Vector3(1.38, 0.08, 0.52), front_zone + Vector3(-footprint.x * 0.20, 0.26, 0.32), Color("#bd8452"), Vector3(0.0, 0.0, 0.0))
+				_add_activity_box(dressing, "WorkshopLogRack", Vector3(0.88, 0.62, 0.54), rear_anchor + Vector3(0.0, 0.31, 0.0), Color("#734936"), Vector3(0.0, 0.0, 0.0))
+				_add_activity_box(dressing, "WorkshopLogTop", Vector3(0.98, 0.10, 0.60), rear_anchor + Vector3(0.0, 0.66, 0.0), Color("#a76843"), Vector3(0.0, 0.0, 0.0))
+				_add_activity_box(dressing, "WorkshopAnvil", Vector3(0.34, 0.38, 0.30), service_zone + Vector3(0.34, 0.19, 0.0), Color("#45505a"), Vector3(0.0, 0.0, 0.0))
+				_add_activity_lamp(dressing, "WorkshopForgeLamp", service_zone + Vector3(0.0, 1.05, 0.0), Color("#ffb45d"))
 		"archive":
 			_add_activity_box(dressing, "ArchiveReadingTable", Vector3(1.18, 0.16, 0.52), front_zone + Vector3(0.0, 0.12, 0.34), Color("#8d593e"), Vector3(0.0, 0.0, 0.0))
 			_add_activity_box(dressing, "ArchiveLedgerStack", Vector3(0.34, 0.24, 0.28), front_zone + Vector3(0.18, 0.31, 0.28), Color("#d8b56f"), Vector3(0.0, 0.0, 0.0))
@@ -1329,6 +1341,45 @@ func _add_activity_lamp(parent: Node3D, node_name: String, position: Vector3, co
 	lamp.set_meta("collision_layer", 0)
 	parent.add_child(lamp)
 	activity_motion_nodes.append({"node": lamp, "base_position": position, "phase": position.x * 0.8 + position.z * 0.4, "lift": 0.015, "base_rotation": 0.0})
+
+func _authored_cutout_sprite(parent: Node3D, asset_path: String, asset_id: String, position: Vector3, world_size: float, footprint_ratio: Vector2) -> Sprite3D:
+	if parent == null or asset_path.is_empty() or not ResourceLoader.exists(asset_path):
+		return null
+	var texture := load(asset_path) as Texture2D
+	if texture == null:
+		return null
+	var image := texture.get_image()
+	if image == null:
+		return null
+	var opaque_bounds := image.get_used_rect()
+	if opaque_bounds.size.x <= 0 or opaque_bounds.size.y <= 0:
+		return null
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(0.0, 0.0, float(image.get_width()), float(image.get_height()))
+	atlas.filter_clip = true
+	var sprite := Sprite3D.new()
+	sprite.name = "AuthoredWorkshopYardKit"
+	sprite.texture = atlas
+	sprite.centered = false
+	var transparent_bottom := float(maxi(0, image.get_height() - opaque_bounds.position.y - opaque_bounds.size.y))
+	sprite.offset = Vector2(-(float(opaque_bounds.position.x) + float(opaque_bounds.size.x) * 0.5), -transparent_bottom)
+	sprite.pixel_size = maxf(0.01, world_size) / float(maxi(1, opaque_bounds.size.y))
+	sprite.position = position
+	sprite.axis = Vector3.AXIS_Z
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	sprite.shaded = true
+	sprite.material_override = _structure_sprite_material(atlas)
+	sprite.no_depth_test = false
+	sprite.sorting_use_aabb_center = false
+	sprite.sorting_offset = 0.0
+	_set_sprite_contract_metadata(sprite, {"asset_id": asset_id, "footprint_ratio": footprint_ratio}, opaque_bounds, maxf(0.01, world_size))
+	sprite.set_meta("presentation_only", true)
+	sprite.set_meta("collision_layer", 0)
+	sprite.set_meta("activity_asset_path", asset_path)
+	parent.add_child(sprite)
+	return sprite
 
 func _structure_world_size(kind: String) -> float:
 	return float(SanctuaryAssetCatalog.structure_definition(kind).get("world_size", 4.0))

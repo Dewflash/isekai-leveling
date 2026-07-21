@@ -235,15 +235,27 @@ func _check_activity_dressing_contract(visual: Node3D, label: String) -> void:
 	_check(bool(dressing.get_meta("presentation_only", false)), "%s activity dressing must be presentation-only" % label)
 	_check(str(dressing.get_meta("collision_authority", "")) == "none", "%s activity dressing must not own collision" % label)
 	_check(dressing.find_children("*", "StaticBody3D", true, false).is_empty(), "%s activity dressing must not contain physics bodies" % label)
-	var mesh_count := 0
+	var visual_count := 0
 	for mesh_value in dressing.find_children("*", "MeshInstance3D", true, false):
 		var mesh := mesh_value as MeshInstance3D
 		if mesh == null:
 			continue
-		mesh_count += 1
+		visual_count += 1
 		_check(bool(mesh.get_meta("presentation_only", false)), "%s activity mesh %s must be presentation-only" % [label, mesh.name])
 		_check(int(mesh.get_meta("collision_layer", 0)) == 0, "%s activity mesh %s must declare collision layer 0" % [label, mesh.name])
-	_check(mesh_count > 0, "%s activity dressing must expose at least one authored activity prop" % label)
+	for sprite_value in dressing.find_children("*", "Sprite3D", true, false):
+		var sprite := sprite_value as Sprite3D
+		if sprite == null:
+			continue
+		visual_count += 1
+		_check(bool(sprite.get_meta("presentation_only", false)), "%s activity sprite %s must be presentation-only" % [label, sprite.name])
+		_check(int(sprite.get_meta("collision_layer", 0)) == 0, "%s activity sprite %s must declare collision layer 0" % [label, sprite.name])
+	_check(visual_count > 0, "%s activity dressing must expose at least one authored activity prop" % label)
+	if str(visual.get_meta("structure_kind", "")) == "workshop" and bool(visual.get_meta("operational", false)):
+		var yard_kit := dressing.get_node_or_null("AuthoredWorkshopYardKit") as Sprite3D
+		_check(yard_kit != null and yard_kit.is_visible_in_tree(), "%s operational Workshop must use the generated yard kit" % label)
+		if yard_kit != null:
+			_check(str(yard_kit.get_meta("asset_id", "")) == "sanctuary/player_structures/workshop/activity/yard_kit_v1", "%s yard kit asset id must be stable" % label)
 
 func _atlas_region(sprite: Sprite3D) -> Rect2:
 	if sprite == null:
@@ -783,6 +795,7 @@ func _check_all_asset_collision_contract(world: Node) -> void:
 			_array_float_pair_matches(visual.get_meta("local_collision_footprint", []), Vector2(local_expected.x, local_expected.z), "%s rotation %d local compound footprint" % [kind, rotation])
 			_check_runtime_measured_collision_shapes(body, measured_components, "%s rotation %d" % [kind, rotation])
 			_check_operational_art(visual, "%s rotation %d operational" % [kind, rotation])
+			_check_activity_dressing_contract(visual, "%s rotation %d" % [kind, rotation])
 			visual.queue_free()
 			visuals.erase(instance_id)
 			await process_frame

@@ -18,6 +18,21 @@ These sheets are presentation assets only. Player-selected building placement,
 construction state, material delivery, and hit boxes remain authoritative in
 the Godot gameplay/session code.
 
+## Codex-generated Workshop work-yard kit
+
+- Creator/source: Codex image generation, then locally chroma-key processed
+  into a transparent RGBA cutout
+- License/status: Original generated project artwork; no external asset license
+  dependency
+- Files: `assets/generated/sanctuary/workshop/workshop-yard-kit-source.png` and
+  `assets/generated/sanctuary/workshop/workshop-yard-kit.png`
+- Runtime use: presentation-only Workshop bench, tool wall, log rack, anvil,
+  crates, lantern, and charcoal dressing, positioned from the Workshop's
+  measured footprint and catalogued door/service zones
+- Runtime contract: it contributes no physics body or movement blocker; the
+  operational Workshop shell remains the sole measured gameplay collision
+  authority
+
 ## Codex-generated player facility sheet
 
 - Creator/source: Codex image generation guided by the saved Sanctuary
