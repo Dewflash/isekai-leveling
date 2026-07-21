@@ -156,6 +156,7 @@ const GUARDIANS := {
 
 const WORKSHOP_RECIPES := {
 	"plank": {"cost": {"wood": 3, "stone": 1}, "hours": 12.0, "output": 4, "summary": "3 Wood + 1 Stone → 4 Planks"},
+	"ingot": {"cost": {"ore": 2, "stone": 1}, "hours": 12.0, "output": 2, "requires_capability": "workshop_smelting", "summary": "2 Ore + 1 Stone → 2 Ingots"},
 	"bread": {"cost": {"wheat": 1, "water": 1}, "hours": 12.0, "output": 2, "summary": "1 Wheat + 1 Water → 2 Bread"},
 	"omelette": {"cost": {"egg": 1, "water": 1}, "hours": 12.0, "output": 2, "summary": "1 Egg + 1 Water → 2 Omelettes"},
 	"tonic": {"cost": {"berries": 1, "water": 1, "slime_gel": 1}, "hours": 12.0, "output": 1, "requires_feature": "tonic_recipe", "summary": "1 Berry + 1 Water + 1 Slime Gel → 1 Tonic"},
@@ -380,7 +381,7 @@ const INTERIOR_STATIONS := {
 	"furnace_left": {"structure_kind": "workshop", "label": "Smelter Furnace", "footprint": [2, 1], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_left", "unique": true},
 	"furnace_right": {"structure_kind": "workshop", "label": "Forge Furnace", "footprint": [2, 1], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_right", "unique": true},
 	"anvil": {"structure_kind": "workshop", "label": "Anvil", "footprint": [1, 1], "cost": {"stone": 2, "plank": 1}, "hours": 12.0, "capability": "workshop_metalwork", "action": "anvil", "asset_kind": "anvil", "unique": true},
-	"storage": {"structure_kind": "workshop", "label": "Material Storage", "footprint": [2, 1], "cost": {"wood": 3, "stone": 1}, "hours": 8.0, "capability": "workshop_storage", "action": "storage", "asset_kind": "storage", "unique": true},
+	"storage": {"structure_kind": "workshop", "label": "Material Storage", "footprint": [2, 1], "cost": {"wood": 3, "stone": 1}, "hours": 8.0, "capability": "workshop_storage", "action": "storage", "asset_kind": "storage", "cargo_bonus": 6, "unique": true},
 }
 
 static func expedition_cost(expedition_id: String) -> int:

@@ -31,7 +31,7 @@ const MANUAL_ACTIVITY_MIN_INTERVAL_SECONDS := 1500
 const MANUAL_ACTIVITY_DURATION_SECONDS := 1500
 const INVENTORY_IDS := [
 	"wood", "stone", "fiber", "slime_gel", "ore", "sunstone", "relic", "berries", "shell", "fish",
-	"wheat", "flour", "bread", "omelette", "tonic", "egg", "plank", "water",
+	"wheat", "flour", "bread", "omelette", "tonic", "egg", "plank", "ingot", "water",
 ]
 const WHISPERWOOD_ROUTE_CHECKPOINTS := ["arrival", "fork", "return"]
 const EXPEDITION_ROUTE_PHASES := ["none", "approach", "arrival", "fork", "branch", "objective", "capstone", "shortcut", "return"]
@@ -51,7 +51,7 @@ var level := 1
 var ability_points := 2
 var stats := {"Strength": 1, "Agility": 1, "Focus": 1, "Wisdom": 1, "Spirituality": 1, "Perception": 1, "Resilience": 1}
 var masteries := {"Farming": 0, "Mining": 0, "Attacking": 0, "Foraging": 0, "Fishing": 0, "Crafting": 0, "Livestock": 0, "Language": 0, "Trading": 0, "Hunting": 0, "Surviving": 0, "Research": 0}
-var inventory := {"wood": 0, "stone": 0, "fiber": 0, "slime_gel": 0, "ore": 0, "sunstone": 0, "relic": 0, "berries": 0, "shell": 0, "fish": 0, "wheat": 2, "flour": 0, "bread": 0, "omelette": 0, "tonic": 0, "egg": 0, "plank": 0, "water": 3}
+var inventory := {"wood": 0, "stone": 0, "fiber": 0, "slime_gel": 0, "ore": 0, "sunstone": 0, "relic": 0, "berries": 0, "shell": 0, "fish": 0, "wheat": 2, "flour": 0, "bread": 0, "omelette": 0, "tonic": 0, "egg": 0, "plank": 0, "ingot": 0, "water": 3}
 var discovered: Array[String] = []
 var observed_wildlife: Array[String] = []
 var translated_inscriptions: Array[String] = []
@@ -681,6 +681,12 @@ func repair_tool(tool_id: String) -> bool:
 	state_changed.emit()
 	return true
 
+func repair_tool_at_station(tool_id: String, station_id := "", structure_id := "") -> bool:
+	var binding := station_binding_for_capability("workshop_metalwork", station_id, structure_id)
+	if binding.is_empty():
+		return false
+	return repair_tool(tool_id)
+
 func consume_food(food_id := "") -> bool:
 	if food_id.is_empty():
 		for candidate in ["tonic", "omelette", "bread", "fish", "berries"]:
@@ -959,20 +965,21 @@ func interact_farm() -> Dictionary:
 	return {"ok": false, "reason": "growing"}
 
 func start_workshop_job(recipe_id: String, station_id := "", structure_id := "") -> Dictionary:
-	# A station id is only meaningful within its parent structure.  Callers that
+	# A station id is only meaningful within its parent structure. Callers that
 	# identify a station must therefore provide both halves of the identity;
-	# leaving both blank retains the authored single-workbench convenience path.
+	# leaving both blank resolves the recipe's required capability automatically.
 	if not station_id.is_empty() and structure_id.is_empty():
 		return {}
-	var binding := workshop_station_binding(station_id, structure_id)
+	var recipe := ContentRegistry.workshop_recipe(recipe_id)
+	if recipe.is_empty():
+		return {}
+	var required_capability := str(recipe.get("requires_capability", "workshop_crafting"))
+	var binding := station_binding_for_capability(required_capability, station_id, structure_id)
 	if binding.is_empty():
 		return {}
 	var selected_structure_id := str(binding.get("structure_id", ""))
 	var selected_station_id := str(binding.get("station_id", ""))
 	if str(station_job.get("kind", "none")) != "none":
-		return {}
-	var recipe := ContentRegistry.workshop_recipe(recipe_id)
-	if recipe.is_empty():
 		return {}
 	var required_feature := str(recipe.get("requires_feature", ""))
 	if not required_feature.is_empty() and not unlocked_features.has(required_feature):
@@ -1196,7 +1203,10 @@ func claim_workshop_job() -> Dictionary:
 		return {}
 	var job_structure_id := str(station_job.get("structure_id", ""))
 	var job_station_id := str(station_job.get("station_id", ""))
-	var bound_station := workshop_station_binding(job_station_id, job_structure_id)
+	var recipe_id_for_binding := str(station_job.get("output_id", station_job.get("kind", "")))
+	var recipe_for_binding := ContentRegistry.workshop_recipe(recipe_id_for_binding)
+	var required_capability := str(recipe_for_binding.get("requires_capability", "workshop_crafting"))
+	var bound_station := station_binding_for_capability(required_capability, job_station_id, job_structure_id)
 	if job_structure_id.is_empty() or str(bound_station.get("structure_id", "")) != job_structure_id or str(bound_station.get("station_id", "")) != job_station_id:
 		return {}
 	var output_id := str(station_job.get("output_id", ""))
@@ -2670,11 +2680,8 @@ func has_station_capability(structure_id := "", capability_id := "", station_id 
 					return true
 	return false
 
-func workshop_station_id() -> String:
-	return str(workshop_station_binding().get("station_id", ""))
-
-func workshop_station_binding(requested_station_id := "", requested_structure_id := "") -> Dictionary:
-	if not requested_station_id.is_empty() and requested_structure_id.is_empty():
+func station_binding_for_capability(capability_id: String, requested_station_id := "", requested_structure_id := "") -> Dictionary:
+	if capability_id.is_empty() or (not requested_station_id.is_empty() and requested_structure_id.is_empty()):
 		return {}
 	for parent_id in interior_stations:
 		if not requested_structure_id.is_empty() and str(parent_id) != requested_structure_id:
@@ -2685,9 +2692,18 @@ func workshop_station_binding(requested_station_id := "", requested_structure_id
 			if not requested_station_id.is_empty() and str(candidate_id) != requested_station_id:
 				continue
 			var station: Variant = interior_stations[parent_id].get(candidate_id, {})
-			if station is Dictionary and str(station.get("kind", "")) == "workbench" and str(station.get("state", "")) == "operational":
+			if not (station is Dictionary) or str(station.get("state", "")) != "operational":
+				continue
+			var definition := ContentRegistry.interior_station_definition(str(station.get("kind", "")))
+			if str(definition.get("capability", "")) == capability_id:
 				return {"structure_id": str(parent_id), "station_id": str(candidate_id)}
 	return {}
+
+func workshop_station_id() -> String:
+	return str(workshop_station_binding().get("station_id", ""))
+
+func workshop_station_binding(requested_station_id := "", requested_structure_id := "") -> Dictionary:
+	return station_binding_for_capability("workshop_crafting", requested_station_id, requested_structure_id)
 
 func deliver_structure_material(instance_id: String, material_id: String, amount: int = 1) -> Dictionary:
 	if instance_id.is_empty() or material_id.is_empty() or amount <= 0 or not structures.has(instance_id):
@@ -3165,6 +3181,14 @@ func _recalculate_structure_effects() -> void:
 			has_livestock_pen = true
 		var definition := ContentRegistry.structure_definition(structure_kind)
 		derived_capacity += int(definition.get("cargo_bonus", 0))
+		if structure_kind == "workshop":
+			var fitout: Dictionary = interior_stations.get(str(structure_id), {})
+			for station_id in fitout:
+				var station: Variant = fitout.get(station_id, {})
+				if not (station is Dictionary) or str(station.get("state", "")) != "operational":
+					continue
+				var station_definition := ContentRegistry.interior_station_definition(str(station.get("kind", "")))
+				derived_capacity += int(station_definition.get("cargo_bonus", 0))
 	# Workshop capability is derived exclusively from a placed operational shell
 	# with an operational Workbench.  A stale boolean must never create an
 	# invisible crafting station.
@@ -4143,7 +4167,10 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 		var saved_job_station := str(saved_job.get("station_id", ""))
 		var saved_job_parent_data: Variant = interior_data.get(saved_job_parent, {})
 		var saved_job_station_data: Variant = saved_job_parent_data.get(saved_job_station, {}) if saved_job_parent_data is Dictionary else {}
-		if not (saved_job_station_data is Dictionary) or str(saved_job_station_data.get("kind", "")) != "workbench" or str(saved_job_station_data.get("state", "")) != "operational":
+		var saved_job_recipe := ContentRegistry.workshop_recipe(str(saved_job.get("kind", "")))
+		var saved_job_capability := str(saved_job_recipe.get("requires_capability", "workshop_crafting"))
+		var saved_job_station_definition := ContentRegistry.interior_station_definition(str(saved_job_station_data.get("kind", ""))) if saved_job_station_data is Dictionary else {}
+		if not (saved_job_station_data is Dictionary) or str(saved_job_station_data.get("state", "")) != "operational" or str(saved_job_station_definition.get("capability", "")) != saved_job_capability:
 			return false
 	var expected_workshop_capability := false
 	if structures_data is Dictionary and interior_data is Dictionary:

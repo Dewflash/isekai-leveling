@@ -68,6 +68,7 @@ var interior_instance_id := ""
 var interior_return_position := Vector3.ZERO
 var interior_return_facing := Vector3(0.0, 0.0, 1.0)
 var interior_station_placement_mode := false
+var selected_interior_station_kind := "workbench"
 var interior_station_rotation := 0
 var interior_station_preview_cell := Vector2i.ZERO
 var interior_station_preview_valid := false
@@ -395,6 +396,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if interior_active:
 		if event.is_action_pressed("build") or event.is_action_pressed("blueprint"):
 			_toggle_interior_station_placement()
+			return
+		if event.is_action_pressed("station"):
+			_cycle_interior_station_kind()
 			return
 		if event.is_action_pressed("rotate_build"):
 			_rotate_interior_station_placement()
@@ -2261,7 +2265,7 @@ func _build_reference_hud(root: Control) -> void:
 		["G", "FOOD", Callable(self, "_eat_best_food")],
 		["H", "WATER", Callable(self, "_drink_water")],
 		["F", "FARM", func() -> void: farm_plot_interact(farm_plot)],
-		["B", "BUILD", Callable(self, "_toggle_structure_placement")],
+		["B", "BUILD", Callable(self, "_toggle_build_context")],
 		["✦", "LEDGER", Callable(self, "_toggle_utilities")],
 	]
 	for slot_value in slot_data:
@@ -5064,7 +5068,7 @@ func _update_hud() -> void:
 	var cargo_used := 0
 	if session != null and session.has_method("expedition_cargo_used"):
 		cargo_used = int(session.call("expedition_cargo_used"))
-	inventory_label.text = "BANKED\nWood %d  Stone %d  Fiber %d\nOre %d  Shell %d  Gel %d\nFish %d  Wheat %d  Bread %d\nEgg %d  Omelette %d  Tonic %d\nPlank %d  Sun %d  Relic %d\nTOOLS H %d/%d  P %d/%d\nNUTRITION %d  WATER %d\nSATCHEL %d/%d  %s\nCoins %d  XP %d" % [inventory.get("wood", 0), inventory.get("stone", 0), inventory.get("fiber", 0), inventory.get("ore", 0), inventory.get("shell", 0), inventory.get("slime_gel", 0), inventory.get("fish", 0), inventory.get("wheat", 0), inventory.get("bread", 0), inventory.get("egg", 0), inventory.get("omelette", 0), inventory.get("tonic", 0), inventory.get("plank", 0), inventory.get("sunstone", 0), inventory.get("relic", 0), hatchet_state.get("durability", 0), hatchet_state.get("max_durability", 0), pickaxe_state.get("durability", 0), pickaxe_state.get("max_durability", 0), nutrition, hydration, cargo_used, cargo_capacity, cargo_text, coins, xp]
+	inventory_label.text = "BANKED\nWood %d  Stone %d  Fiber %d\nOre %d  Shell %d  Gel %d\nFish %d  Wheat %d  Bread %d\nEgg %d  Omelette %d  Tonic %d\nPlank %d  Ingot %d  Sun %d  Relic %d\nTOOLS H %d/%d  P %d/%d\nNUTRITION %d  WATER %d\nSATCHEL %d/%d  %s\nCoins %d  XP %d" % [inventory.get("wood", 0), inventory.get("stone", 0), inventory.get("fiber", 0), inventory.get("ore", 0), inventory.get("shell", 0), inventory.get("slime_gel", 0), inventory.get("fish", 0), inventory.get("wheat", 0), inventory.get("bread", 0), inventory.get("egg", 0), inventory.get("omelette", 0), inventory.get("tonic", 0), inventory.get("plank", 0), inventory.get("ingot", 0), inventory.get("sunstone", 0), inventory.get("relic", 0), hatchet_state.get("durability", 0), hatchet_state.get("max_durability", 0), pickaxe_state.get("durability", 0), pickaxe_state.get("max_durability", 0), nutrition, hydration, cargo_used, cargo_capacity, cargo_text, coins, xp]
 	if session != null and current_zone != "Sanctuary" and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition")):
 		var field_pickups: Variant = session.get("expedition_run").get("pickups", [])
 		if field_pickups is Array and not field_pickups.is_empty():
@@ -5171,6 +5175,8 @@ func _update_hud() -> void:
 		interact_button.text = "Observe"
 	elif interact_button != null and not placement_mode and context_node != null and context_node.is_in_group("wildlife_track"):
 		interact_button.text = "Read Tracks"
+	if interact_button != null and not placement_mode and interior_active and context_node != null and context_node.is_in_group("building_interior_station"):
+		interact_button.text = _interior_station_action_text(context_node)
 	if reference_context_button != null:
 		var reference_action_text := "INTERACT"
 		if interact_button != null:
@@ -5249,7 +5255,7 @@ func _update_hud() -> void:
 		if session != null:
 			construction_state = str(session.get("construction_job").get("status", "none"))
 		if interior_active:
-			build_button.text = "Confirm Workbench  [E]" if interior_station_placement_mode else "Place Workbench  [B]"
+			build_button.text = "Confirm %s  [E]" % _interior_station_label(selected_interior_station_kind) if interior_station_placement_mode else "Place %s  [B]" % _interior_station_label(selected_interior_station_kind)
 		elif _is_player_structure_kind(context_node, "workshop"):
 			var placed_state: Dictionary = session.get("structures").get(str(context_node.get_meta("construction_id")), {}) if session != null else {}
 			build_button.text = "Use Workshop" if str(placed_state.get("state", "")) == "operational" else ("Deliver Workshop Materials" if str(placed_state.get("state", "")) == "blueprint" else "Workshop frame in progress")
@@ -5637,6 +5643,12 @@ func _contextual_interact() -> void:
 	else:
 		_interact()
 
+func _toggle_build_context() -> void:
+	if interior_active:
+		_toggle_interior_station_placement()
+	else:
+		_toggle_structure_placement()
+
 func _construction_interact(structure_node: Node3D) -> void:
 	if structure_node == null or session == null or not structure_node.has_meta("construction_id"):
 		return
@@ -5816,7 +5828,7 @@ func _finish_enter_building_interior() -> void:
 		var room_dimensions: Vector3 = building_interior.call("room_dimensions")
 		camera.size = maxf(8.8, room_dimensions.z * 1.78)
 	camera_anchor_initialized = false
-	_show_toast("Workshop entered  |  Empty shell: place a Workbench with B.", 3.0) if persisted_stations.is_empty() else _show_toast("Workshop entered  |  Fit-out stations load from your saved plan.", 2.8)
+	_show_toast("Workshop entered  |  B places fit-out, C cycles stations, X rotates.", 3.0) if persisted_stations.is_empty() else _show_toast("Workshop entered  |  B places fit-out, C cycles stations, X rotates.", 2.8)
 
 func _exit_building_interior() -> void:
 	if get_tree().paused or not interior_active or interior_transitioning or building_interior == null:
@@ -5930,14 +5942,31 @@ func _interior_interact() -> void:
 			var station_state := str(nearest.get_meta("installation_state", "blueprint"))
 			if station_state != "operational":
 				_deliver_interior_station_material(nearest)
+			elif action == "anvil":
+				_anvil_use(nearest)
 			elif action == "storage":
-				_show_toast("Material Storage  |  Your banked resources are available from the Workshop.", 2.4)
-			elif action == "workshop":
-				_workshop_use(nearest)
+				_storage_use(nearest)
 			else:
-				_show_toast("%s is operational. Its production recipe will be wired to this station next." % str(nearest.get_meta("interior_station_id", "Station")).replace("_", " ").capitalize(), 2.4)
+				_workshop_use(nearest)
 		_:
 			_show_toast("This station is not operational yet.", 1.8)
+
+func _interior_station_action_text(station_node: Node3D) -> String:
+	if station_node == null:
+		return "INTERACT"
+	var state := str(station_node.get_meta("installation_state", "blueprint"))
+	if state != "operational":
+		return "DELIVER MATERIALS"
+	match str(station_node.get_meta("interior_action", "")):
+		"workshop": return "CRAFT %s" % selected_recipe.to_upper()
+		"furnace": return "SMELT ORE"
+		"anvil": return "REPAIR TOOLS"
+		"storage": return "OPEN STORAGE"
+	return "INTERACT"
+
+func _interior_station_label(station_kind: String) -> String:
+	var definition := ContentRegistry.interior_station_definition(station_kind)
+	return str(definition.get("label", station_kind.replace("_", " ").capitalize()))
 
 func _update_interior_station_preview() -> void:
 	if not interior_active or not interior_station_placement_mode or building_interior == null or session == null or player == null:
@@ -5948,7 +5977,7 @@ func _update_interior_station_preview() -> void:
 	var facing: Vector3 = player.get("last_direction") if player.get("last_direction") is Vector3 else Vector3(0.0, 0.0, -1.0)
 	if facing.length_squared() < 0.01:
 		facing = Vector3(0.0, 0.0, -1.0)
-	var footprint := ContentRegistry.interior_station_footprint("workbench", interior_station_rotation)
+	var footprint := ContentRegistry.interior_station_footprint(selected_interior_station_kind, interior_station_rotation)
 	var target_local := player_local + facing.normalized() * 1.45
 	var layout: Dictionary = session.call("interior_layout_for_structure", interior_instance_id)
 	var layout_size_value: Variant = layout.get("room_size", [8.2, 6.2])
@@ -5958,7 +5987,7 @@ func _update_interior_station_preview() -> void:
 	var layout_cell_size := float(layout.get("cell_size", 1.0))
 	var candidate_cell := InteriorGrid.local_to_cell(target_local, footprint, layout_size, layout_cell_size)
 	var player_cell := InteriorGrid.local_to_cell(player_local, Vector2i.ONE, layout_size, layout_cell_size)
-	var valid := bool(session.call("can_place_interior_station", interior_instance_id, "workbench", [candidate_cell.x, candidate_cell.y], interior_station_rotation, [player_cell.x, player_cell.y]))
+	var valid := bool(session.call("can_place_interior_station", interior_instance_id, selected_interior_station_kind, [candidate_cell.x, candidate_cell.y], interior_station_rotation, [player_cell.x, player_cell.y]))
 	interior_station_preview_cell = candidate_cell
 	interior_station_preview_valid = valid
 	building_interior.call("set_station_preview", candidate_cell, interior_station_rotation, valid)
@@ -5969,24 +5998,44 @@ func _toggle_interior_station_placement() -> void:
 	interior_station_placement_mode = not interior_station_placement_mode
 	if not interior_station_placement_mode:
 		building_interior.call("clear_station_preview")
-		_show_toast("Workbench placement cancelled.", 1.6)
+		_show_toast("Fit-out placement cancelled.", 1.6)
 	else:
-		_show_toast("Place Workbench  |  Face the location and press E to confirm. X rotates.", 3.0)
+		_show_toast("Place %s  |  C cycles stations, X rotates, E confirms." % _interior_station_label(selected_interior_station_kind), 3.0)
+
+func _cycle_interior_station_kind() -> void:
+	if not interior_active or interior_transitioning or interior_station_placement_mode:
+		return
+	var options := ["workbench", "furnace_left", "furnace_right", "anvil", "storage"]
+	var current_index := options.find(selected_interior_station_kind)
+	var persisted: Dictionary = session.get("interior_stations").get(interior_instance_id, {}) if session != null else {}
+	for step in options.size():
+		var candidate := str(options[(current_index + step + 1) % options.size()])
+		var already_placed := false
+		for station_id in persisted:
+			var record: Variant = persisted.get(station_id, {})
+			if record is Dictionary and str(record.get("kind", "")) == candidate:
+				already_placed = true
+				break
+		if not already_placed:
+			selected_interior_station_kind = candidate
+			_show_toast("Fit-out station: %s  |  Press B to place." % _interior_station_label(selected_interior_station_kind), 2.0)
+			return
+	_show_toast("All Workshop fit-out stations are already placed.", 2.0)
 
 func _rotate_interior_station_placement() -> void:
 	if not interior_active or not interior_station_placement_mode:
 		return
 	interior_station_rotation = posmod(interior_station_rotation + 1, 4)
-	_show_toast("Workbench rotation: %d°" % (interior_station_rotation * 90), 1.5)
+	_show_toast("%s rotation: %d°" % [_interior_station_label(selected_interior_station_kind), interior_station_rotation * 90], 1.5)
 
 func _confirm_interior_station_placement() -> void:
 	if not interior_active or not interior_station_placement_mode or not interior_station_preview_valid or session == null:
-		_show_toast("The Workbench footprint is blocked. Move to a clear wall-side cell.", 2.2)
+		_show_toast("The %s footprint is blocked. Move to a clear wall-side cell." % _interior_station_label(selected_interior_station_kind), 2.2)
 		return
 	var before: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	var placed: Dictionary = session.call("place_interior_station", interior_instance_id, "workbench", [interior_station_preview_cell.x, interior_station_preview_cell.y], interior_station_rotation, [])
+	var placed: Dictionary = session.call("place_interior_station", interior_instance_id, selected_interior_station_kind, [interior_station_preview_cell.x, interior_station_preview_cell.y], interior_station_rotation, [])
 	if placed.is_empty():
-		_show_toast("That Workbench cannot be placed there.", 2.2)
+		_show_toast("That %s cannot be placed there." % _interior_station_label(selected_interior_station_kind), 2.2)
 		return
 	if not bool(session.call("save_game")):
 		if not before.is_empty():
@@ -5997,7 +6046,7 @@ func _confirm_interior_station_placement() -> void:
 		return
 	interior_station_placement_mode = false
 	building_interior.call("clear_station_preview")
-	_show_toast("Workbench blueprint placed. Bring Wood and Stone to assemble it.", 3.0)
+	_show_toast("%s blueprint placed. Bring its listed materials to assemble it." % _interior_station_label(selected_interior_station_kind), 3.0)
 
 func _deliver_interior_station_material(station_node: Node3D) -> void:
 	if session == null or station_node == null:
@@ -6509,14 +6558,19 @@ func _workshop_use(source: Node3D = null) -> void:
 		return
 	var station_id := ""
 	var station_parent_id := ""
+	var station_action := "workshop"
+	var station_capability := "workshop_crafting"
 	if source != null and source.is_in_group("building_interior_station"):
 		station_id = str(source.get_meta("interior_station_id", ""))
 		station_parent_id = str(source.get_meta("interior_structure_id", interior_instance_id))
+		station_action = str(source.get_meta("interior_action", "workshop"))
+		var station_definition := ContentRegistry.interior_station_definition(str(source.get_meta("interior_station_kind", "")))
+		station_capability = str(station_definition.get("capability", "workshop_crafting"))
 		if str(source.get_meta("installation_state", "blueprint")) != "operational":
 			_deliver_interior_station_material(source)
 			return
-		if not bool(session.call("has_station_capability", station_parent_id, "workshop_crafting", station_id)):
-			_show_toast("This Workbench is not operational yet.", 2.2)
+		if not bool(session.call("has_station_capability", station_parent_id, station_capability, station_id)):
+			_show_toast("This station is not operational yet.", 2.2)
 			return
 	if source == workshop and _has_operational_player_structure("workshop"):
 		_show_toast("This is the old workshop shell. Use the Workshop you placed in the Sanctuary.", 2.6)
@@ -6526,8 +6580,11 @@ func _workshop_use(source: Node3D = null) -> void:
 		return
 	var job: Dictionary = session.get("station_job")
 	if str(job.get("kind", "none")) != "none":
+		if not station_id.is_empty() and (str(job.get("structure_id", "")) != station_parent_id or str(job.get("station_id", "")) != station_id):
+			_show_toast("Another station is already working. Finish that job first.", 2.4)
+			return
 		if float(job.get("remaining_hours", 0.0)) > 0.0:
-			_show_toast("Workshop is working. Sleep to finish the job.", 2.2)
+			_show_toast("The station is working. Sleep to finish the job.", 2.2)
 			return
 		var before_claim: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
 		var claimed: Dictionary = session.call("claim_workshop_job")
@@ -6546,7 +6603,7 @@ func _workshop_use(source: Node3D = null) -> void:
 				_show_toast("Workshop complete  |  +%d %s" % [int(claimed.get("output", 0)), str(claimed.get("output_id", "")).capitalize()], 2.6)
 			return
 	else:
-		var recipe_id := selected_recipe
+		var recipe_id := "ingot" if station_action == "furnace" else selected_recipe
 		var recipe: Dictionary = ContentRegistry.workshop_recipe(recipe_id)
 		var recipe_text := str(recipe.get("summary", "The recipe is incomplete."))
 		var before_start: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
@@ -6563,6 +6620,41 @@ func _workshop_use(source: Node3D = null) -> void:
 			return
 		_show_toast("%s job started. Sleep once, then claim it here." % recipe_id.capitalize(), 2.5)
 	_refresh_station_visual()
+
+func _anvil_use(source: Node3D) -> void:
+	if session == null or source == null:
+		return
+	var station_id := str(source.get_meta("interior_station_id", ""))
+	var structure_id := str(source.get_meta("interior_structure_id", interior_instance_id))
+	var before: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	var repaired := ""
+	for tool_id in ["hatchet", "pickaxe", "fishing_knife"]:
+		if bool(session.call("repair_tool_at_station", tool_id, station_id, structure_id)):
+			repaired = tool_id
+			break
+	if repaired.is_empty():
+		_show_toast("Anvil ready  |  Tools are repaired, or you need Planks.", 2.4)
+		return
+	if not bool(session.call("save_game")):
+		if not before.is_empty() and session.has_method("restore_state"):
+			session.call("restore_state", before)
+		_copy_session_to_runtime()
+		_show_toast("The repair could not be secured. Planks were returned.", 2.8)
+		return
+	_copy_session_to_runtime()
+	_show_toast("Anvil repaired %s  |  Planks consumed." % repaired.replace("_", " ").capitalize(), 2.4)
+	if audio_director != null:
+		audio_director.call("play_action", "repair")
+
+func _storage_use(source: Node3D) -> void:
+	if session == null or source == null:
+		return
+	var station_id := str(source.get_meta("interior_station_id", ""))
+	var structure_id := str(source.get_meta("interior_structure_id", interior_instance_id))
+	if not bool(session.call("has_station_capability", structure_id, "workshop_storage", station_id)):
+		_show_toast("Material Storage is not operational yet.", 2.2)
+		return
+	_show_toast("Material Storage open  |  Satchel capacity %d. Banked materials remain safe here." % int(session.get("cargo_capacity")), 2.8)
 
 func _food_count() -> int:
 	return int(inventory.get("tonic", 0)) + int(inventory.get("omelette", 0)) + int(inventory.get("bread", 0)) + int(inventory.get("fish", 0)) + int(inventory.get("berries", 0))

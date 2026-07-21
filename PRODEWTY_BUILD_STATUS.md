@@ -37,11 +37,11 @@ Updated: 2026-07-21, Asia/Singapore
   resets only through the normal dawn transaction. Guild Broker now adds one
   deterministic bulk contract per day with doubled sourcing cost, premium
   payout, Trading mastery, and a persisted one-settlement receipt; save
-  migration was introduced at version 20; the current save schema is version 24.
+  migration was introduced at version 20; the current save schema is version 25.
 - Sunlit Beach now has an authored tidepool fishing station. Coastal casts are
   bound to an active expedition; Tide Reader resolves a deterministic favorable
   tide into an uncommon shell catch, and the shell is paid atomically with the
-  persisted fishing claim. Save migration is now at version 24, with Workshop
+  persisted fishing claim. Save migration is now at version 25, with Workshop
   tool recipes included in the same durable job contract.
 - Crafting Quality Work and Masterwork Bench now resolve real Workshop tool
   jobs: Reinforced Hatchet and Masterwork Pickaxe consume expedition materials,
@@ -467,6 +467,26 @@ Updated: 2026-07-21, Asia/Singapore
   ledger/settings remain reachable. The deep traversal review is complete for
   the default layout; two saved player layouts and touch-device capture remain
   open.
+
+## 2026-07-22 bounded Workshop gameplay checkpoint
+
+- Committed baseline before this slice: `1c5838f` (`Advance Workshop interior presentation`).
+- The Workshop fit-out now exposes all five authored station kinds through the
+  measured interior grid. `B` toggles placement, `C` cycles unplaced station
+  types, `X` rotates, and `E` confirms; the reference action belt uses the same
+  context-aware command when the player is inside.
+- Workbench crafting remains authoritative. Furnaces now run a persisted
+  `2 Ore + 1 Stone → 2 Ingots` job, the Anvil repairs the selected damaged tool
+  through the station capability boundary, and operational Material Storage
+  adds six expedition satchel slots. Save-shape validation binds a job to the
+  capability of its actual station rather than assuming every job is a
+  Workbench job.
+- The Godot headless editor/import scan passes. Runtime tests and visual
+  captures remain blocked by the current macOS Godot SPIR-V→MSL crash before
+  the test script starts; this checkpoint is therefore code/static-verified,
+  not renderer-verified.
+- The full game, final Sanctuary art gate, interior visual capture, and five
+  production expedition presentations remain open.
 
 ## Next actions (the project is not being called finished)
 

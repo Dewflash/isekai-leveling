@@ -36,6 +36,39 @@ func _init() -> void:
 	session.advance_day(session.day + 1)
 	assert(str(session.interior_stations[structure_id][placed["id"]]["state"]) == "operational")
 	assert(session.built["workshop"])
+	# Every authored station has an authoritative action, not only a rendered
+	# card. Fit-out placement remains cell-validated and save-backed.
+	session.inventory["wood"] = 7
+	session.inventory["stone"] = 8
+	session.inventory["plank"] = 1
+	var furnace := session.place_interior_station(structure_id, "furnace_left", [-2, 0], 0, [3, 3])
+	var anvil := session.place_interior_station(structure_id, "anvil", [0, 0], 0, [3, 3])
+	var storage := session.place_interior_station(structure_id, "storage", [1, 0], 0, [3, 3])
+	assert(not furnace.is_empty() and not anvil.is_empty() and not storage.is_empty())
+	assert(str(session.deliver_interior_station_material(structure_id, str(furnace["id"]), "wood", 2).get("state", "")) == "blueprint")
+	assert(str(session.deliver_interior_station_material(structure_id, str(furnace["id"]), "stone", 3).get("state", "")) == "building")
+	assert(str(session.deliver_interior_station_material(structure_id, str(anvil["id"]), "stone", 2).get("state", "")) == "blueprint")
+	assert(str(session.deliver_interior_station_material(structure_id, str(anvil["id"]), "plank", 1).get("state", "")) == "building")
+	assert(str(session.deliver_interior_station_material(structure_id, str(storage["id"]), "wood", 3).get("state", "")) == "blueprint")
+	assert(str(session.deliver_interior_station_material(structure_id, str(storage["id"]), "stone", 1).get("state", "")) == "building")
+	assert(session.advance_day(session.day + 1))
+	assert(str(session.interior_stations[structure_id][furnace["id"]]["state"]) == "operational")
+	assert(str(session.interior_stations[structure_id][anvil["id"]]["state"]) == "operational")
+	assert(str(session.interior_stations[structure_id][storage["id"]]["state"]) == "operational")
+	assert(session.station_binding_for_capability("workshop_smelting", str(furnace["id"]), structure_id)["station_id"] == str(furnace["id"]))
+	assert(session.start_workshop_job("ingot", str(anvil["id"]), structure_id).is_empty())
+	session.inventory["ore"] = 2
+	session.inventory["stone"] = 1
+	var ingot_job := session.start_workshop_job("ingot", str(furnace["id"]), structure_id)
+	assert(str(ingot_job.get("station_id", "")) == str(furnace["id"]))
+	assert(session.advance_day(session.day + 1))
+	assert(int(session.claim_workshop_job().get("output", 0)) == 2)
+	assert(int(session.inventory["ingot"]) == 2)
+	session.inventory["plank"] = 2
+	session.equipment["hatchet"]["durability"] = 0
+	assert(session.repair_tool_at_station("hatchet", str(anvil["id"]), structure_id))
+	assert(int(session.inventory["plank"]) == 1)
+	assert(int(session.cargo_capacity) == 18)
 	# A capability is bound to one parent and one exact station identity.
 	session.inventory["wood"] = 3
 	session.inventory["stone"] = 1
@@ -51,6 +84,8 @@ func _init() -> void:
 	root.add_child(loaded)
 	assert(loaded.load_game())
 	assert(loaded.interior_stations[structure_id][placed["id"]]["state"] == "operational")
+	assert(int(loaded.inventory["ingot"]) == 2)
+	assert(int(loaded.cargo_capacity) == 18)
 	# v24 migration installs a deterministic operational Workbench only for a
 	# placed operational shell; it does not create invisible capability on a
 	# shell that never existed.
