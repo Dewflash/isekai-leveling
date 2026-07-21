@@ -25,6 +25,9 @@ func _run() -> void:
 	var style := world.get("sanctuary_style") as Node3D
 	_check(style != null, "Sanctuary style must expose projected cutout measurement")
 	var stage_paths: Dictionary = AssetCatalog.structure_definition("workshop").get("construction_stage_paths", {})
+	var layered_construction: Dictionary = AssetCatalog.structure_definition("workshop").get("layered_construction", {})
+	var layered_asset_paths: Dictionary = layered_construction.get("directional_asset_paths", {})
+	_check(layered_asset_paths.size() == 4, "Workshop layered construction must declare all four directional kits")
 	_check_no_live_green_fringe("res://assets/generated/sanctuary/workshop/workshop-stage-roof-q2.png", Rect2i(520, 0, 210, 220), "roof q2 chimney smoke")
 	_check_no_live_green_fringe("res://assets/generated/sanctuary/workshop/workshop-stage-walls-q3.png", Rect2i(1075, 220, 155, 130), "walls q3 upper rafters")
 	for stage_id in ["blueprint", "frame", "walls", "roof"]:
@@ -61,15 +64,14 @@ func _run() -> void:
 				continue
 			_check(str(sprite.get_meta("construction_stage", "")) == expected_stage, "%s Workshop rotation %d stage must bind its generated stage identity" % [expected_stage, rotation])
 			var expected_path := AssetCatalog.structure_construction_stage_asset("workshop", expected_stage, rotation)
-			if rotation == 0:
-				var layered_path := str(AssetCatalog.structure_definition("workshop").get("layered_construction", {}).get("asset_path", ""))
-				_check(str(sprite.get_meta("layered_asset_path", "")) == layered_path, "%s Workshop q0 %s must bind the measured layered kit" % [expected_stage, expected_stage])
-				var active_layers: Array = visual.get_meta("construction_art_layers", []) if visual != null else []
-				_check(active_layers.size() >= 1, "%s Workshop q0 must expose at least one active measured construction layer" % expected_stage)
-				_check(str(visual.get_meta("construction_art_source", "")) == "generated_workshop_layered_kit", "%s Workshop q0 must use the layered renderer" % expected_stage)
-				_check(visual.get_node_or_null("IllustratedStructurePresentation/WorkshopConstructionLayer_frame") != null or expected_stage == "blueprint", "%s Workshop q0 must expose the authored frame layer once building begins" % expected_stage)
-			else:
-				_check(str(sprite.get_meta("directional_asset_path", "")) == expected_path, "%s Workshop rotation %d stage must bind its generated asset path" % [expected_stage, rotation])
+			var layered_path := str(layered_asset_paths.get(rotation, ""))
+			_check(not layered_path.is_empty() and ResourceLoader.exists(layered_path), "%s Workshop rotation %d layered kit must be importable" % [expected_stage, rotation])
+			_check(str(sprite.get_meta("layered_asset_path", "")) == layered_path, "%s Workshop rotation %d must bind its measured layered kit" % [expected_stage, rotation])
+			_check(str(sprite.get_meta("directional_asset_path", "")) == layered_path, "%s Workshop rotation %d must expose its directional layered asset path" % [expected_stage, rotation])
+			var active_layers: Array = visual.get_meta("construction_art_layers", []) if visual != null else []
+			_check(active_layers.size() >= 1, "%s Workshop rotation %d must expose at least one active measured construction layer" % [expected_stage, rotation])
+			_check(str(visual.get_meta("construction_art_source", "")) == "generated_workshop_layered_kit", "%s Workshop rotation %d must use the layered renderer" % [expected_stage, rotation])
+			_check(visual.get_node_or_null("IllustratedStructurePresentation/WorkshopConstructionLayer_frame") != null or expected_stage == "blueprint", "%s Workshop rotation %d must expose the authored frame layer once building begins" % [expected_stage, rotation])
 			var stage_texture := load(expected_path) as Texture2D
 			var stage_image := stage_texture.get_image() if stage_texture != null else null
 			var stage_bounds := stage_image.get_used_rect() if stage_image != null else Rect2i()
@@ -77,18 +79,18 @@ func _run() -> void:
 			var fitted_size: Vector3 = measured.get("fitted_size", Vector3.ZERO)
 			if stage_bounds.size.x > 0 and fitted_size.length_squared() > 0.01:
 				var projected_extent: float = style.call("_measured_projected_horizontal_extent", visual, fitted_size) if style != null else 0.0
-				var rendered_width := float(stage_bounds.size.x) * sprite.pixel_size
-				if rotation == 0:
-					rendered_width = 0.0
-					var presentation := visual.get_node_or_null("IllustratedStructurePresentation") as Node3D if visual != null else null
-					if presentation != null:
-						for child in presentation.get_children():
-							var layer_sprite := child as Sprite3D
-							if layer_sprite == null:
-								continue
-							var visual_size: Array = layer_sprite.get_meta("visual_size", [])
-							if visual_size.size() >= 1:
-								rendered_width = maxf(rendered_width, float(visual_size[0]))
+				var rendered_width := 0.0
+				var presentation := visual.get_node_or_null("IllustratedStructurePresentation") as Node3D if visual != null else null
+				if presentation != null:
+					for child in presentation.get_children():
+						var layer_sprite := child as Sprite3D
+						if layer_sprite == null:
+							continue
+						var visual_size: Array = layer_sprite.get_meta("visual_size", [])
+						if visual_size.size() >= 1:
+							rendered_width = maxf(rendered_width, float(visual_size[0]))
+				if rendered_width <= 0.0:
+					rendered_width = float(stage_bounds.size.x) * sprite.pixel_size
 				_check(rendered_width >= projected_extent * 0.96, "%s Workshop rotation %d stage alpha width must cover its measured projected shell (rendered=%.2f projected=%.2f)" % [expected_stage, rotation, rendered_width, projected_extent])
 			_check(sprite.modulate.a >= float(case_value[3]) - 0.01, "%s Workshop rotation %d stage must preserve intended readability alpha" % [expected_stage, rotation])
 			_check((sprite.get_meta("visual_footprint", []) as Array).size() == 2, "%s Workshop rotation %d stage must retain the measured structure footprint binding" % [expected_stage, rotation])

@@ -118,6 +118,12 @@ func _capture() -> void:
 		return
 	if not await _capture_structure_stage("05_mid_construction.png", "building", 18.0, {"wood": 8, "stone": 5}):
 		return
+	if not await _capture_structure_stage("05b_mid_construction_q1.png", "building", 18.0, {"wood": 8, "stone": 5}, 1):
+		return
+	if not await _capture_structure_stage("05c_mid_construction_q2.png", "building", 18.0, {"wood": 8, "stone": 5}, 2):
+		return
+	if not await _capture_structure_stage("05d_mid_construction_q3.png", "building", 18.0, {"wood": 8, "stone": 5}, 3):
+		return
 	if not await _capture_structure_stage("06_late_construction.png", "building", 6.0, {"wood": 12, "stone": 8}):
 		return
 	if not await _capture_structure_stage("07_operational_structure.png", "operational", 0.0, {"wood": 12, "stone": 8}):
@@ -254,7 +260,7 @@ func _capture_placement_preview() -> bool:
 		return false
 	return _save_capture("02_placement_preview_active.png")
 
-func _capture_structure_stage(file_name: String, state: String, remaining_hours: float, delivered: Dictionary) -> bool:
+func _capture_structure_stage(file_name: String, state: String, remaining_hours: float, delivered: Dictionary, rotation := 0) -> bool:
 	await _begin_state()
 	var player := world.get("player") as CharacterBody3D
 	if player == null:
@@ -268,7 +274,7 @@ func _capture_structure_stage(file_name: String, state: String, remaining_hours:
 		"id": STAGE_INSTANCE_ID,
 		"kind": stage_kind,
 		"cell": [stage_origin.x, stage_origin.y],
-		"rotation": 0,
+		"rotation": posmod(int(rotation), 4),
 		"state": state,
 		"remaining_hours": remaining_hours,
 		"total_hours": 36.0,

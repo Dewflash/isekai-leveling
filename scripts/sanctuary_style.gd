@@ -882,13 +882,15 @@ func _player_structure_stage_sprite(kind: String, stage_id: String, rotation_qua
 
 func _build_layered_workshop_construction(presentation: Node3D, structure: Node3D, state: String, data: Dictionary, footprint: Vector2, progress: float, rotation_quarter_turns: int) -> Sprite3D:
 	# The authored construction kit is a real layer source, not a second full
-	# building card. q0 is the first production direction; other rotations use
-	# the existing directional family until matching component kits are authored.
-	if presentation == null or structure == null or rotation_quarter_turns != 0:
+	# building card. Every direction resolves its own kit so the child layers do
+	# not inherit a mismatched silhouette from another camera-facing variant.
+	if presentation == null or structure == null:
 		return null
 	var definition := SanctuaryAssetCatalog.structure_definition("workshop")
 	var config: Dictionary = definition.get("layered_construction", {})
-	var asset_path := str(config.get("asset_path", ""))
+	var normalized_rotation := posmod(rotation_quarter_turns, 4)
+	var directional_asset_paths: Dictionary = config.get("directional_asset_paths", {})
+	var asset_path := str(directional_asset_paths.get(normalized_rotation, config.get("asset_path", "")))
 	if asset_path.is_empty() or not ResourceLoader.exists(asset_path):
 		return null
 	var texture := load(asset_path) as Texture2D
@@ -913,6 +915,7 @@ func _build_layered_workshop_construction(presentation: Node3D, structure: Node3
 			active_layers.append("fittings")
 	var first_sprite: Sprite3D = null
 	var active_layer_ids: Array[String] = []
+	var layer_sprites: Array[Sprite3D] = []
 	for layer_id in active_layers:
 		var layer_value: Variant = layers.get(layer_id, {})
 		if not (layer_value is Dictionary):
@@ -935,18 +938,43 @@ func _build_layered_workshop_construction(presentation: Node3D, structure: Node3
 		layer_sprite.set_meta("construction_layer", layer_id)
 		layer_sprite.set_meta("layered_asset_path", asset_path)
 		layer_sprite.set_meta("directional_asset_path", asset_path)
+		layer_sprite.set_meta("directional_quarter_turns", normalized_rotation)
 		layer_sprite.set_meta("opaque_measurement_source", "layer_region_texture_alpha_used_rect")
 		layer_sprite.set_meta("presentation_only", true)
 		layer_sprite.set_meta("collision_contributor", false)
 		layer_sprite.set_meta("collision_presentation_contract", "traversable_construction_layer_until_operational")
 		_set_structure_sprite_metadata(layer_sprite, structure, "workshop", state, "state" if first_sprite == null else "construction_layer_%s" % layer_id, footprint)
 		presentation.add_child(layer_sprite)
+		layer_sprites.append(layer_sprite)
 		active_layer_ids.append(layer_id)
 		if first_sprite == null:
 			first_sprite = layer_sprite
+	# Component sheets are authored independently, so their opaque extents can
+	# differ by a few pixels between directions. Fit the complete measured layer
+	# family to the same imported physical envelope used by the shell audit. This
+	# is derived from alpha bounds and the structure measurement; no per-view
+	# multiplier is stored in gameplay data.
+	var rendered_width := 0.0
+	for layer_sprite in layer_sprites:
+		var visual_size: Array = layer_sprite.get_meta("visual_size", [])
+		if visual_size.size() >= 1:
+			rendered_width = maxf(rendered_width, float(visual_size[0]))
+	var source_measurement: Dictionary = structure.get_meta("source_measurement", {})
+	var fitted_size: Vector3 = source_measurement.get("fitted_size", Vector3.ZERO)
+	var target_width := _measured_projected_horizontal_extent(structure, fitted_size) if fitted_size.length_squared() > 0.01 else rendered_width
+	var layer_scale := maxf(1.0, target_width / rendered_width) if rendered_width > 0.01 else 1.0
+	for layer_sprite in layer_sprites:
+		if layer_scale <= 1.0:
+			continue
+		layer_sprite.position *= layer_scale
+		layer_sprite.scale = Vector3.ONE * layer_scale
+		var scaled_visual_size: Array = layer_sprite.get_meta("visual_size", [])
+		if scaled_visual_size.size() >= 2:
+			layer_sprite.set_meta("visual_size", [float(scaled_visual_size[0]) * layer_scale, float(scaled_visual_size[1]) * layer_scale])
 	structure.set_meta("construction_art_source", "generated_workshop_layered_kit" if first_sprite != null else "")
 	structure.set_meta("construction_art_asset_path", asset_path)
-	structure.set_meta("construction_art_rotation", rotation_quarter_turns)
+	structure.set_meta("construction_art_rotation", normalized_rotation)
+	structure.set_meta("construction_art_scale", layer_scale)
 	structure.set_meta("construction_art_stage", stage_id)
 	structure.set_meta("construction_art_layers", active_layer_ids)
 	return first_sprite

@@ -142,12 +142,11 @@ free to choose the actual building layout.
   material milestones: frame through 50% progress, walls through 76%, then roof
   to completion. The renderer derives each cutout's placement from its measured
   alpha envelope and the source-measured projected shell.
-- Added the first real layered Workshop construction renderer. The q0 direction
-  now assembles a generated, alpha-measured AtlasTexture kit into separate
+- Added the directional-complete layered Workshop construction renderer. q0–q3
+  each resolve an authored, alpha-measured AtlasTexture kit into separate
   foundation, timber-frame, wall, roof, and forge-fitting contributors. The
   blueprint/build path no longer uses a single full-building construction card;
-  the q1–q3 directional PNG family remains an explicit fallback until matching
-  component kits are authored.
+  the older complete stage PNG family is retained only for audit/reference.
 - Disabled the legacy rectangular procedural base and finished-source shell
   during layered construction. Non-operational construction remains traversable
   and the measured operational shell is the only active structure collision,
@@ -222,9 +221,9 @@ free to choose the actual building layout.
   and the authored shell
 - `tests/test_workshop_interior_runtime.gd`: pass, 63 checks covering entry,
   room-centered interior movement, interaction, egress clearance, and exit
-- `tests/test_workshop_stage_visuals.gd`: pass, 146 checks covering the q0
-  layered Workshop construction stages, q1–q3 directional fallback, measured
-  alpha coverage, and motion
+- `tests/test_workshop_stage_visuals.gd`: pass, 215 checks covering four
+  directional layered Workshop construction families, measured alpha coverage,
+  and motion
 - `tests/test_camera_controls.gd`: pass
 - `tests/test_reference_hud.gd`: pass, 18 checks covering gameplay visibility,
   portrait/status content, first-run objective, sourced belt texture,
@@ -245,6 +244,20 @@ free to choose the actual building layout.
 
 Headless Godot still prints the known macOS certificate warning. It is an
 environment warning; the focused tests and captures complete successfully.
+
+## 2026-07-22 directional Workshop construction follow-up
+
+- Added and alpha-cleaned q1, q2, and q3 Workshop construction kits. The runtime
+  resolves one kit per quarter-turn and applies a fit factor derived from the
+  kit's opaque bounds and the imported structure measurement, so visual width
+  does not silently drift away from the measured shell.
+- `test_workshop_stage_visuals.gd` now passes 215 checks across four directions
+  and four construction milestones. This proves the live scene graph and asset
+  contracts, but not a finished full-game graphics gate.
+- A fresh macOS pixel-backed capture was attempted for the four directions, but
+  Godot stalled before creating its capture directory with the current display
+  service. The two stalled processes were stopped; no renderer-backed q1–q3
+  claim is being made until that environment issue is resolved.
 
 ## Visual gate still open
 

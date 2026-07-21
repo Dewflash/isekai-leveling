@@ -40,14 +40,19 @@ the Godot gameplay/session code.
 - License/status: Original generated project artwork; no external asset license
   dependency
 - Files: `assets/generated/sanctuary/workshop/workshop-construction-kit-source.png`
-  and `assets/generated/sanctuary/workshop/workshop-construction-kit.png`
-- Runtime use: q0 Workshop construction layers for the measured foundation,
-  timber frame, wall panels, roof, and forge fittings; the layers advance from
-  blueprint through the authoritative construction milestones
+  and `assets/generated/sanctuary/workshop/workshop-construction-kit.png`, plus
+  the matching `workshop-construction-kit-q1[-source].png`,
+  `workshop-construction-kit-q2[-source].png`, and
+  `workshop-construction-kit-q3[-source].png` direction kits
+- Runtime use: all four Workshop construction directions use measured
+  foundation, timber frame, wall panels, roof, and forge-fitting layers; the
+  layers advance from blueprint through the authoritative construction
+  milestones
 - Runtime contract: each layer is an alpha-measured AtlasTexture region with a
-  feet pivot, explicit render order, and presentation-only collision metadata.
-  The q1–q3 directional construction family remains the explicit fallback until
-  matching component kits are authored.
+  feet pivot, explicit render order, presentation-only collision metadata, and
+  a measured fit to the imported physical envelope. The older complete stage
+  PNG family remains in the manifest as audit/reference material, not live
+  construction rendering.
 
 ## Codex-generated player facility sheet
 

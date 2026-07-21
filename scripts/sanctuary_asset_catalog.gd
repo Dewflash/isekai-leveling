@@ -56,13 +56,19 @@ const STRUCTURES := {
 			"walls": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-walls.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-walls-q3.png"},
 			"roof": {0: "res://assets/generated/sanctuary/workshop/workshop-stage-roof.png", 1: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q1.png", 2: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q2.png", 3: "res://assets/generated/sanctuary/workshop/workshop-stage-roof-q3.png"},
 		},
-		# The q0 Workshop build presentation is assembled from measured regions of
-		# one authored kit. Each region is a visible contributor; the old complete
-		# stage PNGs remain the explicit directional fallback for q1-q3 until their
-		# matching kits are authored. `world_height` and `position` are presentation
-		# anchors, not gameplay or collision dimensions.
+		# Every Workshop build direction is assembled from measured regions of its
+		# own authored kit. Each region is a visible contributor; the old complete
+		# stage PNGs remain in the catalog as audit/reference assets only.
+		# `world_height` and `position` are presentation anchors, not gameplay or
+		# collision dimensions.
 		"layered_construction": {
 			"asset_path": "res://assets/generated/sanctuary/workshop/workshop-construction-kit.png",
+			"directional_asset_paths": {
+				0: "res://assets/generated/sanctuary/workshop/workshop-construction-kit.png",
+				1: "res://assets/generated/sanctuary/workshop/workshop-construction-kit-q1.png",
+				2: "res://assets/generated/sanctuary/workshop/workshop-construction-kit-q2.png",
+				3: "res://assets/generated/sanctuary/workshop/workshop-construction-kit-q3.png",
+			},
 			"source_size": [1254, 1254],
 			"layers": {
 				"foundation": {"region": [0, 118, 640, 366], "world_height": 4.02, "position": [0.0, 0.0, 0.0], "render_priority": 1},
