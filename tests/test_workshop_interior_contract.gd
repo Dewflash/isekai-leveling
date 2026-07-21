@@ -41,6 +41,24 @@ func _run() -> void:
 	_check(room != null, "workshop room root must exist")
 	_check(room != null and not room.visible, "workshop room must be hidden outside entry")
 	_check(bool(interior.get("room_measurements_valid")), "workshop room must pass its measured collision validation")
+	var floor_panel := room.get_node_or_null("WorkshopRoomShell/RegisteredWorkshopFloorPanel") as MeshInstance3D if room != null else null
+	_check(floor_panel != null, "Workshop must expose a room-local registered floor panel")
+	if floor_panel != null:
+		_check((floor_panel.get_meta("registered_world_size", []) as Array).size() == 2, "registered floor panel must retain measured world bounds")
+		_check(str(floor_panel.get_meta("asset_path", "")) == "res://assets/generated/sanctuary/workshop/workshop-floor-panel-v2.png", "registered floor panel must bind its authored texture")
+		var floor_mesh := floor_panel.mesh as QuadMesh
+		var measured_room := interior.call("room_dimensions") as Vector3
+		_check(floor_mesh != null and is_equal_approx(floor_mesh.size.x, measured_room.x) and is_equal_approx(floor_mesh.size.y, measured_room.z), "registered floor panel must exactly cover the measured room envelope")
+		var floor_material := floor_panel.material_override as ShaderMaterial
+		_check(floor_material != null and floor_material.get_shader_parameter("albedo_texture") != null, "registered floor panel must use an authored shader texture")
+	for wall_id in ["RegisteredBackWallPanel", "RegisteredLeftWallPanel", "RegisteredRightWallPanel", "RegisteredFrontCutawayLeft", "RegisteredFrontCutawayRight"]:
+		var wall_panel := room.get_node_or_null("WorkshopRoomShell/" + wall_id) as MeshInstance3D if room != null else null
+		_check(wall_panel != null, "Workshop must expose room-local %s" % wall_id)
+		if wall_panel != null:
+			_check(bool(wall_panel.get_meta("presentation_only", false)), "%s must remain presentation-only" % wall_id)
+			_check((wall_panel.get_meta("registered_world_size", []) as Array).size() == 2, "%s must retain measured world bounds" % wall_id)
+			_check(str(wall_panel.get_meta("asset_path", "")) == "res://assets/generated/sanctuary/workshop/workshop-wall-panel-v1.png", "%s must bind the authored wall texture" % wall_id)
+			_check(wall_panel.material_override is ShaderMaterial, "%s must use the authored toon surface shader" % wall_id)
 	var empty_station_ids: Array = interior.call("station_ids")
 	_check(empty_station_ids.has("exit") and empty_station_ids.size() == 1, "empty Workshop must not auto-install functional stations")
 	var persisted_stations := {
@@ -52,9 +70,23 @@ func _run() -> void:
 	}
 	interior.call("sync_persisted_stations", persisted_stations)
 	_check(int(interior.call("active_station_count")) == 6, "persisted Workshop fit-out must expose installed stations plus exit")
+	_check(bool(interior.call("has_operational_furnace")), "operational interior furnaces must expose the station audio context")
 	var station_ids: Array = interior.call("station_ids")
 	for expected_id in ["furnace_left_001", "furnace_right_001", "workbench_001", "anvil_001", "storage_001", "exit"]:
 		_check(station_ids.has(expected_id), "workshop must expose persisted station %s" % expected_id)
+	for construction_id in ["furnace_right_001", "workbench_001"]:
+		var construction_station := room.get_node_or_null("InteriorStation_" + construction_id) as Node3D if room != null else null
+		var construction_frame := construction_station.get_node_or_null("ConstructionFrame") as Node3D if construction_station != null else null
+		var construction_materials := construction_station.get_node_or_null("ConstructionMaterials") as Node3D if construction_station != null else null
+		_check(construction_frame != null, "%s must expose scaffold geometry during construction" % construction_id)
+		_check(construction_materials != null, "%s must expose delivered-material geometry during construction" % construction_id)
+		if construction_frame != null:
+			for frame_mesh_value in construction_frame.find_children("*", "MeshInstance3D", true, false):
+				var frame_mesh := frame_mesh_value as MeshInstance3D
+				if frame_mesh != null:
+					_check(not bool(frame_mesh.get_meta("collision_contributor", true)), "%s scaffold mesh must not expand the measured hitbox" % construction_id)
+		if construction_materials != null:
+			_check(construction_materials.visible == (construction_id == "furnace_right_001"), "%s material visibility must follow its persisted construction state" % construction_id)
 	_check(not bool(interior.call("configure_for_structure", "archive", workshop_measurement, AssetCatalog.structure_access_zones("workshop", 0), {})), "Workshop controller must reject unsupported interior kinds")
 	var invalid_host := Node3D.new()
 	invalid_host.name = "InvalidMeasurementHost"

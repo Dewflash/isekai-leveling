@@ -39,10 +39,10 @@ const STRUCTURES := {
 			"entry_zone_id": "front_door",
 			"ceiling_height_ratio": 0.82,
 			"egress_clearance_ratio": 0.18,
-			# Presentation-only bleed keeps the authored cutaway room legible behind
-			# live stations at the fixed 3/4 camera. It never changes room collision
-			# or station hitboxes; those remain measured from the runtime meshes.
-			"illustrated_shell_width_ratio": 1.35,
+			# Keep the authored cutaway registered to the measured interior envelope.
+			# A larger presentation bleed made the painted floor/walls disagree with
+			# the persisted metre grid, station footprints, and exit marker.
+			"illustrated_shell_width_ratio": 1.0,
 		},
 		"construction_stage_paths": {
 			"blueprint": "res://assets/generated/sanctuary/workshop/workshop-stage-blueprint.png",

@@ -4957,9 +4957,11 @@ func _is_player_in_route_shelter() -> bool:
 func _update_audio_context() -> void:
 	if audio_director == null or player == null:
 		return
-	var surface := _current_surface()
+	var surface := "wood" if interior_active else _current_surface()
 	var indoor := interior_active or (current_zone == "Sanctuary" and absf(player.position.x) < 2.15 and player.position.z < -2.0 and player.position.z > -5.8)
 	var near_furnace := furnace_active and current_zone == "Sanctuary" and _ground_distance(player.global_position, furnace.global_position) < 6.0
+	if interior_active and building_interior != null and building_interior.has_method("has_operational_furnace"):
+		near_furnace = bool(building_interior.call("has_operational_furnace"))
 	audio_director.call("set_environment", current_zone, surface, hour, weather, indoor, near_furnace)
 	if furnace != null:
 		var fire: Node3D = furnace.get_node_or_null("Fire")

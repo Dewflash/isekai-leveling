@@ -51,7 +51,14 @@ func _capture() -> void:
 		push_error("WORKSHOP_INTERIOR_CAPTURE_FAIL: workshop visual missing")
 		quit(1)
 		return
-	player.global_position = structure.global_position + Vector3(0.0, 1.0, 3.3)
+	# Use the measured front-door access zone rather than assuming the Workshop's
+	# authored origin or rotation. This keeps the capture proof aligned with the
+	# same entry contract used by gameplay and the runtime tests.
+	var door_zone: Dictionary = world.call("_world_access_zone", structure, "door")
+	var door_world: Vector3 = door_zone.get("world_center", Vector3.ZERO)
+	var door_outward: Vector3 = door_zone.get("world_facing", Vector3(0.0, 0.0, 1.0))
+	player.global_position = door_world + door_outward * 0.90
+	player.global_position.y = 1.0
 	world.call("_enter_building_interior", structure)
 	await _wait_seconds(0.90)
 	var toast := world.get("toast_label") as Label

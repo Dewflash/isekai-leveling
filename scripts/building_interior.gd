@@ -15,6 +15,8 @@ const TOON_WOOD_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_
 const TOON_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
 const ILLUSTRATED_SHELL_TEXTURE_PATH := "res://assets/generated/sanctuary/workshop/workshop-interior-shell.png"
 const WORKSHOP_STATION_SHEET_PATH := "res://assets/generated/sanctuary/workshop/workshop-station-sheet.png"
+const WORKSHOP_FLOOR_PANEL_TEXTURE_PATH := "res://assets/generated/sanctuary/workshop/workshop-floor-panel-v2.png"
+const WORKSHOP_WALL_PANEL_TEXTURE_PATH := "res://assets/generated/sanctuary/workshop/workshop-wall-panel-v1.png"
 
 var host_world: Node3D
 var room_root: Node3D
@@ -42,7 +44,12 @@ var toon_wood_material: ShaderMaterial
 var toon_sprite_material: ShaderMaterial
 var illustrated_shell: Sprite3D
 var workshop_station_sheet: Texture2D
+var workshop_floor_panel_texture: Texture2D
+var workshop_wall_panel_texture: Texture2D
+var registered_floor_panel: MeshInstance3D
 var station_preview: Node3D
+var interior_fill_light: OmniLight3D
+var door_fill_light: OmniLight3D
 var fade_layer: CanvasLayer
 var fade_rect: ColorRect
 
@@ -57,6 +64,8 @@ func build(world: Node3D) -> void:
 	toon_wood_material = load(TOON_WOOD_MATERIAL_PATH) as ShaderMaterial
 	toon_sprite_material = load(TOON_SPRITE_MATERIAL_PATH) as ShaderMaterial
 	workshop_station_sheet = load(WORKSHOP_STATION_SHEET_PATH) as Texture2D
+	workshop_floor_panel_texture = load(WORKSHOP_FLOOR_PANEL_TEXTURE_PATH) as Texture2D
+	workshop_wall_panel_texture = load(WORKSHOP_WALL_PANEL_TEXTURE_PATH) as Texture2D
 	_build_transition_overlay()
 	_build_workshop_room()
 	room_root.visible = false
@@ -209,6 +218,15 @@ func camera_focus_position() -> Vector3:
 func active_station_count() -> int:
 	return stations.size()
 
+func has_operational_furnace() -> bool:
+	for station_value in stations.values():
+		var station := station_value as Node3D
+		if station == null or str(station.get_meta("interior_station_kind", "")) not in ["furnace_left", "furnace_right"]:
+			continue
+		if str(station.get_meta("installation_state", "blueprint")) == "operational":
+			return true
+	return false
+
 func world_to_room_local(world_position: Vector3) -> Vector3:
 	return room_root.to_local(world_position) if room_root != null else world_position
 
@@ -269,6 +287,10 @@ func set_room_active(value: bool, kind := "workshop", instance_id := "") -> void
 		var station := station_value as Node3D
 		if station != null:
 			station.visible = value
+	if interior_fill_light != null and is_instance_valid(interior_fill_light):
+		interior_fill_light.visible = value
+	if door_fill_light != null and is_instance_valid(door_fill_light):
+		door_fill_light.visible = value
 
 func transition_to(value: bool, kind := "workshop", instance_id := "", finished := Callable()) -> bool:
 	if transitioning or room_root == null:
@@ -327,6 +349,9 @@ func _clear_room() -> void:
 	animated_fire.clear()
 	animated_smoke.clear()
 	animated_wheel = null
+	interior_fill_light = null
+	door_fill_light = null
+	registered_floor_panel = null
 
 func _first_access_zone(access_zones: Array, kind: String) -> Dictionary:
 	for zone_value in access_zones:
@@ -362,6 +387,8 @@ func _build_workshop_room() -> void:
 	_create_workshop_stations()
 	_create_dressing()
 	_create_illustrated_shell()
+	_create_registered_floor_panel()
+	_create_registered_wall_panels()
 
 func _create_illustrated_shell() -> void:
 	# The room architecture is an authored cutaway card behind the live station
@@ -395,8 +422,24 @@ func _create_illustrated_shell() -> void:
 	# its floor lands around the live room floor while the roof remains in frame.
 	# This is derived from room_height, not a fixed pixel or screen offset.
 	var camera := host_world.get("camera") as Camera3D if host_world != null else null
-	var camera_offset := camera.global_position - room_root.global_position if camera != null else Vector3(13.5, 18.0, 13.5)
-	var camera_direction := camera_offset.normalized() if camera_offset.length_squared() > 0.001 else Vector3(0.60, 0.0, 0.60).normalized()
+	# The exterior camera's world position is not a room-space anchor: it changes
+	# with the Workshop's chosen Sanctuary location. Use Main's fixed ground
+	# viewing basis instead, so the cutaway registers identically at every
+	# exterior location and rotation while measured metres remain authoritative.
+	var camera_direction := Vector3(0.60, 0.80, 0.60).normalized()
+	if host_world != null:
+		var view_forward: Variant = host_world.get("camera_ground_forward")
+		if view_forward is Vector3 and (view_forward as Vector3).length_squared() > 0.001:
+			var horizontal_to_camera := -(view_forward as Vector3)
+			horizontal_to_camera.y = 0.0
+			horizontal_to_camera = horizontal_to_camera.normalized()
+			var pitch_degrees := 43.301
+			if camera != null:
+				var camera_contract: Variant = camera.get_meta("camera_contract", {})
+				if camera_contract is Dictionary:
+					pitch_degrees = float((camera_contract as Dictionary).get("pitch_degrees", pitch_degrees))
+			var pitch := deg_to_rad(clampf(pitch_degrees, 25.0, 65.0))
+			camera_direction = Vector3(horizontal_to_camera.x * cos(pitch), sin(pitch), horizontal_to_camera.z * cos(pitch)).normalized()
 	var backdrop_distance := maxf(room_size.x, room_size.y) * 1.40 + room_height
 	illustrated_shell.position = Vector3(0.0, FLOOR_Y + room_height * 0.52, 0.0) - camera_direction * backdrop_distance
 	illustrated_shell.axis = Vector3.AXIS_Z
@@ -406,7 +449,16 @@ func _create_illustrated_shell() -> void:
 	if toon_sprite_material != null:
 		var material := toon_sprite_material.duplicate() as ShaderMaterial
 		material.set_shader_parameter("albedo_texture", texture)
-		material.set_shader_parameter("base_color", Color.WHITE)
+		# The authored room art is intentionally moody, but the game scene needs
+		# readable values around the player and stations. These are presentation
+		# parameters only; the measured room and station colliders remain unchanged.
+		material.set_shader_parameter("base_color", Color(1.08, 1.03, 0.95, 1.0))
+		material.set_shader_parameter("shadow_tint", Color(0.84, 0.88, 0.84, 1.0))
+		material.set_shader_parameter("light_tint", Color(1.0, 0.94, 0.80, 1.0))
+		material.set_shader_parameter("shadow_value", 0.88)
+		material.set_shader_parameter("light_value", 1.12)
+		material.set_shader_parameter("step_center", 0.48)
+		material.set_shader_parameter("step_softness", 0.16)
 		illustrated_shell.material_override = material
 	# Keep the card behind the live room by placing it along the camera's actual
 	# authored view direction. Unlike a no-depth-test overlay, this preserves
@@ -434,6 +486,102 @@ func _create_floor() -> void:
 				continue
 			var tile := _box(room_shell, "FloorInset_%d_%d" % [x, z], Vector3(0.93, 0.014, 0.93), Vector3(float(x) * 0.98, 0.008, float(z) * 0.96), Color("#827867"), false, false, false)
 			tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _create_registered_floor_panel() -> void:
+	# The room illustration remains a wall/roof composition, but the walkable
+	# surface is now a room-local XZ layer whose bounds are exactly the measured
+	# room envelope. Player feet, station anchors, and the collision floor share
+	# this plane instead of walking on a camera-facing painted floor.
+	if room_shell == null or workshop_floor_panel_texture == null:
+		return
+	registered_floor_panel = MeshInstance3D.new()
+	registered_floor_panel.name = "RegisteredWorkshopFloorPanel"
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(room_size.x, room_size.y)
+	registered_floor_panel.mesh = mesh
+	registered_floor_panel.rotation_degrees.x = -90.0
+	registered_floor_panel.position = Vector3(0.0, 0.025, 0.0)
+	registered_floor_panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	registered_floor_panel.set_meta("presentation_only", true)
+	registered_floor_panel.set_meta("visible_asset_id", "interior/workshop/floor_panel_v2")
+	registered_floor_panel.set_meta("asset_path", WORKSHOP_FLOOR_PANEL_TEXTURE_PATH)
+	registered_floor_panel.set_meta("registered_world_size", [room_size.x, room_size.y])
+	var material: Material
+	if toon_wood_material != null:
+		var toon_material := toon_wood_material.duplicate() as ShaderMaterial
+		toon_material.set_shader_parameter("albedo_texture", workshop_floor_panel_texture)
+		toon_material.set_shader_parameter("use_albedo_texture", true)
+		toon_material.set_shader_parameter("base_color", Color(1.02, 1.02, 1.00, 1.0))
+		toon_material.set_shader_parameter("shadow_tint", Color(0.78, 0.84, 0.83, 1.0))
+		toon_material.set_shader_parameter("light_tint", Color(1.0, 0.96, 0.86, 1.0))
+		toon_material.set_shader_parameter("shadow_value", 0.82)
+		toon_material.set_shader_parameter("light_value", 1.08)
+		material = toon_material
+	else:
+		var fallback := StandardMaterial3D.new()
+		fallback.albedo_texture = workshop_floor_panel_texture
+		fallback.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+		fallback.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		fallback.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+		material = fallback
+	registered_floor_panel.material_override = material
+	room_shell.add_child(registered_floor_panel)
+
+func _create_registered_wall_panels() -> void:
+	# The illustrated shell remains the authored hero composition, but these
+	# room-local panels establish a real architectural register for the back,
+	# side, and cutaway foreground walls. They share the measured room envelope,
+	# so the player/stations are no longer composited against a floating card.
+	if room_shell == null or workshop_wall_panel_texture == null:
+		return
+	var wall_material := _workshop_wall_material()
+	var back := _create_wall_panel("RegisteredBackWallPanel", Vector2(room_size.x, room_height), Vector3(0.0, room_height * 0.5, -room_size.y * 0.5 + 0.035), 0.0, wall_material)
+	back.set_meta("registered_wall", "back")
+	var left := _create_wall_panel("RegisteredLeftWallPanel", Vector2(room_size.y, room_height), Vector3(-room_size.x * 0.5 + 0.035, room_height * 0.5, 0.0), PI * 0.5, wall_material)
+	left.set_meta("registered_wall", "left")
+	var right := _create_wall_panel("RegisteredRightWallPanel", Vector2(room_size.y, room_height), Vector3(room_size.x * 0.5 - 0.035, room_height * 0.5, 0.0), -PI * 0.5, wall_material)
+	right.set_meta("registered_wall", "right")
+	var front_segment_width := (room_size.x - door_width) * 0.5
+	var front_z := room_size.y * 0.5 - 0.025
+	var front_height := minf(0.78, room_height * 0.28)
+	var front_left := _create_wall_panel("RegisteredFrontCutawayLeft", Vector2(front_segment_width, front_height), Vector3(-((room_size.x + door_width) * 0.25), front_height * 0.5, front_z), 0.0, wall_material)
+	front_left.set_meta("registered_wall", "front_cutaway_left")
+	var front_right := _create_wall_panel("RegisteredFrontCutawayRight", Vector2(front_segment_width, front_height), Vector3(((room_size.x + door_width) * 0.25), front_height * 0.5, front_z), 0.0, wall_material)
+	front_right.set_meta("registered_wall", "front_cutaway_right")
+
+func _create_wall_panel(node_name: String, size: Vector2, position: Vector3, rotation_y: float, material: Material) -> MeshInstance3D:
+	var panel := MeshInstance3D.new()
+	panel.name = node_name
+	var mesh := QuadMesh.new()
+	mesh.size = size
+	panel.mesh = mesh
+	panel.position = position
+	panel.rotation.y = rotation_y
+	panel.material_override = material
+	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	panel.set_meta("presentation_only", true)
+	panel.set_meta("visible_asset_id", "interior/workshop/wall_panel")
+	panel.set_meta("asset_path", WORKSHOP_WALL_PANEL_TEXTURE_PATH)
+	panel.set_meta("registered_world_size", [size.x, size.y])
+	room_shell.add_child(panel)
+	return panel
+
+func _workshop_wall_material() -> Material:
+	if toon_wood_material != null:
+		var material := toon_wood_material.duplicate() as ShaderMaterial
+		material.set_shader_parameter("albedo_texture", workshop_wall_panel_texture)
+		material.set_shader_parameter("use_albedo_texture", true)
+		material.set_shader_parameter("base_color", Color(0.96, 0.98, 0.92, 1.0))
+		material.set_shader_parameter("shadow_tint", Color(0.62, 0.72, 0.70, 1.0))
+		material.set_shader_parameter("light_tint", Color(1.0, 0.91, 0.76, 1.0))
+		material.set_shader_parameter("shadow_value", 0.74)
+		material.set_shader_parameter("light_value", 1.06)
+		return material
+	var fallback := StandardMaterial3D.new()
+	fallback.albedo_texture = workshop_wall_panel_texture
+	fallback.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+	fallback.roughness = 0.88
+	return fallback
 
 func _create_walls() -> void:
 	var wall_color := Color("#6f5a4b")
@@ -599,12 +747,14 @@ func _apply_station_state(station: Node3D, record: Dictionary) -> void:
 		return
 	var state := str(record.get("state", "blueprint"))
 	station.set_meta("installation_state", state)
+	var assembly_progress := _station_material_progress(record)
+	station.set_meta("assembly_progress", assembly_progress)
 	var sprite := station.get_node_or_null("GeneratedStationSprite") as Sprite3D
 	var state_color := Color(1.0, 1.0, 1.0, 1.0)
 	if state == "blueprint":
-		state_color = Color(0.40, 0.92, 1.0, 0.42)
+		state_color = Color(0.40, 0.92, 1.0, 0.34)
 	elif state == "building":
-		state_color = Color(1.0, 0.78, 0.35, 0.72)
+		state_color = Color(1.0, 0.78, 0.35, clampf(0.48 + assembly_progress * 0.30, 0.48, 0.78))
 	if sprite != null:
 		sprite.modulate = state_color
 	var fire := station.get_node_or_null("FurnaceFire") as MeshInstance3D
@@ -617,7 +767,27 @@ func _apply_station_state(station: Node3D, record: Dictionary) -> void:
 	var frame := station.get_node_or_null("ConstructionFrame") as Node3D
 	if frame != null:
 		frame.visible = state != "operational"
+		frame.modulate = Color(0.35, 0.93, 1.0, 0.90) if state == "blueprint" else Color(1.0, 0.70, 0.28, 0.96)
+	var materials := station.get_node_or_null("ConstructionMaterials") as Node3D
+	if materials != null:
+		materials.visible = state == "building" and assembly_progress > 0.0
+		materials.modulate.a = clampf(0.46 + assembly_progress * 0.54, 0.46, 1.0)
 	_set_station_collision_active(station, state == "operational")
+
+func _station_material_progress(record: Dictionary) -> float:
+	var kind := str(record.get("kind", ""))
+	var definition := ContentRegistry.interior_station_definition(kind)
+	var cost: Dictionary = definition.get("cost", {})
+	if cost.is_empty():
+		return 0.0
+	var delivered: Dictionary = record.get("delivered_materials", {})
+	var total_required := 0.0
+	var total_delivered := 0.0
+	for material_id in cost:
+		var required := maxf(0.0, float(cost.get(material_id, 0)))
+		total_required += required
+		total_delivered += clampf(float(delivered.get(material_id, 0)), 0.0, required)
+	return clampf(total_delivered / maxf(0.01, total_required), 0.0, 1.0)
 
 func _set_station_collision_active(station: Node3D, value: bool) -> void:
 	if station == null:
@@ -651,6 +821,8 @@ func _add_construction_frame(station: Node3D, footprint: Vector2i) -> void:
 		bar.mesh = mesh
 		bar.position = edge
 		bar.material_override = material
+		bar.set_meta("physical_asset_mesh", false)
+		bar.set_meta("collision_contributor", false)
 		frame.add_child(bar)
 	for edge in [Vector3(-width * 0.5, 0.05, 0.0), Vector3(width * 0.5, 0.05, 0.0)]:
 		var bar := MeshInstance3D.new()
@@ -659,7 +831,77 @@ func _add_construction_frame(station: Node3D, footprint: Vector2i) -> void:
 		bar.mesh = mesh
 		bar.position = edge
 		bar.material_override = material
+		bar.set_meta("physical_asset_mesh", false)
+		bar.set_meta("collision_contributor", false)
 		frame.add_child(bar)
+	var post_material := StandardMaterial3D.new()
+	post_material.albedo_color = Color("#b6e8d8")
+	post_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	post_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for corner in [
+		Vector3(-width * 0.5, 0.48, -depth * 0.5),
+		Vector3(width * 0.5, 0.48, -depth * 0.5),
+		Vector3(-width * 0.5, 0.48, depth * 0.5),
+		Vector3(width * 0.5, 0.48, depth * 0.5),
+	]:
+		var post := MeshInstance3D.new()
+		post.name = "ScaffoldPost"
+		var post_mesh := BoxMesh.new()
+		post_mesh.size = Vector3(0.055, 0.86, 0.055)
+		post.mesh = post_mesh
+		post.position = corner
+		post.material_override = post_material
+		post.set_meta("physical_asset_mesh", false)
+		post.set_meta("collision_contributor", false)
+		frame.add_child(post)
+	var brace_material := StandardMaterial3D.new()
+	brace_material.albedo_color = Color("#82d8ca")
+	brace_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	brace_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for side in [-1.0, 1.0]:
+		var brace := MeshInstance3D.new()
+		brace.name = "ScaffoldBrace"
+		var brace_mesh := BoxMesh.new()
+		brace_mesh.size = Vector3(width * 0.78, 0.045, 0.045)
+		brace.mesh = brace_mesh
+		brace.position = Vector3(0.0, 0.74, side * depth * 0.5)
+		brace.material_override = brace_material
+		brace.set_meta("physical_asset_mesh", false)
+		brace.set_meta("collision_contributor", false)
+		frame.add_child(brace)
+	var materials := Node3D.new()
+	materials.name = "ConstructionMaterials"
+	materials.visible = false
+	station.add_child(materials)
+	var pile_material := StandardMaterial3D.new()
+	pile_material.albedo_color = Color("#b48652")
+	pile_material.roughness = 0.92
+	for index in 3:
+		var plank := MeshInstance3D.new()
+		plank.name = "DeliveredPlank_%d" % index
+		var plank_mesh := BoxMesh.new()
+		plank_mesh.size = Vector3(width * 0.34, 0.07, 0.16)
+		plank.mesh = plank_mesh
+		plank.position = Vector3(-width * 0.28 + float(index) * width * 0.16, 0.10 + float(index % 2) * 0.08, depth * 0.66)
+		plank.rotation.y = deg_to_rad(-10.0 + float(index) * 9.0)
+		plank.material_override = pile_material
+		plank.set_meta("physical_asset_mesh", false)
+		plank.set_meta("collision_contributor", false)
+		materials.add_child(plank)
+	for index in 3:
+		var stone := MeshInstance3D.new()
+		stone.name = "DeliveredStone_%d" % index
+		var stone_mesh := SphereMesh.new()
+		stone_mesh.radius = 0.12
+		stone_mesh.height = 0.20
+		stone_mesh.radial_segments = 8
+		stone_mesh.rings = 4
+		stone.mesh = stone_mesh
+		stone.position = Vector3(width * 0.26 + float(index % 2) * 0.14, 0.10 + float(index / 2) * 0.10, depth * 0.66)
+		stone.material_override = _material(Color("#7d8583"))
+		stone.set_meta("physical_asset_mesh", false)
+		stone.set_meta("collision_contributor", false)
+		materials.add_child(stone)
 
 func _create_dressing() -> void:
 	var shelf := Node3D.new()
@@ -680,6 +922,24 @@ func _create_dressing() -> void:
 	lamp_light.omni_range = maxf(2.6, room_size.length() * 0.48)
 	room_shell.add_child(lamp_light)
 	_box(room_shell, "LampCord", Vector3(0.025, room_height * 0.20, 0.025), Vector3(0.0, room_height * 0.92, room_size.y * 0.06), Color("#3d3837"), false, false, false)
+	interior_fill_light = OmniLight3D.new()
+	interior_fill_light.name = "WorkshopInteriorFill"
+	interior_fill_light.position = Vector3(0.0, room_height * 0.68, -room_size.y * 0.06)
+	interior_fill_light.light_color = Color("#ffd39b")
+	interior_fill_light.light_energy = 0.42
+	interior_fill_light.omni_range = maxf(3.2, room_size.length() * 0.56)
+	interior_fill_light.shadow_enabled = false
+	interior_fill_light.visible = false
+	room_shell.add_child(interior_fill_light)
+	door_fill_light = OmniLight3D.new()
+	door_fill_light.name = "WorkshopDoorFill"
+	door_fill_light.position = Vector3(0.0, 1.18, room_size.y * 0.44)
+	door_fill_light.light_color = Color("#9ed6dc")
+	door_fill_light.light_energy = 0.30
+	door_fill_light.omni_range = maxf(2.0, door_width * 2.0)
+	door_fill_light.shadow_enabled = false
+	door_fill_light.visible = false
+	room_shell.add_child(door_fill_light)
 
 func _set_room_collisions(value: bool) -> void:
 	if room_root == null:
@@ -739,7 +999,7 @@ func _add_generated_station_sprite(station: Node3D, station_id: String) -> void:
 	sprite.axis = Vector3.AXIS_Z
 	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
-	sprite.shaded = false
+	sprite.shaded = true
 	sprite.no_depth_test = false
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.12
@@ -754,6 +1014,17 @@ func _add_generated_station_sprite(station: Node3D, station_id: String) -> void:
 	var generated_depth := generated_width * source_depth / maxf(0.01, source_width)
 	sprite.set_meta("visual_world_size", [generated_width, measured_height])
 	sprite.set_meta("collision_world_footprint", [generated_width, generated_depth])
+	if toon_sprite_material != null:
+		var material := toon_sprite_material.duplicate() as ShaderMaterial
+		material.set_shader_parameter("albedo_texture", atlas)
+		material.set_shader_parameter("base_color", Color(1.02, 1.00, 0.96, 1.0))
+		material.set_shader_parameter("shadow_tint", Color(0.88, 0.90, 0.86, 1.0))
+		material.set_shader_parameter("light_tint", Color(1.0, 0.95, 0.82, 1.0))
+		material.set_shader_parameter("shadow_value", 0.90)
+		material.set_shader_parameter("light_value", 1.10)
+		material.set_shader_parameter("step_center", 0.48)
+		material.set_shader_parameter("step_softness", 0.16)
+		sprite.material_override = material
 	for mesh_value in station.find_children("*", "MeshInstance3D", true, false):
 		var prototype_mesh := mesh_value as MeshInstance3D
 		if prototype_mesh == null:
