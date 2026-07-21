@@ -54,6 +54,14 @@ func _run() -> void:
 	var building_interior := world.get("building_interior") as Node3D
 	_check(building_interior != null, "shader integration must not remove the interior runtime root")
 	if building_interior != null:
+		# The production Workshop now opens as an empty shell. Install explicit
+		# operational fixtures here so the shader contract exercises the authored
+		# furnace and station assets without reintroducing free starter stations.
+		building_interior.call("sync_persisted_stations", {
+			"furnace_left_qa": {"id": "furnace_left_qa", "structure_id": "shader_workshop_qa", "kind": "furnace_left", "cell": [-3, -2], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"stone": 3, "wood": 2}},
+			"workbench_qa": {"id": "workbench_qa", "structure_id": "shader_workshop_qa", "kind": "workbench", "cell": [-2, 0], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}},
+		})
+		await process_frame
 		var furnace := building_interior.find_child("FurnaceBody", true, false) as MeshInstance3D
 		_check(furnace != null and furnace.material_override is ShaderMaterial and (furnace.material_override as ShaderMaterial).shader != null, "Workshop solid furnace must use the toon surface shader")
 		_check(furnace != null and str(furnace.get_meta("surface_profile", "")) == "toon_wood", "Workshop surface profile must remain separate from collision contribution")

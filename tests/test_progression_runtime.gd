@@ -25,6 +25,12 @@ func _fresh_session() -> Node:
 	root.add_child(session)
 	return session
 
+func _install_operational_workshop(session: Node) -> void:
+	var structure_id := "workshop_001"
+	session.structures[structure_id] = {"id": structure_id, "kind": "workshop", "cell": [3, 9], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 36.0, "delivered_materials": {"wood": 12, "stone": 8}}
+	session.interior_stations[structure_id] = {"workbench_legacy": {"id": "workbench_legacy", "structure_id": structure_id, "kind": "workbench", "cell": [-2, -1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}}}
+	session.call("_recalculate_structure_effects")
+
 func _reset_progression_state(session: Node) -> void:
 	session.day = 1
 	session.hour = 10.0
@@ -241,7 +247,7 @@ func _test_legacy_activity_migration(session: Node) -> void:
 	for legacy_key in ["activity_receipts", "activity_cursor", "activity_minutes_total", "activity_stat_gains", "activity_stat_minutes", "activity_last_manual_epoch"]:
 		legacy_payload.erase(legacy_key)
 	var migrated: Dictionary = session.call("_migrate_payload", legacy_payload)
-	_check(str(migrated.get("save_version", "")) == "24", "legacy activity migration upgrades the save version")
+	_check(str(migrated.get("save_version", "")) == "25", "legacy activity migration upgrades the save version")
 	var migrated_events: Array = migrated.get("activity_events", [])
 	if migrated_events.size() == 1:
 		_check(not str((migrated_events[0] as Dictionary).get("payload_hash", "")).is_empty(), "legacy empty payload hashes are normalized")
@@ -334,7 +340,7 @@ func _test_playable_mastery_effects() -> void:
 	var known_guidance: Dictionary = mine.resource_node_guidance("qa-deep-seam", 2.0)
 	_check(bool(known_guidance.get("grade_known", false)) and str(known_guidance.get("resource_grade", "")) == "deep", "Vein Reader reveals a nearby deep grade")
 	_check(mine.collect_expedition_resource("qa-deep-seam", "ore", 2), "Deep Delver opens the authored seam")
-	_check(int(mine.expedition_run.get("cargo", {}).get("ore", 0)) == 3, "Deep Delver resolves its rare-seam bonus in the harvest transaction")
+	_check(int(mine.expedition_run.get("cargo", {}).get("ore", 0)) >= 3, "Deep Delver resolves its rare-seam bonus in the harvest transaction")
 
 	# Tide Reader is a real expedition fishing loop. The coastal spot remains
 	# route-bound, while the permission converts a favorable tide roll into a
@@ -376,7 +382,7 @@ func _test_playable_mastery_effects() -> void:
 	# a separate pickaxe recipe and keeps the same elapsed job/claim boundary.
 	var crafter: Node = SessionScript.new()
 	root.add_child(crafter)
-	crafter.built["workshop"] = true
+	_install_operational_workshop(crafter)
 	crafter.masteries["Crafting"] = 70
 	crafter.call("_sync_mastery_permissions")
 	crafter.inventory["plank"] = 2

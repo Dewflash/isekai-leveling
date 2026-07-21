@@ -36,14 +36,25 @@ func _run() -> void:
 	_check(bool(interior.call("configure_for_structure", "workshop", workshop_measurement, AssetCatalog.structure_access_zones("workshop", 0), workshop_definition.get("interior_profile", {}))), "workshop must configure from its measured exterior profile")
 	await process_frame
 	_check(not bool(interior.call("is_active")), "interior must start inactive")
-	_check(int(interior.call("active_station_count")) == 6, "workshop must expose two furnaces, bench, anvil, storage and exit")
+	_check(int(interior.call("active_station_count")) == 1, "an un-fitted Workshop must expose only its measured exit")
 	var room := interior.get_node_or_null("WorkshopInteriorRoom") as Node3D
 	_check(room != null, "workshop room root must exist")
 	_check(room != null and not room.visible, "workshop room must be hidden outside entry")
 	_check(bool(interior.get("room_measurements_valid")), "workshop room must pass its measured collision validation")
+	var empty_station_ids: Array = interior.call("station_ids")
+	_check(empty_station_ids.has("exit") and empty_station_ids.size() == 1, "empty Workshop must not auto-install functional stations")
+	var persisted_stations := {
+		"furnace_left_001": {"id": "furnace_left_001", "structure_id": "qa_workshop_001", "kind": "furnace_left", "cell": [-3, -2], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"stone": 3, "wood": 2}},
+		"furnace_right_001": {"id": "furnace_right_001", "structure_id": "qa_workshop_001", "kind": "furnace_right", "cell": [1, -2], "rotation": 0, "state": "building", "remaining_hours": 6.0, "total_hours": 12.0, "delivered_materials": {"stone": 3, "wood": 2}},
+		"workbench_001": {"id": "workbench_001", "structure_id": "qa_workshop_001", "kind": "workbench", "cell": [-2, 0], "rotation": 0, "state": "blueprint", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 0, "stone": 0}},
+		"anvil_001": {"id": "anvil_001", "structure_id": "qa_workshop_001", "kind": "anvil", "cell": [1, 0], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"stone": 2, "plank": 1}},
+		"storage_001": {"id": "storage_001", "structure_id": "qa_workshop_001", "kind": "storage", "cell": [2, 1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 8.0, "delivered_materials": {"wood": 3, "stone": 1}},
+	}
+	interior.call("sync_persisted_stations", persisted_stations)
+	_check(int(interior.call("active_station_count")) == 6, "persisted Workshop fit-out must expose installed stations plus exit")
 	var station_ids: Array = interior.call("station_ids")
-	for expected_id in ["furnace_left", "furnace_right", "workbench", "anvil", "storage", "exit"]:
-		_check(station_ids.has(expected_id), "workshop must expose station %s" % expected_id)
+	for expected_id in ["furnace_left_001", "furnace_right_001", "workbench_001", "anvil_001", "storage_001", "exit"]:
+		_check(station_ids.has(expected_id), "workshop must expose persisted station %s" % expected_id)
 	_check(not bool(interior.call("configure_for_structure", "archive", workshop_measurement, AssetCatalog.structure_access_zones("workshop", 0), {})), "Workshop controller must reject unsupported interior kinds")
 	var invalid_host := Node3D.new()
 	invalid_host.name = "InvalidMeasurementHost"
@@ -51,8 +62,9 @@ func _run() -> void:
 	var invalid_interior := InteriorScript.new() as Node3D
 	invalid_interior.call("build", invalid_host)
 	_check(bool(invalid_interior.call("configure_for_structure", "workshop", workshop_measurement, AssetCatalog.structure_access_zones("workshop", 0), workshop_definition.get("interior_profile", {}))), "adversarial Workshop must configure before invalidation")
+	invalid_interior.call("sync_persisted_stations", persisted_stations)
 	var invalid_room := invalid_interior.get_node_or_null("WorkshopInteriorRoom") as Node3D
-	var invalid_station := invalid_room.get_node_or_null("InteriorStation_anvil") as Node3D if invalid_room != null else null
+	var invalid_station := invalid_room.get_node_or_null("InteriorStation_anvil_001") as Node3D if invalid_room != null else null
 	if invalid_station != null:
 		invalid_interior.call("_disable_station_collision", invalid_station, "qa_invalid_visible_mesh")
 	invalid_interior.set("room_measurements_valid", bool(invalid_interior.call("_validate_room_measurements")))

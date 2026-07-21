@@ -355,6 +355,34 @@ const STRUCTURES := {
 	"storage_shed": {"footprint": [5, 4], "cost": {"wood": 10, "stone": 4, "plank": 3}, "hours": 24.0, "unique": false, "requires_blueprint": "Tideglass Compass", "cargo_bonus": 4, "summary": "A sturdy stockpile that expands expedition satchel capacity by 4."},
 }
 
+## Shared fallback geometry for interior rooms. A measured source shell may
+## refine this profile at runtime, but the session, preview, and room builder
+## all start from this single contract.
+const INTERIOR_LAYOUTS := {
+	"workshop": {
+		"room_size": [8.2, 6.2],
+		"room_height": 3.65,
+		"door_width": 1.45,
+		"cell_size": 1.0,
+		"wall_clearance": 0.45,
+		"door_clearance_depth": 0.85,
+		"door_facing": [0.0, 0.0, 1.0],
+	}
+}
+
+## Interior fit-out is authored separately from the exterior shell. A Workshop
+## can be entered as soon as its shell finishes, but it only grants a capability
+## after the player places and supplies the corresponding station. Footprints
+## are measured-room cells so the presentation preview and persistent collision
+## use the same physical claim.
+const INTERIOR_STATIONS := {
+	"workbench": {"structure_kind": "workshop", "label": "Crafting Workbench", "footprint": [2, 1], "cost": {"wood": 4, "stone": 2}, "hours": 12.0, "capability": "workshop_crafting", "action": "workshop", "asset_kind": "workbench", "unique": true},
+	"furnace_left": {"structure_kind": "workshop", "label": "Smelter Furnace", "footprint": [2, 1], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_left", "unique": true},
+	"furnace_right": {"structure_kind": "workshop", "label": "Forge Furnace", "footprint": [2, 1], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_right", "unique": true},
+	"anvil": {"structure_kind": "workshop", "label": "Anvil", "footprint": [1, 1], "cost": {"stone": 2, "plank": 1}, "hours": 12.0, "capability": "workshop_metalwork", "action": "anvil", "asset_kind": "anvil", "unique": true},
+	"storage": {"structure_kind": "workshop", "label": "Material Storage", "footprint": [2, 1], "cost": {"wood": 3, "stone": 1}, "hours": 8.0, "capability": "workshop_storage", "action": "storage", "asset_kind": "storage", "unique": true},
+}
+
 static func expedition_cost(expedition_id: String) -> int:
 	return int(EXPEDITIONS.get(expedition_id, {}).get("travel_energy", 0))
 
@@ -413,6 +441,27 @@ static func livestock_trait_definition(trait_id: String) -> Dictionary:
 
 static func structure_definition(structure_id: String) -> Dictionary:
 	return STRUCTURES.get(structure_id, {}).duplicate(true)
+
+static func interior_station_definition(station_kind: String) -> Dictionary:
+	return INTERIOR_STATIONS.get(station_kind, {}).duplicate(true)
+
+static func interior_station_footprint(station_kind: String, rotation_quarter_turns := 0) -> Vector2i:
+	var definition := interior_station_definition(station_kind)
+	var footprint: Array = definition.get("footprint", [])
+	if footprint.size() < 2:
+		return Vector2i.ZERO
+	var base := Vector2i(int(footprint[0]), int(footprint[1]))
+	return base if posmod(rotation_quarter_turns, 2) == 0 else Vector2i(base.y, base.x)
+
+static func interior_station_ids_for_structure(structure_kind: String) -> Array:
+	var ids: Array = []
+	for station_kind in INTERIOR_STATIONS:
+		if str(INTERIOR_STATIONS[station_kind].get("structure_kind", "")) == structure_kind:
+			ids.append(str(station_kind))
+	return ids
+
+static func interior_layout(structure_id: String) -> Dictionary:
+	return (INTERIOR_LAYOUTS.get(structure_id, {}) as Dictionary).duplicate(true)
 
 static func guardian_definition(guardian_id: String) -> Dictionary:
 	return GUARDIANS.get(guardian_id, {}).duplicate(true)

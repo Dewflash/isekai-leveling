@@ -336,27 +336,36 @@ func _run() -> void:
 	assert(int(session.get("inventory").get("plank", -1)) == 0)
 	# Workshop orders are durable commands: a failed save must roll back both
 	# ingredient debit and completed-output claim.
+	var fitout_structure_id := "workshop_fitout_001"
+	session.get("structures")[fitout_structure_id] = {"id": fitout_structure_id, "kind": "workshop", "cell": [3, 9], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 36.0, "delivered_materials": {"wood": 12, "stone": 8}}
+	session.get("interior_stations")[fitout_structure_id] = {"workbench_001": {"id": "workbench_001", "structure_id": fitout_structure_id, "kind": "workbench", "cell": [-2, -1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}}}
+	session.call("_recalculate_structure_effects")
+	var fitout_station := Node3D.new()
+	fitout_station.add_to_group("building_interior_station")
+	fitout_station.set_meta("interior_station_id", "workbench_001")
+	fitout_station.set_meta("interior_structure_id", fitout_structure_id)
+	fitout_station.set_meta("installation_state", "operational")
+	world.add_child(fitout_station)
 	var before_workshop: Dictionary = session.call("snapshot_state")
-	session.get("built")["workshop"] = true
 	session.get("inventory")["wood"] = 3
 	session.get("inventory")["stone"] = 1
 	session.get("inventory")["plank"] = 0
 	world.set("selected_recipe", "plank")
 	session.save_blocked = true
-	world.call("_workshop_use", world.workshop)
+	world.call("_workshop_use", fitout_station)
 	assert(str(session.get("station_job").get("kind", "none")) == "none")
 	assert(int(session.get("inventory").get("wood", 0)) == 3)
 	session.save_blocked = false
-	world.call("_workshop_use", world.workshop)
+	world.call("_workshop_use", fitout_station)
 	assert(str(session.get("station_job").get("kind", "none")) == "plank")
 	assert(int(session.get("inventory").get("wood", 0)) == 0)
 	session.get("station_job")["remaining_hours"] = 0.0
 	session.save_blocked = true
-	world.call("_workshop_use", world.workshop)
+	world.call("_workshop_use", fitout_station)
 	assert(str(session.get("station_job").get("kind", "none")) == "plank")
 	assert(int(session.get("inventory").get("plank", 0)) == 0)
 	session.save_blocked = false
-	world.call("_workshop_use", world.workshop)
+	world.call("_workshop_use", fitout_station)
 	assert(str(session.get("station_job").get("kind", "none")) == "none")
 	assert(int(session.get("inventory").get("plank", 0)) == 4)
 	session.call("restore_state", before_workshop)

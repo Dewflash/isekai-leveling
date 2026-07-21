@@ -2,6 +2,12 @@ extends SceneTree
 
 const SessionScript = preload("res://scripts/game_session.gd")
 
+func _install_operational_workshop(session: Node) -> void:
+	var structure_id := "workshop_001"
+	session.structures[structure_id] = {"id": structure_id, "kind": "workshop", "cell": [3, 9], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 36.0, "delivered_materials": {"wood": 12, "stone": 8}}
+	session.interior_stations[structure_id] = {"workbench_legacy": {"id": "workbench_legacy", "structure_id": structure_id, "kind": "workbench", "cell": [-2, -1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}}}
+	session.call("_recalculate_structure_effects")
+
 func _init() -> void:
 	var qa_dir := DirAccess.open("user://")
 	if qa_dir != null:
@@ -72,6 +78,7 @@ func _init() -> void:
 	assert(not day_reloaded.advance_day(3))
 	# Save/load preserves a meaningful runtime state.
 	session.add_item("ore", 7)
+	session.station_job = {"kind": "none", "structure_id": "", "station_id": "", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": "plank", "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
 	assert(session.save_game())
 	var loaded := SessionScript.new()
 	loaded.save_slot = "qa_session"
@@ -318,7 +325,7 @@ func _init() -> void:
 	economy.inventory["water"] = 2
 	assert(economy.interact_farm()["action"] == "tilled")
 	assert(economy.interact_farm()["action"] == "planted")
-	economy.built["workshop"] = true
+	_install_operational_workshop(economy)
 	economy.inventory["stone"] = 2
 	var started_job: Dictionary = economy.start_workshop_job("plank")
 	assert(started_job["remaining_hours"] == 12.0)
@@ -816,6 +823,15 @@ func _init() -> void:
 	for build_day in 3:
 		placed_builder.advance_day(placed_builder.day + 1)
 	assert(str(placed_builder.structures[workshop_blueprint["id"]]["state"]) == "operational")
+	assert(not bool(placed_builder.built["workshop"]))
+	placed_builder.inventory["wood"] = 4
+	placed_builder.inventory["stone"] = 2
+	var workbench_blueprint: Dictionary = placed_builder.place_interior_station(str(workshop_blueprint["id"]), "workbench", [-2, -1], 0)
+	assert(workbench_blueprint["state"] == "blueprint")
+	assert(placed_builder.deliver_interior_station_material(str(workshop_blueprint["id"]), str(workbench_blueprint["id"]), "wood", 4)["state"] == "blueprint")
+	assert(placed_builder.deliver_interior_station_material(str(workshop_blueprint["id"]), str(workbench_blueprint["id"]), "stone", 2)["state"] == "building")
+	placed_builder.advance_day(placed_builder.day + 1)
+	assert(str(placed_builder.interior_stations[workshop_blueprint["id"]][workbench_blueprint["id"]]["state"]) == "operational")
 	assert(bool(placed_builder.built["workshop"]))
 	# Fresh-save progression must not deadlock at the first research building:
 	# the Archive is the bootstrap research desk, while discoveries gate later
@@ -883,7 +899,7 @@ func _init() -> void:
 	var locked_recipe := SessionScript.new()
 	locked_recipe.save_slot = "qa_locked_recipe"
 	root.add_child(locked_recipe)
-	locked_recipe.built["workshop"] = true
+	_install_operational_workshop(locked_recipe)
 	locked_recipe.inventory["berries"] = 1
 	locked_recipe.inventory["water"] = 1
 	locked_recipe.inventory["slime_gel"] = 1
@@ -893,8 +909,8 @@ func _init() -> void:
 	var forged_job := SessionScript.new()
 	forged_job.save_slot = "qa_forged_job"
 	root.add_child(forged_job)
-	forged_job.built["workshop"] = true
-	forged_job.station_job = {"kind": "plank", "remaining_hours": 0.0, "total_hours": 12.0, "output_id": "relic", "output": 99}
+	_install_operational_workshop(forged_job)
+	forged_job.station_job = {"kind": "plank", "structure_id": "workshop_001", "station_id": "workbench_legacy", "remaining_hours": 0.0, "total_hours": 12.0, "output_id": "relic", "output": 99, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "forged", "material_refunded": false}
 	assert(forged_job.claim_workshop_job().is_empty())
 	assert(forged_job.inventory.get("relic", 0) == 0)
 	assert(str(forged_job.station_job["kind"]) == "plank")

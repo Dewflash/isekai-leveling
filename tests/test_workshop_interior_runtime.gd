@@ -85,7 +85,7 @@ func _run() -> void:
 	_check(not bool(world.get("placement_mode")), "Sanctuary placement must be forbidden while inside a building")
 	world.call("_toggle_utilities")
 	_check(not bool(world.get("utilities_open")), "Sanctuary ledger toggle must be forbidden while inside a building")
-	_check(int(interior.call("active_station_count")) == 6, "entered workshop must expose all authored stations")
+	_check(int(interior.call("active_station_count")) == 1, "entered shell must expose only its exit until the player fits it out")
 	var entry_facing: Vector3 = player.get("last_direction")
 	var expected_entry_facing: Vector3 = interior.call("entry_facing")
 	_check(entry_facing.dot(expected_entry_facing) > 0.94, "interior spawn must face inward through the door")

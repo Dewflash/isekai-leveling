@@ -20,6 +20,7 @@ const SanctuaryStyleScript = preload("res://scripts/sanctuary_style.gd")
 const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd")
 const SanctuaryAssetMeasurement = preload("res://scripts/sanctuary_asset_measurement.gd")
 const BuildingInteriorScript = preload("res://scripts/building_interior.gd")
+const InteriorGrid = preload("res://scripts/interior_grid.gd")
 
 const SOURCED_TREE_ASSETS := {
 	"Sanctuary": "res://assets/quaternius-stylized-nature/glTF/CommonTree_2.gltf",
@@ -66,6 +67,10 @@ var interior_kind := ""
 var interior_instance_id := ""
 var interior_return_position := Vector3.ZERO
 var interior_return_facing := Vector3(0.0, 0.0, 1.0)
+var interior_station_placement_mode := false
+var interior_station_rotation := 0
+var interior_station_preview_cell := Vector2i.ZERO
+var interior_station_preview_valid := false
 var world_zones: Array[Node3D] = []
 var wildlife_nodes: Array[Node3D] = []
 var player: CharacterBody3D
@@ -347,6 +352,7 @@ func _process(delta: float) -> void:
 	_update_expedition_route_progress()
 	_update_attack_action(delta)
 	_update_structure_preview()
+	_update_interior_station_preview()
 	_update_lighting()
 	_update_audio_context()
 	_update_interaction_marker(delta)
@@ -387,8 +393,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	if get_tree().paused and not event.is_action_pressed("pause"):
 		return
 	if interior_active:
+		if event.is_action_pressed("build") or event.is_action_pressed("blueprint"):
+			_toggle_interior_station_placement()
+			return
+		if event.is_action_pressed("rotate_build"):
+			_rotate_interior_station_placement()
+			return
 		if event.is_action_pressed("interact"):
-			_contextual_interact()
+			if interior_station_placement_mode:
+				_confirm_interior_station_placement()
+			else:
+				_contextual_interact()
 		return
 	if is_player_input_locked() and not event.is_action_pressed("interact"):
 		return
@@ -4539,6 +4554,9 @@ func _copy_session_to_runtime() -> void:
 func _on_session_changed() -> void:
 	_copy_session_to_runtime()
 	_refresh_structure_visuals()
+	if interior_active and building_interior != null and session != null:
+		var persisted: Dictionary = session.get("interior_stations").get(interior_instance_id, {})
+		building_interior.call("sync_persisted_stations", persisted)
 
 func _on_session_feedback(kind: String, payload: Dictionary) -> void:
 	if suppress_activity_feedback and kind in ["activity", "mastery_unlock"]:
@@ -5223,12 +5241,14 @@ func _update_hud() -> void:
 		rotate_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and placement_mode
 		rotate_button.text = "Rotate Blueprint  [X]  %d°" % (placement_rotation_quarter_turns * 90)
 	if build_button != null:
-		var workshop_context := not interior_active and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop"))
+		var workshop_context := (interior_active and interior_kind == "workshop") or (not interior_active and current_zone == "Sanctuary" and (context_node == workshop or _is_player_structure_kind(context_node, "workshop")))
 		build_button.visible = not fishing_locked and workshop_context
 		var construction_state := "none"
 		if session != null:
 			construction_state = str(session.get("construction_job").get("status", "none"))
-		if _is_player_structure_kind(context_node, "workshop"):
+		if interior_active:
+			build_button.text = "Confirm Workbench  [E]" if interior_station_placement_mode else "Place Workbench  [B]"
+		elif _is_player_structure_kind(context_node, "workshop"):
 			var placed_state: Dictionary = session.get("structures").get(str(context_node.get_meta("construction_id")), {}) if session != null else {}
 			build_button.text = "Use Workshop" if str(placed_state.get("state", "")) == "operational" else ("Deliver Workshop Materials" if str(placed_state.get("state", "")) == "blueprint" else "Workshop frame in progress")
 		else:
@@ -5586,6 +5606,9 @@ func _is_player_structure_kind(node: Node, kind: String) -> bool:
 func _workshop_contextual_action() -> void:
 	if get_tree().paused:
 		return
+	if interior_active:
+		_toggle_interior_station_placement()
+		return
 	var context_node := _nearest_interactable()
 	if _is_player_structure_kind(context_node, "workshop"):
 		_construction_interact(context_node as Node3D)
@@ -5600,6 +5623,9 @@ func _livestock_contextual_action() -> void:
 
 func _contextual_interact() -> void:
 	if get_tree().paused or interior_transitioning:
+		return
+	if interior_active and interior_station_placement_mode:
+		_confirm_interior_station_placement()
 		return
 	if is_player_input_locked():
 		_fishing_action()
@@ -5699,6 +5725,10 @@ func _enter_building_interior(structure_node: Node3D) -> void:
 	if not building_interior.call("configure_for_structure", "workshop", measurement, access_zones, interior_profile):
 		_show_toast("The Workshop interior is unavailable until its measured shell is valid.", 2.6)
 		return
+	var measured_interior_layout: Dictionary = building_interior.call("room_layout")
+	if not bool(session.call("set_interior_layout", instance_id, measured_interior_layout)):
+		_show_toast("The measured Workshop layout could not be secured.", 2.6)
+		return
 	var old_interior_kind := interior_kind
 	var old_interior_instance_id := interior_instance_id
 	var old_return_position := interior_return_position
@@ -5774,6 +5804,8 @@ func _finish_enter_building_interior() -> void:
 		# instead of exposing the outdoor teal clear color around its edges.
 		environment_node.environment.background_color = Color("#162127")
 	interior_active = true
+	var persisted_stations: Dictionary = session.get("interior_stations").get(interior_instance_id, {}) if session != null else {}
+	building_interior.call("sync_persisted_stations", persisted_stations)
 	player.global_position = building_interior.call("entry_position")
 	player.set("last_direction", building_interior.call("entry_facing"))
 	player.call("cancel_navigation", true)
@@ -5782,12 +5814,15 @@ func _finish_enter_building_interior() -> void:
 		var room_dimensions: Vector3 = building_interior.call("room_dimensions")
 		camera.size = maxf(8.8, room_dimensions.z * 1.78)
 	camera_anchor_initialized = false
-	_show_toast("Workshop entered  |  Furnace, bench, anvil and storage are ready.", 2.8)
+	_show_toast("Workshop entered  |  Empty shell: place a Workbench with B.", 3.0) if persisted_stations.is_empty() else _show_toast("Workshop entered  |  Fit-out stations load from your saved plan.", 2.8)
 
 func _exit_building_interior() -> void:
 	if get_tree().paused or not interior_active or interior_transitioning or building_interior == null:
 		return
 	_reset_manual_input()
+	interior_station_placement_mode = false
+	if building_interior != null:
+		building_interior.call("clear_station_preview")
 	interior_transitioning = true
 	var started := bool(building_interior.call("transition_to", false, "", "", Callable(self, "_finish_exit_building_interior")))
 	if not started:
@@ -5795,6 +5830,9 @@ func _exit_building_interior() -> void:
 
 func _finish_exit_building_interior() -> void:
 	interior_active = false
+	interior_station_placement_mode = false
+	if building_interior != null:
+		building_interior.call("clear_station_preview")
 	var environment_node := get_node_or_null("WorldEnvironment") as WorldEnvironment
 	if environment_node != null and environment_node.environment != null:
 		environment_node.environment.background_color = _zone_background(current_zone)
@@ -5886,12 +5924,120 @@ func _interior_interact() -> void:
 	match action:
 		"exit":
 			_exit_building_interior()
-		"storage":
-			_show_toast("Material Storage  |  Your banked resources are available from the Workshop.", 2.4)
-		"workshop":
-			_workshop_use()
+		"storage", "workshop", "furnace", "anvil":
+			var station_state := str(nearest.get_meta("installation_state", "blueprint"))
+			if station_state != "operational":
+				_deliver_interior_station_material(nearest)
+			elif action == "storage":
+				_show_toast("Material Storage  |  Your banked resources are available from the Workshop.", 2.4)
+			elif action == "workshop":
+				_workshop_use(nearest)
+			else:
+				_show_toast("%s is operational. Its production recipe will be wired to this station next." % str(nearest.get_meta("interior_station_id", "Station")).replace("_", " ").capitalize(), 2.4)
 		_:
 			_show_toast("This station is not operational yet.", 1.8)
+
+func _update_interior_station_preview() -> void:
+	if not interior_active or not interior_station_placement_mode or building_interior == null or session == null or player == null:
+		if building_interior != null and not interior_station_placement_mode:
+			building_interior.call("clear_station_preview")
+		return
+	var player_local: Vector3 = building_interior.call("world_to_room_local", player.global_position)
+	var facing: Vector3 = player.get("last_direction") if player.get("last_direction") is Vector3 else Vector3(0.0, 0.0, -1.0)
+	if facing.length_squared() < 0.01:
+		facing = Vector3(0.0, 0.0, -1.0)
+	var footprint := ContentRegistry.interior_station_footprint("workbench", interior_station_rotation)
+	var target_local := player_local + facing.normalized() * 1.45
+	var layout: Dictionary = session.call("interior_layout_for_structure", interior_instance_id)
+	var layout_size_value: Variant = layout.get("room_size", [8.2, 6.2])
+	var layout_size := Vector2(8.2, 6.2)
+	if layout_size_value is Array and (layout_size_value as Array).size() >= 2:
+		layout_size = Vector2(float((layout_size_value as Array)[0]), float((layout_size_value as Array)[1]))
+	var layout_cell_size := float(layout.get("cell_size", 1.0))
+	var candidate_cell := InteriorGrid.local_to_cell(target_local, footprint, layout_size, layout_cell_size)
+	var player_cell := InteriorGrid.local_to_cell(player_local, Vector2i.ONE, layout_size, layout_cell_size)
+	var valid := bool(session.call("can_place_interior_station", interior_instance_id, "workbench", [candidate_cell.x, candidate_cell.y], interior_station_rotation, [player_cell.x, player_cell.y]))
+	interior_station_preview_cell = candidate_cell
+	interior_station_preview_valid = valid
+	building_interior.call("set_station_preview", candidate_cell, interior_station_rotation, valid)
+
+func _toggle_interior_station_placement() -> void:
+	if not interior_active or interior_transitioning:
+		return
+	interior_station_placement_mode = not interior_station_placement_mode
+	if not interior_station_placement_mode:
+		building_interior.call("clear_station_preview")
+		_show_toast("Workbench placement cancelled.", 1.6)
+	else:
+		_show_toast("Place Workbench  |  Face the location and press E to confirm. X rotates.", 3.0)
+
+func _rotate_interior_station_placement() -> void:
+	if not interior_active or not interior_station_placement_mode:
+		return
+	interior_station_rotation = posmod(interior_station_rotation + 1, 4)
+	_show_toast("Workbench rotation: %d°" % (interior_station_rotation * 90), 1.5)
+
+func _confirm_interior_station_placement() -> void:
+	if not interior_active or not interior_station_placement_mode or not interior_station_preview_valid or session == null:
+		_show_toast("The Workbench footprint is blocked. Move to a clear wall-side cell.", 2.2)
+		return
+	var before: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+	var placed: Dictionary = session.call("place_interior_station", interior_instance_id, "workbench", [interior_station_preview_cell.x, interior_station_preview_cell.y], interior_station_rotation, [])
+	if placed.is_empty():
+		_show_toast("That Workbench cannot be placed there.", 2.2)
+		return
+	if not bool(session.call("save_game")):
+		if not before.is_empty():
+			session.call("restore_state", before)
+		_copy_session_to_runtime()
+		building_interior.call("sync_persisted_stations", session.get("interior_stations").get(interior_instance_id, {}))
+		_show_toast("The fit-out could not be secured. Nothing was placed.", 2.8)
+		return
+	interior_station_placement_mode = false
+	building_interior.call("clear_station_preview")
+	_show_toast("Workbench blueprint placed. Bring Wood and Stone to assemble it.", 3.0)
+
+func _deliver_interior_station_material(station_node: Node3D) -> void:
+	if session == null or station_node == null:
+		return
+	var station_id := str(station_node.get_meta("interior_station_id", ""))
+	var parent_id := str(station_node.get_meta("interior_structure_id", interior_instance_id))
+	var record: Dictionary = session.call("interior_station_status", parent_id, station_id)
+	if record.is_empty():
+		_show_toast("This station identity is no longer valid. Re-enter the Workshop.", 2.2)
+		return
+	var state := str(record.get("state", "blueprint"))
+	if state == "building":
+		_show_toast("The station is assembling. Sleep to advance its work.", 2.4)
+		return
+	if state == "operational":
+		return
+	var definition := ContentRegistry.interior_station_definition(str(record.get("kind", "")))
+	var delivered: Dictionary = record.get("delivered_materials", {})
+	for material_id in definition.get("cost", {}):
+		var remaining := int(definition["cost"][material_id]) - int(delivered.get(str(material_id), 0))
+		var available := int(session.get("inventory").get(str(material_id), 0))
+		if remaining <= 0:
+			continue
+		if available <= 0:
+			_show_toast("Bring %d %s to the blueprint." % [remaining, str(material_id).capitalize()], 2.4)
+			return
+		var before: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
+		var amount := mini(remaining, available)
+		var updated: Dictionary = session.call("deliver_interior_station_material", parent_id, station_id, str(material_id), amount)
+		if updated.is_empty():
+			_show_toast("That material could not be delivered.", 2.2)
+			return
+		if not bool(session.call("save_game")):
+			if not before.is_empty():
+				session.call("restore_state", before)
+			_copy_session_to_runtime()
+			building_interior.call("sync_persisted_stations", session.get("interior_stations").get(interior_instance_id, {}))
+			_show_toast("The delivery could not be secured. Nothing was consumed.", 2.8)
+			return
+		building_interior.call("sync_persisted_stations", session.get("interior_stations").get(interior_instance_id, {}))
+		_show_toast("Delivered %d %s to the station." % [amount, str(material_id).capitalize()], 2.2)
+		return
 
 func _is_live_resource_node(node: Node) -> bool:
 	if node == null or not is_instance_valid(node) or not node.is_in_group("resource_node") or not node.is_visible_in_tree():
@@ -6359,11 +6505,21 @@ func _has_operational_player_structure(kind: String) -> bool:
 func _workshop_use(source: Node3D = null) -> void:
 	if session == null:
 		return
+	var station_id := ""
+	var station_parent_id := ""
+	if source != null and source.is_in_group("building_interior_station"):
+		station_id = str(source.get_meta("interior_station_id", ""))
+		station_parent_id = str(source.get_meta("interior_structure_id", interior_instance_id))
+		if str(source.get_meta("installation_state", "blueprint")) != "operational":
+			_deliver_interior_station_material(source)
+			return
+		if not bool(session.call("has_station_capability", station_parent_id, "workshop_crafting", station_id)):
+			_show_toast("This Workbench is not operational yet.", 2.2)
+			return
 	if source == workshop and _has_operational_player_structure("workshop"):
 		_show_toast("This is the old workshop shell. Use the Workshop you placed in the Sanctuary.", 2.6)
 		return
-	var placed_workshop_available := _has_operational_player_structure("workshop")
-	if not bool(session.get("built").get("workshop", false)) and not placed_workshop_available:
+	if station_id.is_empty() and not bool(session.get("built").get("workshop", false)):
 		_show_toast("This is a shell. Place and finish a Workshop blueprint first.", 2.5)
 		return
 	var job: Dictionary = session.get("station_job")
@@ -6392,7 +6548,7 @@ func _workshop_use(source: Node3D = null) -> void:
 		var recipe: Dictionary = ContentRegistry.workshop_recipe(recipe_id)
 		var recipe_text := str(recipe.get("summary", "The recipe is incomplete."))
 		var before_start: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-		var started: Dictionary = session.call("start_workshop_job", recipe_id)
+		var started: Dictionary = session.call("start_workshop_job", recipe_id, station_id, station_parent_id)
 		if started.is_empty():
 			_show_toast("Workshop recipe: %s." % recipe_text, 2.5)
 			return

@@ -4,6 +4,7 @@ extends Node
 const ContentRegistry = preload("res://scripts/content_registry.gd")
 const SettlementGrid = preload("res://scripts/settlement_grid.gd")
 const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd")
+const InteriorGrid = preload("res://scripts/interior_grid.gd")
 
 ## The authoritative, serializable gameplay state for the expedition loop.
 ## Presentation nodes submit commands here through main.gd and receive signals.
@@ -11,7 +12,7 @@ const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd"
 signal state_changed
 signal feedback_requested(kind: String, payload: Dictionary)
 
-const SAVE_VERSION := 24
+const SAVE_VERSION := 25
 const CONTENT_VERSION := 1
 const CHANCE_ROLL_VERSION := 1
 const DEFAULT_WORLD_SEED := "isekai-leveling-sanctuary-v1"
@@ -62,7 +63,7 @@ var research_clues: Array[Dictionary] = []
 var fishing_attempt := {"status": "idle", "phase": "idle", "attempt_id": "", "spot_id": "", "zone_id": "", "elapsed": 0.0, "bite_at": 0.0, "hook_deadline": 0.0, "reel_progress": 0.0, "tension": 0.0, "mistakes": 0, "perfect_hook": false, "catch_amount": 0, "bonus_fish": false, "uncommon_catch": false, "bonus_resource_id": "", "bonus_resource_amount": 0, "seed": 0, "reel_pulse": false}
 var built := {"workshop": false, "library": false, "livestock_pen": false}
 var farm_plot := {"state": "empty", "crop": "wheat", "growth": 0, "watered": false}
-var station_job := {"kind": "none", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": "plank", "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
+var station_job := {"kind": "none", "structure_id": "", "station_id": "", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": "plank", "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
 var equipment := {
 		"hatchet": {"durability": 18, "max_durability": 18, "wear_remainder": 0.0},
 		"pickaxe": {"durability": 18, "max_durability": 18, "wear_remainder": 0.0},
@@ -85,6 +86,10 @@ var sanctuary_contact_progress := {}
 var resource_node_catalog := {}
 var resource_contract_required := false
 var structures := {}
+## structure_id -> station_instance_id -> fit-out record. A completed shell is
+## enterable, but no crafting capability exists until this map contains an
+## operational station. This is the save authority for interior placement.
+var interior_stations := {}
 var activity_receipts: Array[String] = []
 var activity_events: Array[Dictionary] = []
 var activity_cursor := ""
@@ -953,9 +958,17 @@ func interact_farm() -> Dictionary:
 		return {"ok": true, "action": "watered"}
 	return {"ok": false, "reason": "growing"}
 
-func start_workshop_job(recipe_id: String) -> Dictionary:
-	if not bool(built.get("workshop", false)):
+func start_workshop_job(recipe_id: String, station_id := "", structure_id := "") -> Dictionary:
+	# A station id is only meaningful within its parent structure.  Callers that
+	# identify a station must therefore provide both halves of the identity;
+	# leaving both blank retains the authored single-workbench convenience path.
+	if not station_id.is_empty() and structure_id.is_empty():
 		return {}
+	var binding := workshop_station_binding(station_id, structure_id)
+	if binding.is_empty():
+		return {}
+	var selected_structure_id := str(binding.get("structure_id", ""))
+	var selected_station_id := str(binding.get("station_id", ""))
 	if str(station_job.get("kind", "none")) != "none":
 		return {}
 	var recipe := ContentRegistry.workshop_recipe(recipe_id)
@@ -978,7 +991,7 @@ func start_workshop_job(recipe_id: String) -> Dictionary:
 			if int(common_cost.get(material_id, 0)) > 0:
 				inventory[material_id] = int(inventory.get(material_id, 0)) + 1
 				break
-	station_job = {"kind": recipe_id, "remaining_hours": float(recipe.get("hours", 12.0)), "total_hours": float(recipe.get("hours", 12.0)), "output_id": recipe_id, "output": int(recipe.get("output", 0)), "output_kind": output_kind, "tool_id": tool_id, "quality_multiplier": float(permission_effect("crafting_quality_work", "durability_multiplier", 1.0)) if output_kind == "tool" else 1.0, "action_id": job_action_id, "material_refunded": material_refunded}
+	station_job = {"kind": recipe_id, "structure_id": selected_structure_id, "station_id": selected_station_id, "remaining_hours": float(recipe.get("hours", 12.0)), "total_hours": float(recipe.get("hours", 12.0)), "output_id": recipe_id, "output": int(recipe.get("output", 0)), "output_kind": output_kind, "tool_id": tool_id, "quality_multiplier": float(permission_effect("crafting_quality_work", "durability_multiplier", 1.0)) if output_kind == "tool" else 1.0, "action_id": job_action_id, "material_refunded": material_refunded}
 	state_changed.emit()
 	return station_job.duplicate(true)
 
@@ -1181,13 +1194,20 @@ func resolve_attack(base_damage: int, combo_step: int = 1, target_health: int = 
 func claim_workshop_job() -> Dictionary:
 	if str(station_job.get("kind", "none")) == "none" or float(station_job.get("remaining_hours", 0.0)) > 0.0:
 		return {}
+	var job_structure_id := str(station_job.get("structure_id", ""))
+	var job_station_id := str(station_job.get("station_id", ""))
+	var bound_station := workshop_station_binding(job_station_id, job_structure_id)
+	if job_structure_id.is_empty() or str(bound_station.get("structure_id", "")) != job_structure_id or str(bound_station.get("station_id", "")) != job_station_id:
+		return {}
 	var output_id := str(station_job.get("output_id", ""))
 	var output := int(station_job.get("output", 0))
 	if output_id.is_empty() or output_id != str(station_job.get("kind", "")) or output <= 0 or not ContentRegistry.WORKSHOP_RECIPES.has(output_id):
 		return {}
 	var recipe: Dictionary = ContentRegistry.workshop_recipe(output_id)
 	var output_kind := str(station_job.get("output_kind", recipe.get("output_kind", "material")))
-	if output_kind not in ["material", "tool"] or output_kind != str(recipe.get("output_kind", "material")):
+	var expected_output := int(recipe.get("output", 0))
+	var expected_hours := float(recipe.get("hours", 0.0))
+	if output_kind not in ["material", "tool"] or output_kind != str(recipe.get("output_kind", "material")) or output != expected_output or float(station_job.get("total_hours", 0.0)) != expected_hours:
 		return {}
 	if output_kind == "tool":
 		var tool_id := str(station_job.get("tool_id", recipe.get("tool_id", "")))
@@ -1200,11 +1220,11 @@ func claim_workshop_job() -> Dictionary:
 		tool["durability"] = crafted_max
 		tool["wear_remainder"] = 0.0
 		equipment[tool_id] = tool
-		station_job = {"kind": "none", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": output_id, "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
+		station_job = {"kind": "none", "structure_id": "", "station_id": "", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": output_id, "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
 		award_mastery("Crafting", 12)
 		return {"output_id": output_id, "output": output, "output_kind": "tool", "tool_id": tool_id, "max_durability": crafted_max}
 	inventory[output_id] = int(inventory.get(output_id, 0)) + output
-	station_job = {"kind": "none", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": output_id, "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
+	station_job = {"kind": "none", "structure_id": "", "station_id": "", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": output_id, "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
 	award_mastery("Crafting", 10)
 	return {"output_id": output_id, "output": output}
 
@@ -2476,9 +2496,198 @@ func place_structure(structure_id: String, cell: Array, rotation_quarter_turns :
 	var delivered_materials := {}
 	for material_id in cost:
 		delivered_materials[str(material_id)] = 0
-	structures[structure_id_instance] = {"id": structure_id_instance, "kind": structure_id, "cell": [int(cell[0]), int(cell[1])], "rotation": posmod(rotation_quarter_turns, 4), "state": "blueprint", "remaining_hours": 0.0, "total_hours": float(definition.get("hours", 24.0)), "delivered_materials": delivered_materials}
+	var structure_record := {"id": structure_id_instance, "kind": structure_id, "cell": [int(cell[0]), int(cell[1])], "rotation": posmod(rotation_quarter_turns, 4), "state": "blueprint", "remaining_hours": 0.0, "total_hours": float(definition.get("hours", 24.0)), "delivered_materials": delivered_materials}
+	if structure_id == "workshop":
+		structure_record["interior_layout"] = ContentRegistry.interior_layout(structure_id)
+	structures[structure_id_instance] = structure_record
 	state_changed.emit()
 	return structures[structure_id_instance].duplicate(true)
+
+func _workshop_shell_ready(structure_id: String) -> bool:
+	if structure_id.is_empty() or not structures.has(structure_id):
+		return false
+	var structure: Dictionary = structures.get(structure_id, {})
+	return str(structure.get("kind", "")) == "workshop" and str(structure.get("state", "")) == "operational"
+
+func can_place_interior_station(structure_id: String, station_kind: String, local_cell: Array, rotation_quarter_turns := 0, player_cell := []) -> bool:
+	if not _workshop_shell_ready(structure_id) or not ContentRegistry.INTERIOR_STATIONS.has(station_kind):
+		return false
+	if local_cell.size() < 2:
+		return false
+	for component in local_cell.slice(0, 2):
+		if not _valid_integer(component, -32, 32):
+			return false
+	if not _valid_integer(rotation_quarter_turns, 0, 3):
+		return false
+	var origin := Vector2i(int(local_cell[0]), int(local_cell[1]))
+	var rotation := int(rotation_quarter_turns)
+	var definition := ContentRegistry.interior_station_definition(station_kind)
+	if str(definition.get("structure_kind", "")) != "workshop":
+		return false
+	var footprint := ContentRegistry.interior_station_footprint(station_kind, rotation)
+	if footprint == Vector2i.ZERO:
+		return false
+	var existing: Dictionary = interior_stations.get(structure_id, {})
+	var blocked: Array = []
+	for existing_id in existing:
+		var existing_record: Variant = existing.get(existing_id, {})
+		if not (existing_record is Dictionary):
+			return false
+		var existing_cell_value: Variant = existing_record.get("cell", [])
+		if not (existing_cell_value is Array):
+			return false
+		var existing_cell: Array = existing_cell_value
+		if existing_cell.size() < 2:
+			return false
+		var existing_kind := str(existing_record.get("kind", ""))
+		var existing_footprint := ContentRegistry.interior_station_footprint(existing_kind, int(existing_record.get("rotation", 0)))
+		if existing_footprint == Vector2i.ZERO:
+			return false
+		if bool(definition.get("unique", true)) and existing_kind == station_kind:
+			return false
+		for cell_value in InteriorGrid.cells_for(Vector2i(int(existing_cell[0]), int(existing_cell[1])), existing_footprint):
+			blocked.append(cell_value)
+	var requested_player_cell := Vector2i(2147483647, 2147483647)
+	if player_cell is Array and player_cell.size() >= 2:
+		requested_player_cell = Vector2i(int(player_cell[0]), int(player_cell[1]))
+	var layout := _interior_layout_for_structure(structure_id)
+	return InteriorGrid.can_place(origin, footprint, _layout_room_size(layout), _layout_float(layout, "door_width", 1.45), blocked, requested_player_cell, _layout_door_facing(layout), _layout_float(layout, "cell_size", 1.0), _layout_float(layout, "wall_clearance", 0.45), _layout_float(layout, "door_clearance_depth", 0.85))
+
+func set_interior_layout(structure_id: String, layout: Dictionary) -> bool:
+	if not _workshop_shell_ready(structure_id) or not _interior_layout_is_supported(layout):
+		return false
+	var structure: Dictionary = structures.get(structure_id, {}).duplicate(true)
+	structure["interior_layout"] = layout.duplicate(true)
+	structures[structure_id] = structure
+	state_changed.emit()
+	return true
+
+func interior_layout_for_structure(structure_id: String) -> Dictionary:
+	return _interior_layout_for_structure(structure_id).duplicate(true)
+
+func _interior_layout_for_structure(structure_id: String) -> Dictionary:
+	var structure: Dictionary = structures.get(structure_id, {})
+	return _interior_layout_from_structure(structure)
+
+func _interior_layout_from_structure(structure: Dictionary) -> Dictionary:
+	var saved_layout: Variant = structure.get("interior_layout", {})
+	if saved_layout is Dictionary and _interior_layout_is_supported(saved_layout):
+		return saved_layout.duplicate(true)
+	return ContentRegistry.interior_layout("workshop")
+
+func _interior_layout_is_supported(layout: Dictionary) -> bool:
+	var room_value: Variant = layout.get("room_size", [])
+	if not (room_value is Array) or (room_value as Array).size() < 2:
+		return false
+	return _valid_number(room_value[0], 3.4, 64.0) and _valid_number(room_value[1], 3.0, 64.0) and _valid_number(layout.get("door_width", 1.45), 0.95, 63.0) and _valid_number(layout.get("cell_size", 1.0), 0.1, 4.0) and _valid_number(layout.get("wall_clearance", 0.45), 0.0, 4.0) and _valid_number(layout.get("door_clearance_depth", 0.85), 0.0, 8.0)
+
+func _layout_room_size(layout: Dictionary) -> Vector2:
+	var room_value: Array = layout.get("room_size", [8.2, 6.2])
+	return Vector2(float(room_value[0]), float(room_value[1]))
+
+func _layout_float(layout: Dictionary, key: String, fallback: float) -> float:
+	return float(layout.get(key, fallback))
+
+func _layout_door_facing(layout: Dictionary) -> Vector3:
+	var facing_value: Variant = layout.get("door_facing", [0.0, 0.0, 1.0])
+	if facing_value is Array and (facing_value as Array).size() >= 3:
+		var facing := Vector3(float(facing_value[0]), float(facing_value[1]), float(facing_value[2]))
+		if facing.length_squared() > 0.01:
+			return facing.normalized()
+	return Vector3(0.0, 0.0, 1.0)
+
+func place_interior_station(structure_id: String, station_kind: String, local_cell: Array, rotation_quarter_turns := 0, player_cell := []) -> Dictionary:
+	if not can_place_interior_station(structure_id, station_kind, local_cell, rotation_quarter_turns, player_cell):
+		return {}
+	var existing: Dictionary = interior_stations.get(structure_id, {}).duplicate(true)
+	var serial := existing.size() + 1
+	var station_id := "%s_%03d" % [station_kind, serial]
+	while existing.has(station_id):
+		serial += 1
+		station_id = "%s_%03d" % [station_kind, serial]
+	var definition := ContentRegistry.interior_station_definition(station_kind)
+	var delivered := {}
+	for material_id in definition.get("cost", {}):
+		delivered[str(material_id)] = 0
+	existing[station_id] = {"id": station_id, "structure_id": structure_id, "kind": station_kind, "cell": [int(local_cell[0]), int(local_cell[1])], "rotation": posmod(rotation_quarter_turns, 4), "state": "blueprint", "remaining_hours": 0.0, "total_hours": float(definition.get("hours", 12.0)), "delivered_materials": delivered}
+	interior_stations[structure_id] = existing
+	state_changed.emit()
+	return existing[station_id].duplicate(true)
+
+func interior_station_status(structure_id: String, station_id: String) -> Dictionary:
+	var station: Variant = interior_stations.get(structure_id, {}).get(station_id, {})
+	return station.duplicate(true) if station is Dictionary else {}
+
+func deliver_interior_station_material(structure_id: String, station_id: String, material_id: String, amount: int = 1) -> Dictionary:
+	if not _workshop_shell_ready(structure_id) or station_id.is_empty() or material_id.is_empty() or amount <= 0:
+		return {}
+	var stations_for_structure: Dictionary = interior_stations.get(structure_id, {})
+	var station: Variant = stations_for_structure.get(station_id, {})
+	if not (station is Dictionary) or str(station.get("state", "")) != "blueprint":
+		return {}
+	var kind := str(station.get("kind", ""))
+	var definition := ContentRegistry.interior_station_definition(kind)
+	var cost: Dictionary = definition.get("cost", {})
+	if definition.is_empty() or not cost.has(material_id):
+		return {}
+	var delivered: Dictionary = station.get("delivered_materials", {}).duplicate(true)
+	var required := int(cost.get(material_id, 0))
+	var already_delivered := int(delivered.get(material_id, 0))
+	var delivered_amount := mini(amount, maxi(0, required - already_delivered))
+	if delivered_amount <= 0 or int(inventory.get(material_id, 0)) < delivered_amount:
+		return {}
+	inventory[material_id] = int(inventory.get(material_id, 0)) - delivered_amount
+	delivered[material_id] = already_delivered + delivered_amount
+	station["delivered_materials"] = delivered
+	var complete := true
+	for required_material in cost:
+		if int(delivered.get(str(required_material), 0)) < int(cost[required_material]):
+			complete = false
+			break
+	if complete:
+		station["state"] = "building"
+		station["remaining_hours"] = float(definition.get("hours", 12.0))
+		station["total_hours"] = float(definition.get("hours", 12.0))
+	stations_for_structure[station_id] = station
+	interior_stations[structure_id] = stations_for_structure
+	state_changed.emit()
+	return station.duplicate(true)
+
+func has_station_capability(structure_id := "", capability_id := "", station_id := "") -> bool:
+	for parent_id in interior_stations:
+		if not structure_id.is_empty() and str(parent_id) != structure_id:
+			continue
+		if not _workshop_shell_ready(str(parent_id)):
+			continue
+		var stations_for_structure: Dictionary = interior_stations.get(parent_id, {})
+		for candidate_id in stations_for_structure:
+			if not station_id.is_empty() and str(candidate_id) != station_id:
+				continue
+			var station: Variant = stations_for_structure.get(candidate_id, {})
+			if station is Dictionary and str(station.get("state", "")) == "operational":
+				var definition := ContentRegistry.interior_station_definition(str(station.get("kind", "")))
+				if capability_id.is_empty() or str(definition.get("capability", "")) == capability_id:
+					return true
+	return false
+
+func workshop_station_id() -> String:
+	return str(workshop_station_binding().get("station_id", ""))
+
+func workshop_station_binding(requested_station_id := "", requested_structure_id := "") -> Dictionary:
+	if not requested_station_id.is_empty() and requested_structure_id.is_empty():
+		return {}
+	for parent_id in interior_stations:
+		if not requested_structure_id.is_empty() and str(parent_id) != requested_structure_id:
+			continue
+		if not _workshop_shell_ready(str(parent_id)):
+			continue
+		for candidate_id in interior_stations.get(parent_id, {}):
+			if not requested_station_id.is_empty() and str(candidate_id) != requested_station_id:
+				continue
+			var station: Variant = interior_stations[parent_id].get(candidate_id, {})
+			if station is Dictionary and str(station.get("kind", "")) == "workbench" and str(station.get("state", "")) == "operational":
+				return {"structure_id": str(parent_id), "station_id": str(candidate_id)}
+	return {}
 
 func deliver_structure_material(instance_id: String, material_id: String, amount: int = 1) -> Dictionary:
 	if instance_id.is_empty() or material_id.is_empty() or amount <= 0 or not structures.has(instance_id):
@@ -2515,8 +2724,6 @@ func deliver_structure_material(instance_id: String, material_id: String, amount
 	if complete:
 		# Publish only after the delivered frame is visible to all observers.
 		award_mastery("Crafting", 8)
-		if kind == "workshop":
-			advance_first_run("workshop_operational")
 	else:
 		state_changed.emit()
 	return structure.duplicate(true)
@@ -2903,6 +3110,23 @@ func advance_day(target_day: int = -1) -> bool:
 		elif str(structure.get("state", "removed")) == "operational" and str(structure.get("kind", "")) == "rain_cistern":
 			inventory["water"] = int(inventory.get("water", 0)) + 2
 		structures[structure_id] = structure
+	var workbench_became_operational := false
+	for parent_id in interior_stations:
+		var stations_for_structure: Dictionary = interior_stations.get(parent_id, {})
+		for station_id in stations_for_structure:
+			var station: Variant = stations_for_structure.get(station_id, {})
+			if not (station is Dictionary) or str(station.get("state", "")) != "building":
+				continue
+			station["remaining_hours"] = maxf(0.0, float(station.get("remaining_hours", 0.0)) - 12.0)
+			if float(station.get("remaining_hours", 0.0)) <= 0.0:
+				station["state"] = "operational"
+				if str(station.get("kind", "")) == "workbench":
+					workbench_became_operational = true
+			stations_for_structure[station_id] = station
+		interior_stations[parent_id] = stations_for_structure
+	_recalculate_structure_effects()
+	if workbench_became_operational:
+		advance_first_run("workshop_operational")
 	var saved_first_run_stage := first_run_stage()
 	if bool(quest.get("claimed", false)):
 		quest = {"id": "supply_run_%d" % day, "title": "NEXT SUPPLY RUN", "description": "Return from an expedition with 5 cargo.", "progress": 0, "target": 5, "claimed": false, "first_run_stage": saved_first_run_stage, "first_run_completed": saved_first_run_stage == "complete"}
@@ -2919,19 +3143,36 @@ func advance_day(target_day: int = -1) -> bool:
 
 func _activate_structure_kind(kind: String) -> void:
 	match kind:
-		"workshop": built["workshop"] = true
 		"archive": built["library"] = true
 		"livestock_pen": built["livestock_pen"] = true
 	_recalculate_structure_effects()
 
 func _recalculate_structure_effects() -> void:
 	var derived_capacity := BASE_CARGO_CAPACITY
+	var has_workbench := false
+	var has_archive := false
+	var has_livestock_pen := false
 	for structure_id in structures:
 		var structure: Dictionary = structures.get(structure_id, {})
 		if str(structure.get("state", "")) != "operational":
 			continue
-		var definition := ContentRegistry.structure_definition(str(structure.get("kind", "")))
+		var structure_kind := str(structure.get("kind", ""))
+		if structure_kind == "workshop":
+			has_workbench = has_workbench or has_station_capability(str(structure_id), "workshop_crafting")
+		elif structure_kind == "archive":
+			has_archive = true
+		elif structure_kind == "livestock_pen":
+			has_livestock_pen = true
+		var definition := ContentRegistry.structure_definition(structure_kind)
 		derived_capacity += int(definition.get("cargo_bonus", 0))
+	# Workshop capability is derived exclusively from a placed operational shell
+	# with an operational Workbench.  A stale boolean must never create an
+	# invisible crafting station.
+	built["workshop"] = has_workbench
+	if has_archive:
+		built["library"] = true
+	if has_livestock_pen:
+		built["livestock_pen"] = true
 	# Capacity has no downgrade path yet; retaining a larger loaded value keeps
 	# old saves and in-progress expeditions safe while derived upgrades apply.
 	cargo_capacity = maxi(cargo_capacity, derived_capacity)
@@ -3258,6 +3499,54 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 					migrated_animal["trait_progress"] = clampi(int(migrated_animal.get("trait_progress", 0)), 0, 100)
 					migrated_livestock[migrated_animal_id] = migrated_animal
 			data["livestock"] = migrated_livestock
+	if version < 25:
+		# v25 separates an enterable exterior shell from the stations that make it
+		# functional. Existing operational Workshops must not lose crafting on
+		# migration, so install one deterministic legacy Workbench in the measured
+		# back-left cell. Fresh saves never receive this record.
+		var migrated_interiors: Variant = data.get("interior_stations", {})
+		if not (migrated_interiors is Dictionary):
+			migrated_interiors = {}
+		var migrated_structures: Variant = data.get("structures", {})
+		if migrated_structures is Dictionary:
+			for migrated_structure_id in migrated_structures:
+				var migrated_structure: Variant = migrated_structures.get(migrated_structure_id, {})
+				if not (migrated_structure is Dictionary) or str(migrated_structure.get("kind", "")) != "workshop" or str(migrated_structure.get("state", "")) != "operational":
+					continue
+				var parent_id := str(migrated_structure_id)
+				var parent_stations: Variant = migrated_interiors.get(parent_id, {})
+				if not (parent_stations is Dictionary):
+					parent_stations = {}
+				var has_legacy_workbench := false
+				for legacy_station_id in parent_stations:
+					var legacy_station: Variant = parent_stations.get(legacy_station_id, {})
+					if legacy_station is Dictionary and str(legacy_station.get("kind", "")) == "workbench":
+						has_legacy_workbench = true
+						break
+				if not has_legacy_workbench:
+					parent_stations["workbench_legacy"] = {"id": "workbench_legacy", "structure_id": parent_id, "kind": "workbench", "cell": [-2, -1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}, "legacy": true}
+				migrated_interiors[parent_id] = parent_stations
+		data["interior_stations"] = migrated_interiors
+		var migrated_job: Variant = data.get("station_job", {})
+		if migrated_job is Dictionary:
+			var bound_parent_id := ""
+			var bound_station_id := ""
+			if str(migrated_job.get("kind", "none")) != "none":
+				for candidate_parent_id in migrated_interiors:
+					for candidate_station_id in migrated_interiors.get(candidate_parent_id, {}):
+						var candidate_station: Variant = migrated_interiors[candidate_parent_id].get(candidate_station_id, {})
+						if candidate_station is Dictionary and str(candidate_station.get("kind", "")) == "workbench" and str(candidate_station.get("state", "")) == "operational":
+							bound_parent_id = str(candidate_parent_id)
+							bound_station_id = str(candidate_station_id)
+							break
+					if not bound_parent_id.is_empty():
+						break
+			if str(migrated_job.get("kind", "none")) != "none" and not bound_parent_id.is_empty():
+				migrated_job["structure_id"] = bound_parent_id
+				migrated_job["station_id"] = bound_station_id
+			else:
+				migrated_job = {"kind": "none", "structure_id": "", "station_id": "", "remaining_hours": 0.0, "total_hours": 0.0, "output_id": "plank", "output": 0, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "", "material_refunded": false}
+			data["station_job"] = migrated_job
 	if version < SAVE_VERSION:
 		if not data.has("world_seed") or not (data["world_seed"] is String) or str(data["world_seed"]).strip_edges().is_empty():
 			data["world_seed"] = DEFAULT_WORLD_SEED
@@ -3285,10 +3574,10 @@ func _valid_number(value: Variant, minimum: float, maximum: float) -> bool:
 func _save_shape_is_supported(data: Dictionary) -> bool:
 	var source_version := int(data.get("_source_save_version", data.get("save_version", 0)))
 	if source_version == SAVE_VERSION:
-		for required_key in ["save_version", "content_version", "day", "hour", "season", "weather", "energy", "max_energy", "health", "max_health", "cargo_capacity", "coins", "xp", "level", "ability_points", "stats", "masteries", "inventory", "discovered", "observed_wildlife", "translated_inscriptions", "tracked_wildlife", "researched", "blueprints", "research_job", "research_clues", "fishing_attempt", "built", "farm_plot", "station_job", "equipment", "nutrition", "hydration", "livestock", "structures", "unlocked_features", "unlocked_routes", "sanctuary_depleted_ids", "sanctuary_contact_progress", "activity_receipts", "activity_events", "activity_cursor", "activity_mapping_version", "activity_minutes_total", "activity_stat_gains", "activity_stat_minutes", "activity_last_manual_epoch", "world_seed", "action_sequence", "chance_rolls", "settings", "last_day_transaction", "construction_progress", "construction_job", "recovery_pack", "market_day", "market_trades", "market_contract_claimed_day", "expedition_run", "quest"]:
+		for required_key in ["save_version", "content_version", "day", "hour", "season", "weather", "energy", "max_energy", "health", "max_health", "cargo_capacity", "coins", "xp", "level", "ability_points", "stats", "masteries", "inventory", "discovered", "observed_wildlife", "translated_inscriptions", "tracked_wildlife", "researched", "blueprints", "research_job", "research_clues", "fishing_attempt", "built", "farm_plot", "station_job", "equipment", "nutrition", "hydration", "livestock", "structures", "interior_stations", "unlocked_features", "unlocked_routes", "sanctuary_depleted_ids", "sanctuary_contact_progress", "activity_receipts", "activity_events", "activity_cursor", "activity_mapping_version", "activity_minutes_total", "activity_stat_gains", "activity_stat_minutes", "activity_last_manual_epoch", "world_seed", "action_sequence", "chance_rolls", "settings", "last_day_transaction", "construction_progress", "construction_job", "recovery_pack", "market_day", "market_trades", "market_contract_claimed_day", "expedition_run", "quest"]:
 			if not data.has(required_key):
 				return false
-	for key in ["stats", "masteries", "inventory", "built", "farm_plot", "station_job", "equipment", "livestock", "structures", "sanctuary_contact_progress", "research_job", "fishing_attempt", "construction_job", "recovery_pack", "market_trades", "expedition_run", "quest"]:
+	for key in ["stats", "masteries", "inventory", "built", "farm_plot", "station_job", "equipment", "livestock", "structures", "interior_stations", "sanctuary_contact_progress", "research_job", "fishing_attempt", "construction_job", "recovery_pack", "market_trades", "expedition_run", "quest"]:
 		if data.has(key) and not (data[key] is Dictionary):
 			return false
 	for key in ["discovered", "observed_wildlife", "translated_inscriptions", "tracked_wildlife", "researched", "blueprints", "activity_receipts", "activity_events", "unlocked_features", "unlocked_routes", "sanctuary_depleted_ids", "research_clues"]:
@@ -3647,15 +3936,25 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 	var station: Variant = data.get("station_job", {})
 	if station is Dictionary:
 		var station_kind := str(station.get("kind", "none"))
+		var station_parent_id := str(station.get("structure_id", ""))
+		var station_instance_id := str(station.get("station_id", ""))
 		if station_kind != "none" and not ContentRegistry.WORKSHOP_RECIPES.has(station_kind):
+			return false
+		if station_kind == "none" and (not station_parent_id.is_empty() or not station_instance_id.is_empty()):
+			return false
+		if station_kind != "none" and (station_parent_id.is_empty() or station_instance_id.is_empty()):
 			return false
 		var output_kind := str(station.get("output_kind", "material"))
 		var tool_id := str(station.get("tool_id", ""))
 		if output_kind not in ["material", "tool"] or not _valid_number(station.get("quality_multiplier", 1.0), 1.0, 10.0) or (output_kind == "tool" and not equipment.has(tool_id)):
 			return false
-		if not _valid_integer(station.get("remaining_hours", 0), 0, 100000) or not _valid_number(station.get("total_hours", 0), 0.0, 100000.0) or not _valid_integer(station.get("output", 0), 0, 2147483647):
+		if not _valid_integer(station.get("remaining_hours", 0), 0, 100000) or not _valid_number(station.get("total_hours", 0), 0.0, 100000.0) or float(station.get("remaining_hours", 0.0)) > float(station.get("total_hours", 0.0)) + 0.0001 or not _valid_integer(station.get("output", 0), 0, 2147483647):
 			return false
-		if station_kind != "none" and (str(station.get("output_id", "")) != station_kind or int(station.get("output", 0)) <= 0 or (output_kind == "tool" and str(ContentRegistry.workshop_recipe(station_kind).get("tool_id", "")) != tool_id)):
+		if station_kind != "none":
+			var station_recipe := ContentRegistry.workshop_recipe(station_kind)
+			if str(station.get("output_id", "")) != station_kind or int(station.get("output", 0)) != int(station_recipe.get("output", 0)) or float(station.get("total_hours", 0.0)) != float(station_recipe.get("hours", 0.0)) or output_kind != str(station_recipe.get("output_kind", "material")) or (output_kind == "tool" and str(station_recipe.get("tool_id", "")) != tool_id):
+				return false
+		if station_kind == "none" and (float(station.get("remaining_hours", 0.0)) != 0.0 or float(station.get("total_hours", 0.0)) != 0.0 or int(station.get("output", 0)) != 0):
 			return false
 	var construction: Variant = data.get("construction_job", {})
 	if construction is Dictionary:
@@ -3733,6 +4032,8 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 			var structure: Variant = structures_data.get(structure_id, {})
 			if not (structure is Dictionary):
 				return false
+			if structure.has("interior_layout") and not _interior_layout_is_supported(structure.get("interior_layout", {})):
+				return false
 			var kind := str(structure.get("kind", ""))
 			var structure_cell: Variant = structure.get("cell", [])
 			var structure_state := str(structure.get("state", ""))
@@ -3772,6 +4073,94 @@ func _save_shape_is_supported(data: Dictionary) -> bool:
 				if occupied_saved_cells.has(cell_key):
 					return false
 				occupied_saved_cells[cell_key] = true
+	var interior_data: Variant = data.get("interior_stations", {})
+	if not (interior_data is Dictionary):
+		return false
+	for parent_id in interior_data:
+		if not (parent_id is String) or not (structures_data is Dictionary) or not structures_data.has(str(parent_id)):
+			return false
+		var parent_structure: Variant = structures_data.get(str(parent_id), {})
+		if not (parent_structure is Dictionary) or str(parent_structure.get("kind", "")) != "workshop" or str(parent_structure.get("state", "")) != "operational":
+			return false
+		var station_values: Variant = interior_data.get(parent_id, {})
+		if not (station_values is Dictionary) or station_values.size() > 32:
+			return false
+		var occupied_interior_cells: Array = []
+		var unique_station_kinds := {}
+		for station_id in station_values:
+			var station_value: Variant = station_values.get(station_id, {})
+			if not (station_id is String) or str(station_id).is_empty() or not (station_value is Dictionary):
+				return false
+			var interior_station: Dictionary = station_value
+			var station_kind := str(interior_station.get("kind", ""))
+			var station_definition := ContentRegistry.interior_station_definition(station_kind)
+			var station_cell: Variant = interior_station.get("cell", [])
+			var station_state := str(interior_station.get("state", ""))
+			if station_definition.is_empty() or str(station_definition.get("structure_kind", "")) != "workshop" or not (station_cell is Array) or station_cell.size() != 2 or station_state not in ["blueprint", "building", "operational"]:
+				return false
+			if bool(station_definition.get("unique", true)):
+				if unique_station_kinds.has(station_kind):
+					return false
+				unique_station_kinds[station_kind] = true
+			if str(interior_station.get("id", station_id)) != str(station_id) or str(interior_station.get("structure_id", parent_id)) != str(parent_id):
+				return false
+			if not _valid_integer(station_cell[0], -32, 32) or not _valid_integer(station_cell[1], -32, 32) or not _valid_integer(interior_station.get("rotation", 0), 0, 3):
+				return false
+			if not _valid_number(interior_station.get("remaining_hours", 0.0), 0.0, 100000.0) or not _valid_number(interior_station.get("total_hours", 0.0), 0.0, 100000.0):
+				return false
+			var station_cost: Dictionary = station_definition.get("cost", {})
+			var station_delivered: Variant = interior_station.get("delivered_materials", {})
+			if not (station_delivered is Dictionary):
+				return false
+			for delivered_material_id in station_delivered:
+				if not station_cost.has(str(delivered_material_id)):
+					return false
+			var station_total_hours := float(interior_station.get("total_hours", 0.0))
+			var station_remaining_hours := float(interior_station.get("remaining_hours", 0.0))
+			if not is_equal_approx(station_total_hours, float(station_definition.get("hours", 12.0))) or station_remaining_hours > station_total_hours + 0.0001:
+				return false
+			var station_fully_delivered := true
+			for material_id in station_cost:
+				if not _valid_integer(station_delivered.get(str(material_id), 0), 0, int(station_cost[material_id])):
+					return false
+				if int(station_delivered.get(str(material_id), 0)) < int(station_cost[material_id]):
+					station_fully_delivered = false
+			if station_state == "blueprint" and (station_remaining_hours != 0.0 or station_fully_delivered):
+				return false
+			if station_state == "building" and (not station_fully_delivered or station_remaining_hours <= 0.0):
+				return false
+			if station_state == "operational" and (not station_fully_delivered or station_remaining_hours != 0.0):
+				return false
+			var station_footprint := ContentRegistry.interior_station_footprint(station_kind, int(interior_station.get("rotation", 0)))
+			var interior_layout := _interior_layout_from_structure(parent_structure)
+			if not InteriorGrid.can_place(Vector2i(int(station_cell[0]), int(station_cell[1])), station_footprint, _layout_room_size(interior_layout), _layout_float(interior_layout, "door_width", 1.45), occupied_interior_cells, Vector2i(2147483647, 2147483647), _layout_door_facing(interior_layout), _layout_float(interior_layout, "cell_size", 1.0), _layout_float(interior_layout, "wall_clearance", 0.45), _layout_float(interior_layout, "door_clearance_depth", 0.85)):
+				return false
+			for cell_value in InteriorGrid.cells_for(Vector2i(int(station_cell[0]), int(station_cell[1])), station_footprint):
+				occupied_interior_cells.append(cell_value)
+	var saved_job: Variant = data.get("station_job", {})
+	if saved_job is Dictionary and str(saved_job.get("kind", "none")) != "none":
+		var saved_job_parent := str(saved_job.get("structure_id", ""))
+		var saved_job_station := str(saved_job.get("station_id", ""))
+		var saved_job_parent_data: Variant = interior_data.get(saved_job_parent, {})
+		var saved_job_station_data: Variant = saved_job_parent_data.get(saved_job_station, {}) if saved_job_parent_data is Dictionary else {}
+		if not (saved_job_station_data is Dictionary) or str(saved_job_station_data.get("kind", "")) != "workbench" or str(saved_job_station_data.get("state", "")) != "operational":
+			return false
+	var expected_workshop_capability := false
+	if structures_data is Dictionary and interior_data is Dictionary:
+		for saved_structure_id in structures_data:
+			var saved_structure: Variant = structures_data.get(saved_structure_id, {})
+			if saved_structure is Dictionary and str(saved_structure.get("kind", "")) == "workshop" and str(saved_structure.get("state", "")) == "operational":
+				var saved_stations: Variant = interior_data.get(str(saved_structure_id), {})
+				if saved_stations is Dictionary:
+					for saved_station_id in saved_stations:
+						var saved_station: Variant = saved_stations.get(saved_station_id, {})
+						if saved_station is Dictionary and str(saved_station.get("kind", "")) == "workbench" and str(saved_station.get("state", "")) == "operational":
+							expected_workshop_capability = true
+							break
+			if expected_workshop_capability:
+					break
+	if bool(data.get("built", {}).get("workshop", false)) != expected_workshop_capability:
+		return false
 	var expedition: Variant = data.get("expedition_run", {})
 	if expedition is Dictionary:
 		var expedition_status := str(expedition.get("status", "none"))
@@ -3980,7 +4369,7 @@ func _content_grants_for_save() -> Array[String]:
 	return grants
 
 func _to_dict() -> Dictionary:
-	return {"save_version": SAVE_VERSION, "content_version": CONTENT_VERSION, "day": day, "hour": hour, "season": season, "weather": weather, "energy": energy, "max_energy": max_energy, "max_health": max_health, "health": health, "cargo_capacity": cargo_capacity, "coins": coins, "xp": xp, "level": level, "ability_points": ability_points, "stats": stats, "masteries": masteries, "inventory": inventory, "discovered": discovered, "observed_wildlife": observed_wildlife, "translated_inscriptions": translated_inscriptions, "tracked_wildlife": tracked_wildlife, "researched": researched, "blueprints": blueprints, "research_job": research_job, "research_clues": research_clues, "fishing_attempt": fishing_attempt, "built": built, "farm_plot": farm_plot, "station_job": station_job, "equipment": equipment, "nutrition": nutrition, "hydration": hydration, "livestock": livestock, "structures": structures, "unlocked_features": _content_grants_for_save(), "unlocked_routes": unlocked_routes, "sanctuary_depleted_ids": sanctuary_depleted_ids, "sanctuary_contact_progress": sanctuary_contact_progress, "activity_receipts": activity_receipts, "activity_events": activity_events, "activity_cursor": activity_cursor, "activity_mapping_version": activity_mapping_version, "activity_minutes_total": activity_minutes_total, "activity_stat_gains": activity_stat_gains, "activity_stat_minutes": activity_stat_minutes, "activity_last_manual_epoch": activity_last_manual_epoch, "manual_activity_session": manual_activity_session, "world_seed": world_seed, "action_sequence": action_sequence, "chance_rolls": chance_rolls, "settings": settings, "last_day_transaction": last_day_transaction, "construction_progress": construction_progress, "construction_job": construction_job, "recovery_pack": recovery_pack, "market_day": market_day, "market_trades": market_trades, "market_contract_claimed_day": market_contract_claimed_day, "expedition_run": expedition_run, "quest": quest}
+	return {"save_version": SAVE_VERSION, "content_version": CONTENT_VERSION, "day": day, "hour": hour, "season": season, "weather": weather, "energy": energy, "max_energy": max_energy, "max_health": max_health, "health": health, "cargo_capacity": cargo_capacity, "coins": coins, "xp": xp, "level": level, "ability_points": ability_points, "stats": stats, "masteries": masteries, "inventory": inventory, "discovered": discovered, "observed_wildlife": observed_wildlife, "translated_inscriptions": translated_inscriptions, "tracked_wildlife": tracked_wildlife, "researched": researched, "blueprints": blueprints, "research_job": research_job, "research_clues": research_clues, "fishing_attempt": fishing_attempt, "built": built, "farm_plot": farm_plot, "station_job": station_job, "equipment": equipment, "nutrition": nutrition, "hydration": hydration, "livestock": livestock, "structures": structures, "interior_stations": interior_stations, "unlocked_features": _content_grants_for_save(), "unlocked_routes": unlocked_routes, "sanctuary_depleted_ids": sanctuary_depleted_ids, "sanctuary_contact_progress": sanctuary_contact_progress, "activity_receipts": activity_receipts, "activity_events": activity_events, "activity_cursor": activity_cursor, "activity_mapping_version": activity_mapping_version, "activity_minutes_total": activity_minutes_total, "activity_stat_gains": activity_stat_gains, "activity_stat_minutes": activity_stat_minutes, "activity_last_manual_epoch": activity_last_manual_epoch, "manual_activity_session": manual_activity_session, "world_seed": world_seed, "action_sequence": action_sequence, "chance_rolls": chance_rolls, "settings": settings, "last_day_transaction": last_day_transaction, "construction_progress": construction_progress, "construction_job": construction_job, "recovery_pack": recovery_pack, "market_day": market_day, "market_trades": market_trades, "market_contract_claimed_day": market_contract_claimed_day, "expedition_run": expedition_run, "quest": quest}
 
 func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 	day = maxi(1, int(data.get("day", day)))
@@ -4133,8 +4522,13 @@ func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 			var structure: Variant = stored_structures.get(structure_id, {})
 			if structure is Dictionary and str(structure.get("kind", "")).is_empty() == false:
 				structures[str(structure_id)] = structure.duplicate(true)
-				if str(structure.get("state", "")) == "operational":
-					_activate_structure_kind(str(structure.get("kind", "")))
+	interior_stations = {}
+	var stored_interior_stations: Variant = data.get("interior_stations", {})
+	if stored_interior_stations is Dictionary:
+		for parent_id in stored_interior_stations:
+			var parent_stations: Variant = stored_interior_stations.get(parent_id, {})
+			if parent_stations is Dictionary:
+				interior_stations[str(parent_id)] = parent_stations.duplicate(true)
 	var stored_features: Variant = data.get("unlocked_features", [])
 	if stored_features is Array:
 		unlocked_features = []
@@ -4166,6 +4560,7 @@ func _apply_dict(data: Dictionary, allow_incomplete_activity := false) -> void:
 		farm_plot[key] = data.get("farm_plot", {}).get(key, farm_plot[key])
 	for key in station_job:
 		station_job[key] = data.get("station_job", {}).get(key, station_job[key])
+	_recalculate_structure_effects()
 	activity_receipts = []
 	for receipt in data.get("activity_receipts", []):
 		activity_receipts.append(str(receipt))

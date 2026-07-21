@@ -2,15 +2,14 @@ class_name ProdewtyBuildingInterior
 extends Node3D
 
 const AssetMeasurement := preload("res://scripts/sanctuary_asset_measurement.gd")
+const ContentRegistry := preload("res://scripts/content_registry.gd")
+const InteriorGrid := preload("res://scripts/interior_grid.gd")
 
 ## Playable building interiors are presentation/runtime rooms, not a second
 ## gameplay save. The GameSession still owns ownership, upgrades, queues, and
 ## inventory; this node owns the visible room, its measured interaction proxies,
 ## and the short transition used to enter and leave it.
 
-const ROOM_SIZE := Vector2(8.2, 6.2)
-const ROOM_HEIGHT := 3.65
-const DOOR_WIDTH := 1.45
 const FLOOR_Y := 0.0
 const TOON_WOOD_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_wood.tres"
 const TOON_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
@@ -29,9 +28,12 @@ var active := false
 var transitioning := false
 var active_kind := ""
 var active_instance_id := ""
-var room_size := ROOM_SIZE
-var room_height := ROOM_HEIGHT
-var door_width := DOOR_WIDTH
+var room_size := Vector2.ZERO
+var room_height := 0.0
+var door_width := 0.0
+var cell_size := 1.0
+var wall_clearance := 0.45
+var door_clearance_depth := 0.85
 var door_facing := Vector3(0.0, 0.0, 1.0)
 var configured_profile_id := ""
 var room_measurements_valid := false
@@ -40,6 +42,7 @@ var toon_wood_material: ShaderMaterial
 var toon_sprite_material: ShaderMaterial
 var illustrated_shell: Sprite3D
 var workshop_station_sheet: Texture2D
+var station_preview: Node3D
 var fade_layer: CanvasLayer
 var fade_rect: ColorRect
 
@@ -50,6 +53,7 @@ func build(world: Node3D) -> void:
 	name = "BuildingInteriorController"
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	world.add_child(self)
+	_apply_layout(ContentRegistry.interior_layout("workshop"))
 	toon_wood_material = load(TOON_WOOD_MATERIAL_PATH) as ShaderMaterial
 	toon_sprite_material = load(TOON_SPRITE_MATERIAL_PATH) as ShaderMaterial
 	workshop_station_sheet = load(WORKSHOP_STATION_SHEET_PATH) as Texture2D
@@ -110,6 +114,8 @@ func configure_for_structure(kind: String, measurement: Dictionary, access_zones
 	_set_room_collisions(false)
 	room_root.set_meta("measured_exterior_size_m", [fitted_size.x, fitted_size.y, fitted_size.z])
 	room_root.set_meta("door_width_m", door_width)
+	room_root.set_meta("grid_cell_size_m", cell_size)
+	room_root.set_meta("grid_wall_clearance_m", wall_clearance)
 	room_root.set_meta("measurement_source", str(measurement.get("source_path", "")))
 	return room_measurements_valid
 
@@ -118,6 +124,30 @@ func supports_kind(kind: String) -> bool:
 
 func room_dimensions() -> Vector3:
 	return Vector3(room_size.x, room_height, room_size.y)
+
+func room_layout() -> Dictionary:
+	return {
+		"room_size": [room_size.x, room_size.y],
+		"room_height": room_height,
+		"door_width": door_width,
+		"cell_size": cell_size,
+		"wall_clearance": wall_clearance,
+		"door_clearance_depth": door_clearance_depth,
+		"door_facing": [door_facing.x, door_facing.y, door_facing.z],
+	}
+
+func _apply_layout(layout: Dictionary) -> void:
+	var size_value: Variant = layout.get("room_size", [8.2, 6.2])
+	if size_value is Array and (size_value as Array).size() >= 2:
+		room_size = Vector2(maxf(0.1, float(size_value[0])), maxf(0.1, float(size_value[1])))
+	room_height = maxf(0.1, float(layout.get("room_height", 3.65)))
+	door_width = maxf(0.1, float(layout.get("door_width", 1.45)))
+	cell_size = maxf(0.1, float(layout.get("cell_size", 1.0)))
+	wall_clearance = maxf(0.0, float(layout.get("wall_clearance", 0.45)))
+	door_clearance_depth = maxf(0.0, float(layout.get("door_clearance_depth", 0.85)))
+	var next_facing := _array_to_vector3(layout.get("door_facing", [0.0, 0.0, 1.0]))
+	if next_facing.length_squared() > 0.01:
+		door_facing = next_facing.normalized()
 
 func _process(delta: float) -> void:
 	if not active:
@@ -178,6 +208,43 @@ func camera_focus_position() -> Vector3:
 
 func active_station_count() -> int:
 	return stations.size()
+
+func world_to_room_local(world_position: Vector3) -> Vector3:
+	return room_root.to_local(world_position) if room_root != null else world_position
+
+func sync_persisted_stations(persisted_stations: Dictionary) -> void:
+	if room_root == null or transitioning:
+		return
+	clear_station_preview()
+	var was_active := active
+	_clear_dynamic_stations()
+	for station_id in persisted_stations:
+		var record: Variant = persisted_stations.get(station_id, {})
+		if not (record is Dictionary):
+			continue
+		_create_persisted_station(str(station_id), record)
+	room_measurements_valid = _validate_room_measurements()
+	_set_room_collisions(was_active)
+
+func set_station_preview(local_cell: Vector2i, rotation_quarter_turns: int, valid: bool) -> void:
+	clear_station_preview()
+	if room_root == null or not active:
+		return
+	var footprint := ContentRegistry.interior_station_footprint("workbench", rotation_quarter_turns)
+	if footprint == Vector2i.ZERO:
+		return
+	station_preview = Node3D.new()
+	station_preview.name = "InteriorStationPlacementPreview"
+	station_preview.position = InteriorGrid.cell_to_local(local_cell, footprint, room_size, cell_size)
+	station_preview.rotation.y = float(rotation_quarter_turns) * PI * 0.5
+	station_preview.modulate = Color(0.38, 0.95, 0.72, 0.88) if valid else Color(0.95, 0.30, 0.28, 0.88)
+	room_root.add_child(station_preview)
+	_add_construction_frame(station_preview, footprint)
+
+func clear_station_preview() -> void:
+	if station_preview != null and is_instance_valid(station_preview):
+		station_preview.queue_free()
+	station_preview = null
 
 func station_ids() -> Array[String]:
 	var result: Array[String] = []
@@ -398,11 +465,6 @@ func _create_wall_segment(node_name: String, size: Vector3, position: Vector3, c
 			_box(room_shell, node_name + "Timber_%s" % z_offset, Vector3(0.12, size.y * 0.92, 0.12), position + Vector3(-size.x * 0.52, 0.0, z_offset), Color("#4a3831"), false, false, false)
 
 func _create_workshop_stations() -> void:
-	_create_furnace("furnace_left", "Smelter Furnace", Vector3(-room_size.x * 0.36, 0.0, -room_size.y * 0.36), Color("#7a5546"), 0.0)
-	_create_furnace("furnace_right", "Forge Furnace", Vector3(room_size.x * 0.36, 0.0, -room_size.y * 0.36), Color("#69545a"), 0.8)
-	_create_workbench("workbench", "Crafting Workbench", Vector3(-room_size.x * 0.34, 0.0, -room_size.y * 0.06))
-	_create_anvil("anvil", "Anvil", Vector3(room_size.x * 0.06, 0.0, -room_size.y * 0.04))
-	_create_storage("storage", "Material Storage", Vector3(room_size.x * 0.36, 0.0, room_size.y * 0.10))
 	var exit := _create_station("exit", "Workshop Door", Vector3(0.0, 0.0, room_size.y * 0.5 + 0.08), Vector2(door_width, 0.42), "exit", "interior/workshop/door")
 	_box(exit, "DoorPanel", Vector3(1.12, 1.95, 0.10), Vector3(0.0, 0.98, -0.04), Color("#7b503b"))
 	_box(exit, "DoorHandle", Vector3(0.07, 0.13, 0.10), Vector3(0.30, 0.95, -0.11), Color("#d7a45e"), false, true)
@@ -419,8 +481,8 @@ func _create_workshop_stations() -> void:
 			door_mesh.visible = false
 	exit.set_meta("presentation_source", "illustrated_shell_doorway")
 
-func _create_furnace(station_id: String, label_text: String, position: Vector3, body_color: Color, phase: float) -> void:
-	var station := _create_station(station_id, label_text, position, Vector2(1.34, 1.02), "workshop", "interior/workshop/%s" % station_id)
+func _create_furnace(station_id: String, label_text: String, position: Vector3, body_color: Color, phase: float, asset_kind := "") -> void:
+	var station := _create_station(station_id, label_text, position, Vector2(1.34, 1.02), "workshop", "interior/workshop/%s" % station_id, asset_kind)
 	_box(station, "FurnaceBody", Vector3(1.18, 1.12, 0.92), Vector3(0.0, 0.56, 0.0), body_color)
 	_box(station, "FurnaceCap", Vector3(1.28, 0.15, 1.02), Vector3(0.0, 1.16, 0.0), Color("#493d3d"))
 	var fire := _box(station, "FurnaceFire", Vector3(0.42, 0.34, 0.06), Vector3(0.0, 0.62, 0.48), Color("#ffb55e"), false, true, false)
@@ -444,8 +506,8 @@ func _create_furnace(station_id: String, label_text: String, position: Vector3, 
 	_sync_station_collision_to_visible_asset(station)
 	_add_generated_station_sprite(station, station_id)
 
-func _create_workbench(station_id: String, label_text: String, position: Vector3) -> void:
-	var station := _create_station(station_id, label_text, position, Vector2(1.75, 0.86), "workshop", "interior/workshop/workbench")
+func _create_workbench(station_id: String, label_text: String, position: Vector3, asset_kind := "") -> void:
+	var station := _create_station(station_id, label_text, position, Vector2(1.75, 0.86), "workshop", "interior/workshop/workbench", asset_kind)
 	_box(station, "BenchTop", Vector3(1.72, 0.18, 0.78), Vector3(0.0, 0.82, 0.0), Color("#9a6745"))
 	for side in [-1.0, 1.0]:
 		_box(station, "BenchLeg_%s" % side, Vector3(0.12, 0.74, 0.12), Vector3(side * 0.68, 0.38, 0.0), Color("#5b4034"))
@@ -455,8 +517,8 @@ func _create_workbench(station_id: String, label_text: String, position: Vector3
 	_sync_station_collision_to_visible_asset(station)
 	_add_generated_station_sprite(station, station_id)
 
-func _create_anvil(station_id: String, label_text: String, position: Vector3) -> void:
-	var station := _create_station(station_id, label_text, position, Vector2(0.86, 0.78), "workshop", "interior/workshop/anvil")
+func _create_anvil(station_id: String, label_text: String, position: Vector3, asset_kind := "") -> void:
+	var station := _create_station(station_id, label_text, position, Vector2(0.86, 0.78), "workshop", "interior/workshop/anvil", asset_kind)
 	_box(station, "AnvilFoot", Vector3(0.58, 0.16, 0.52), Vector3(0.0, 0.08, 0.0), Color("#4c5658"))
 	_box(station, "AnvilStem", Vector3(0.32, 0.52, 0.28), Vector3(0.0, 0.40, 0.0), Color("#657278"))
 	_box(station, "AnvilTop", Vector3(0.72, 0.18, 0.34), Vector3(-0.05, 0.75, 0.0), Color("#819096"))
@@ -473,8 +535,8 @@ func _create_anvil(station_id: String, label_text: String, position: Vector3) ->
 	_sync_station_collision_to_visible_asset(station)
 	_add_generated_station_sprite(station, station_id)
 
-func _create_storage(station_id: String, label_text: String, position: Vector3) -> void:
-	var station := _create_station(station_id, label_text, position, Vector2(1.25, 1.10), "storage", "interior/workshop/storage")
+func _create_storage(station_id: String, label_text: String, position: Vector3, asset_kind := "") -> void:
+	var station := _create_station(station_id, label_text, position, Vector2(1.25, 1.10), "storage", "interior/workshop/storage", asset_kind)
 	_box(station, "Crate", Vector3(1.10, 0.74, 0.92), Vector3(0.0, 0.37, 0.0), Color("#a8734b"))
 	for side in [-1.0, 1.0]:
 		_box(station, "CrateBand_%s" % side, Vector3(0.08, 0.79, 0.96), Vector3(side * 0.36, 0.37, 0.0), Color("#5b4034"))
@@ -482,6 +544,122 @@ func _create_storage(station_id: String, label_text: String, position: Vector3) 
 	_box(station, "StorageTag", Vector3(0.36, 0.22, 0.04), Vector3(0.0, 0.58, 0.48), Color("#e6c87d"))
 	_sync_station_collision_to_visible_asset(station)
 	_add_generated_station_sprite(station, station_id)
+
+func _clear_dynamic_stations() -> void:
+	var dynamic_ids: Array = []
+	for station_id in stations:
+		if str(station_id) != "exit":
+			dynamic_ids.append(str(station_id))
+	for station_id in dynamic_ids:
+		var station := stations.get(station_id) as Node3D
+		if station != null and is_instance_valid(station):
+			station.queue_free()
+		stations.erase(station_id)
+	animated_fire.clear()
+	animated_smoke.clear()
+	animated_wheel = null
+
+func _create_persisted_station(station_id: String, record: Dictionary) -> void:
+	var station_kind := str(record.get("kind", ""))
+	var definition := ContentRegistry.interior_station_definition(station_kind)
+	if definition.is_empty():
+		return
+	var cell_value: Array = record.get("cell", [])
+	if cell_value.size() < 2:
+		return
+	var rotation := int(record.get("rotation", 0))
+	var footprint := ContentRegistry.interior_station_footprint(station_kind, rotation)
+	var local_position := InteriorGrid.cell_to_local(Vector2i(int(cell_value[0]), int(cell_value[1])), footprint, room_size, cell_size)
+	var label_text := str(definition.get("label", station_kind))
+	match station_kind:
+		"furnace_left":
+			_create_furnace(station_id, label_text, local_position, Color("#7a5546"), 0.0, station_kind)
+		"furnace_right":
+			_create_furnace(station_id, label_text, local_position, Color("#69545a"), 0.8, station_kind)
+		"workbench":
+			_create_workbench(station_id, label_text, local_position, station_kind)
+		"anvil":
+			_create_anvil(station_id, label_text, local_position, station_kind)
+		"storage":
+			_create_storage(station_id, label_text, local_position, station_kind)
+		_:
+			return
+	var station := stations.get(station_id) as Node3D
+	if station == null:
+		return
+	station.rotation.y = float(rotation) * PI * 0.5
+	station.set_meta("interior_station_kind", station_kind)
+	station.set_meta("interior_structure_id", str(record.get("structure_id", active_instance_id)))
+	station.set_meta("installation_state", str(record.get("state", "blueprint")))
+	_add_construction_frame(station, footprint)
+	_apply_station_state(station, record)
+
+func _apply_station_state(station: Node3D, record: Dictionary) -> void:
+	if station == null:
+		return
+	var state := str(record.get("state", "blueprint"))
+	station.set_meta("installation_state", state)
+	var sprite := station.get_node_or_null("GeneratedStationSprite") as Sprite3D
+	var state_color := Color(1.0, 1.0, 1.0, 1.0)
+	if state == "blueprint":
+		state_color = Color(0.40, 0.92, 1.0, 0.42)
+	elif state == "building":
+		state_color = Color(1.0, 0.78, 0.35, 0.72)
+	if sprite != null:
+		sprite.modulate = state_color
+	var fire := station.get_node_or_null("FurnaceFire") as MeshInstance3D
+	if fire != null:
+		fire.visible = state != "blueprint"
+	var label := station.get_node_or_null("StationLabel") as Label3D
+	if label != null:
+		var base_label := str(ContentRegistry.interior_station_definition(str(record.get("kind", ""))).get("label", label.text))
+		label.text = base_label if state == "operational" else "%s\n%s" % [base_label, "BLUEPRINT" if state == "blueprint" else "ASSEMBLING"]
+	var frame := station.get_node_or_null("ConstructionFrame") as Node3D
+	if frame != null:
+		frame.visible = state != "operational"
+	_set_station_collision_active(station, state == "operational")
+
+func _set_station_collision_active(station: Node3D, value: bool) -> void:
+	if station == null:
+		return
+	var body := station.get_node_or_null("VisibleAssetCollision") as StaticBody3D
+	if body == null:
+		return
+	body.set_meta("installation_operational", value)
+	for collision_value in body.find_children("*", "CollisionShape3D", true, false):
+		var collision := collision_value as CollisionShape3D
+		if collision != null:
+			collision.set_meta("installation_operational", value)
+			collision.disabled = not active or not value or not bool(collision.get_meta("measurement_valid", false))
+
+func _add_construction_frame(station: Node3D, footprint: Vector2i) -> void:
+	if station == null or footprint == Vector2i.ZERO:
+		return
+	var frame := Node3D.new()
+	frame.name = "ConstructionFrame"
+	station.add_child(frame)
+	var width := maxf(0.6, float(footprint.x) * cell_size * 0.90)
+	var depth := maxf(0.6, float(footprint.y) * cell_size * 0.90)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.32, 0.88, 0.92, 0.78)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for edge in [Vector3(0.0, 0.05, -depth * 0.5), Vector3(0.0, 0.05, depth * 0.5)]:
+		var bar := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(width, 0.045, 0.045)
+		bar.mesh = mesh
+		bar.position = edge
+		bar.material_override = material
+		frame.add_child(bar)
+	for edge in [Vector3(-width * 0.5, 0.05, 0.0), Vector3(width * 0.5, 0.05, 0.0)]:
+		var bar := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(0.045, 0.045, depth)
+		bar.mesh = mesh
+		bar.position = edge
+		bar.material_override = material
+		frame.add_child(bar)
 
 func _create_dressing() -> void:
 	var shelf := Node3D.new()
@@ -509,7 +687,7 @@ func _set_room_collisions(value: bool) -> void:
 	for collision_value in room_root.find_children("*", "CollisionShape3D", true, false):
 		var collision := collision_value as CollisionShape3D
 		if collision != null:
-			collision.disabled = not value or not bool(collision.get_meta("measurement_valid", false))
+			collision.disabled = not value or not bool(collision.get_meta("measurement_valid", false)) or not bool(collision.get_meta("installation_operational", true))
 
 func _add_generated_station_sprite(station: Node3D, station_id: String) -> void:
 	# The generated station sheet is presentation-only. Its opaque alpha envelope
@@ -518,13 +696,14 @@ func _add_generated_station_sprite(station: Node3D, station_id: String) -> void:
 	# contract stable while replacing prototype boxes with authored cutouts.
 	if station == null or workshop_station_sheet == null:
 		return
+	var asset_kind := str(station.get_meta("interior_station_kind", station_id))
 	var cell_index: int = int({
 		"furnace_left": 0,
 		"furnace_right": 1,
 		"workbench": 2,
 		"anvil": 3,
 		"storage": 4,
-	}.get(station_id, -1))
+	}.get(asset_kind, -1))
 	if cell_index < 0:
 		return
 	var source_image := workshop_station_sheet.get_image()
@@ -565,7 +744,7 @@ func _add_generated_station_sprite(station: Node3D, station_id: String) -> void:
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.12
 	sprite.set_meta("generated_station_id", station_id)
-	sprite.set_meta("asset_id", "interior/workshop/station/%s" % station_id)
+	sprite.set_meta("asset_id", "interior/workshop/station/%s" % asset_kind)
 	sprite.set_meta("asset_path", WORKSHOP_STATION_SHEET_PATH)
 	sprite.set_meta("opaque_measurement_source", "texture_alpha_used_rect")
 	sprite.set_meta("alpha_bounds", [opaque_bounds.position.x, opaque_bounds.position.y, opaque_bounds.size.x, opaque_bounds.size.y])
@@ -690,13 +869,15 @@ func _bind_collision_to_visible_mesh(visual: MeshInstance3D, body: StaticBody3D)
 	shape_node.set_meta("measured_center", [body.position.x, body.position.y, body.position.z])
 	return true
 
-func _create_station(station_id: String, label_text: String, position: Vector3, footprint: Vector2, action: String, asset_id: String) -> Node3D:
+func _create_station(station_id: String, label_text: String, position: Vector3, footprint: Vector2, action: String, asset_id: String, station_kind := "") -> Node3D:
 	var station := Node3D.new()
 	station.name = "InteriorStation_%s" % station_id
 	station.position = position
 	station.add_to_group("interactable")
 	station.add_to_group("building_interior_station")
 	station.set_meta("interior_station_id", station_id)
+	if not station_kind.is_empty():
+		station.set_meta("interior_station_kind", station_kind)
 	station.set_meta("interior_action", action)
 	station.set_meta("visible_asset_id", asset_id)
 	station.set_meta("visual_footprint", [footprint.x, footprint.y])
@@ -795,6 +976,10 @@ func _cylinder(parent: Node3D, node_name: String, radius: float, height: float, 
 	mesh_node.mesh = mesh
 	mesh_node.position = position
 	mesh_node.material_override = _material(color)
+	if toon_wood_material != null:
+		var toon_material := toon_wood_material.duplicate() as ShaderMaterial
+		toon_material.set_shader_parameter("base_color", color)
+		mesh_node.material_override = toon_material
 	mesh_node.set_meta("visible_asset_size", [radius * 2.0, height, radius * 2.0])
 	mesh_node.set_meta("physical_asset_mesh", true)
 	mesh_node.set_meta("collision_contributor", true)
