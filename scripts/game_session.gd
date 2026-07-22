@@ -3639,14 +3639,18 @@ func _migrate_payload(raw: Dictionary) -> Dictionary:
 			elif migrated_status == "active":
 				var migrated_phase := str(migrated_route.get("route_phase", "approach"))
 				var existing_checkpoints: Variant = migrated_route.get("route_checkpoints", [])
-				var valid_existing_prefix := existing_checkpoints is Array and (existing_checkpoints as Array) in [[], ["arrival"], ["arrival", "fork"], ["arrival", "fork", "return"]]
-				var migrated_checkpoints: Array = existing_checkpoints.duplicate(true) if valid_existing_prefix else []
-				if not valid_existing_prefix:
-					match migrated_phase:
-						"arrival": migrated_checkpoints = ["arrival"]
-						"fork", "branch", "objective", "capstone", "shortcut": migrated_checkpoints = ["arrival", "fork"]
-						"return": migrated_checkpoints = ["arrival", "fork", "return"]
-						_: migrated_checkpoints = []
+				var expected_checkpoints: Array = []
+				match migrated_phase:
+					"arrival": expected_checkpoints = ["arrival"]
+					"fork", "branch", "objective", "capstone", "shortcut": expected_checkpoints = ["arrival", "fork"]
+					"return": expected_checkpoints = ["arrival", "fork", "return"]
+					_: expected_checkpoints = []
+				# A legacy active route may already carry its physical prefix, but an
+				# empty list is only valid for the approach phase. If the saved phase
+				# proves that the player reached a later beat, reconstruct that prefix
+				# instead of allowing an impossible save to pass validation.
+				var valid_existing_prefix := existing_checkpoints is Array and (existing_checkpoints as Array) == expected_checkpoints
+				var migrated_checkpoints: Array = existing_checkpoints.duplicate(true) if valid_existing_prefix else expected_checkpoints.duplicate(true)
 				if bool(migrated_route.get("return_checkpoint_crossed", false)):
 					migrated_checkpoints = ["arrival", "fork", "return"]
 					migrated_phase = "return"

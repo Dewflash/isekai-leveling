@@ -694,8 +694,13 @@ func _build_world() -> void:
 	_create_tree(beach_zone, Vector3(10, 0, 5), 0.72, "wood", 2)
 	_create_rock(beach_zone, Vector3(-5, 0, 2), "stone", 1)
 	_create_rock(beach_zone, Vector3(6, 0, -4), "shell", 1, "Shell Fragment")
-	_create_shell_discovery(beach_zone, Vector3(4.0, 0.0, 2.5))
-	_create_shell_discovery(beach_zone, Vector3(-7.0, 0.0, -4.4), "SunlitBeach:TideglassShell:pool")
+	# Tidepool objectives live inside the measured tidepool endpoint so the
+	# player crosses the committed branch beat before either shell can be
+	# harvested. Keeping both nodes in the same authored space also makes their
+	# discovery order read as one physical shelf rather than an accidental
+	# cross-map fetch.
+	_create_shell_discovery(beach_zone, Vector3(-7.2, 0.0, -4.25))
+	_create_shell_discovery(beach_zone, Vector3(-9.6, 0.0, -5.75), "SunlitBeach:TideglassShell:pool")
 	_create_tidepool_fishing_spot(beach_zone, Vector3(2.5, 0.0, -6.25))
 	_create_expedition_inscription(beach_zone, Vector3(4.9, 0.0, -5.0), "sunlit_tide_vow")
 	_create_guardian(beach_zone, Vector3(-6.0, 0.9, -4.0), "tide_wraith", Color("#5eb6bd"))
@@ -731,7 +736,9 @@ func _build_world() -> void:
 	# steal focus from the completed vault objective.
 	_create_rock(dungeon_zone, Vector3(-11.0, 0.0, 6.0), "ore", 3, "Deep Veinstone", "deep")
 	_create_rock(dungeon_zone, Vector3(8.0, 0.0, 4.5), "ore", 3, "Veinstone")
-	_create_relic_discovery(dungeon_zone, Vector3(4.0, 0.0, -3.0))
+	# The vault relic belongs to the vault endpoint, not the central approach;
+	# reaching it therefore records the branch transition before discovery.
+	_create_relic_discovery(dungeon_zone, Vector3(-8.55, 0.0, -4.55))
 	_create_expedition_inscription(dungeon_zone, Vector3(4.8, 0.0, -4.8), "sunken_vault_verse")
 	_create_guardian(dungeon_zone, Vector3(-4.0, 0.9, 4.0), "crypt_knight", Color("#a88ce0"))
 	_create_camp_site(dungeon_zone, Vector3(9.0, 0.0, -6.5), "DUNGEON CAMP")

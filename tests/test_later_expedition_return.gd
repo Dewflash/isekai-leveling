@@ -82,6 +82,10 @@ func _find_pickup_near(world: Node, position: Vector3) -> Node:
 	return closest
 
 func _collect_resource_objective(world: Node, session: Node, zone_name: String, branch_id: String, resource_id: String) -> void:
+	# Route resources are measured against the endpoint checkpoint. A tighter
+	# approach tolerance prevents two nearby objective nodes from stealing focus
+	# from one another while still exercising the real joystick movement path.
+	var objective_approach_tolerance := 0.85 if zone_name in ["SunlitBeach", "SunkenDungeon"] else 1.55
 	for _resource_pass in 8:
 		if bool(session.expedition_run.get("objective_complete", false)):
 			return
@@ -90,12 +94,13 @@ func _collect_resource_objective(world: Node, session: Node, zone_name: String, 
 		if resource == null:
 			return
 		var resource_position := (resource as Node3D).global_position
-		_check(await _walk_to(world, resource_position, 1.55), "%s movement reaches %s" % [zone_name, resource_id])
+		_check(await _walk_to(world, resource_position, objective_approach_tolerance), "%s movement reaches %s" % [zone_name, resource_id])
+		_check(str(session.expedition_run.get("route_phase", "")) == "objective", "%s reaches its branch endpoint before objective harvest" % zone_name)
 		await _interact_and_settle(world)
 		var pickup := _find_pickup_near(world, resource_position)
 		_check(pickup != null, "%s harvesting creates a physical %s pickup" % [zone_name, resource_id])
 		if pickup != null:
-			_check(await _walk_to(world, (pickup as Node3D).global_position, 1.55), "%s movement reaches the %s pickup" % [zone_name, resource_id])
+			_check(await _walk_to(world, (pickup as Node3D).global_position, objective_approach_tolerance), "%s movement reaches the %s pickup" % [zone_name, resource_id])
 			await _interact_and_settle(world, 35)
 	_check(bool(session.expedition_run.get("objective_complete", false)), "%s resource objective completes through physical collection" % zone_name)
 

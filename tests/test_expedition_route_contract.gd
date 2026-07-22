@@ -29,11 +29,15 @@ func _new_session(slot: String, route_id: String) -> Node:
 	session.energy = 24
 	session.coins = 200
 	session.get("unlocked_routes").clear()
-	session.get("unlocked_routes").append(route_id)
+	var route_order := ["Whisperwood", "Sunlit Beach", "Ember Ridge", "Glass Desert", "Sunken Dungeon"]
+	var route_index := route_order.find(route_id)
+	for index in range(route_index + 1):
+		session.get("unlocked_routes").append(route_order[index])
 	session.expedition_run = {"status": "none"}
 	return session
 
 func _run() -> void:
+	var last_session: Node = null
 	var route_cases := [
 		{"id": "Sunlit Beach", "branch": "tidepool", "objective_kind": "resource", "objective_id": "shell", "target": 2},
 		{"id": "Ember Ridge", "branch": "quarry", "objective_kind": "resource", "objective_id": "ore", "target": 3},
@@ -43,6 +47,7 @@ func _run() -> void:
 	for route_case in route_cases:
 		var route_id := str(route_case["id"])
 		var session := _new_session("qa_route_contract_%s" % route_id.replace(" ", "_"), route_id)
+		last_session = session
 		var arrival := ContentRegistry.expedition_route_socket(route_id, "arrival")
 		var fork := ContentRegistry.expedition_route_socket(route_id, "fork")
 		var endpoint := ContentRegistry.expedition_route_socket(route_id, str(route_case["branch"]))
@@ -70,7 +75,7 @@ func _run() -> void:
 		_check(loaded.expedition_run.get("route_checkpoints", []) == ["arrival", "fork", "return"], "%s reload preserves checkpoints" % route_id)
 		_check(not loaded.expedition_return_checkpoint_required(), "%s does not require a second return crossing" % route_id)
 
-	var legacy_payload: Dictionary = session.call("_to_dict")
+	var legacy_payload: Dictionary = last_session.call("_to_dict")
 	legacy_payload["save_version"] = 25
 	var legacy_run: Dictionary = legacy_payload["expedition_run"].duplicate(true)
 	legacy_run["route_phase"] = "objective"
@@ -82,10 +87,10 @@ func _run() -> void:
 	legacy_run["stake_active"] = false
 	legacy_run["return_checkpoint_crossed"] = false
 	legacy_payload["expedition_run"] = legacy_run
-	var migrated: Dictionary = session.call("_migrate_payload", legacy_payload)
+	var migrated: Dictionary = last_session.call("_migrate_payload", legacy_payload)
 	_check(int(migrated.get("save_version", 0)) == 26, "v25 route saves migrate to v26")
 	_check(migrated.get("expedition_run", {}).get("route_checkpoints", []) == ["arrival", "fork"], "v25 objective routes gain only their traversal prefix")
-	_check(bool(session.call("_save_shape_is_supported", migrated)), "migrated objective route remains save-valid")
+	_check(bool(last_session.call("_save_shape_is_supported", migrated)), "migrated objective route remains save-valid")
 
 	if failures > 0:
 		print("EXPEDITION_ROUTE_CONTRACT_TESTS_FAIL failures=%d checks=%d" % [failures, checks])

@@ -592,6 +592,31 @@ Updated: 2026-07-22, Asia/Singapore
   broader facility interiors, production biome art, richer action animation,
   device capture, and full audio/content completion remain open.
 
+## 2026-07-22 physical later-route endpoint checkpoint
+
+- Beach tidepool shells and the Dungeon vault relic now sit inside their
+  registry-owned branch endpoint spaces. The player must physically cross the
+  selected endpoint before harvesting or discovering the objective; the
+  objective nodes no longer sit on an unrelated central approach.
+- The later-route acceptance test now uses a measured inner approach tolerance
+  for the two compact endpoint maps and asserts endpoint-before-harvest. It
+  passes `LATER_EXPEDITION_RETURN_PASS checks=108 routes=4`.
+- The route-contract fixture now models the ordered unlock chain required by
+  the save validator. v25 migration now derives the traversal prefix from the
+  saved route phase when an older active run has no checkpoint list, and the
+  contract passes `EXPEDITION_ROUTE_CONTRACT_TESTS_PASS checks=79`.
+- The broader serial regression sweep passed session, progression, guidance,
+  feedback, guardian, Workshop, storage, player, world-loop, expedition,
+  camera/input, hitbox, reference-HUD, Sanctuary visual, and shader contracts.
+  `test_sanctuary_directional_families.gd` remains blocked by the known Godot
+  macOS SPIR-V-to-MSL signal 11 before the script starts; this is an execution
+  environment failure, not a green visual claim.
+
+This is a durable route-correctness checkpoint, not a final Sanctuary or
+full-game claim. Production Sanctuary density, all facility art families,
+five production expedition presentations, richer action animation, device
+capture, deeper audio, and the complete content pass remain open.
+
 ## Next actions (the project is not being called finished)
 
 1. Keep the Sanctuary gate active: strengthen lived-in activity density,
