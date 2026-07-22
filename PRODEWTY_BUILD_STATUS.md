@@ -33,6 +33,13 @@ Updated: 2026-07-23, Asia/Singapore
   old single-frame walk row remains only as an unreferenced source/reference
   asset. `tests/test_mira_animation.gd` verifies the project-bound sheet,
   directional rows, frame cadence, and measured atlas contract.
+- Construction sites now show an authored animated worker during the
+  authoritative `building` state. The worker is anchored to the catalogued
+  service/access zone, derives its approach gap from the measured structure and
+  worker envelopes, reuses the generated directional walk family, and is
+  explicitly presentation-only with no collision or occupancy authority.
+  `tests/test_world_loop.gd` verifies its state binding, service-zone anchor,
+  frame advance, and physics separation.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,

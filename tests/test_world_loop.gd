@@ -101,6 +101,20 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	assert(staged_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") != null)
 	assert((staged_visual.get_node("DeliveredLogs") as Node3D).visible)
 	assert(not (staged_visual.get_node("ConstructionWalls") as Node3D).visible)
+	var construction_worker := staged_visual.get_node_or_null("IllustratedStructurePresentation/StructureActivityDressing/ConstructionWorker") as Sprite3D
+	assert(construction_worker != null and construction_worker.visible)
+	assert(bool(construction_worker.get_meta("presentation_only", false)))
+	assert(int(construction_worker.get_meta("collision_layer", -1)) == 0)
+	assert(construction_worker.find_children("*", "StaticBody3D", true, false).is_empty())
+	assert(str(construction_worker.get_meta("activity_zone_id", "")).length() > 0)
+	var local_footprint: Array = staged_visual.get_meta("local_collision_footprint", [])
+	assert(local_footprint.size() == 2)
+	assert(absf(construction_worker.position.x) > float(local_footprint[0]) * 0.5 or absf(construction_worker.position.z) > float(local_footprint[1]) * 0.5)
+	var worker_atlas := construction_worker.texture as AtlasTexture
+	assert(worker_atlas != null and int(construction_worker.get_meta("walk_frame_count", 0)) == 4)
+	var worker_region_before := worker_atlas.region
+	(world.get("sanctuary_style") as Node).call("_process", 0.25)
+	assert(not is_equal_approx(worker_atlas.region.position.x, worker_region_before.position.x))
 	building_data["remaining_hours"] = 10.0
 	world.call("_spawn_structure_visual", staged_id, building_data)
 	staged_visual = visuals.get(staged_id) as Node3D

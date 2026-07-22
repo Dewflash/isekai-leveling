@@ -11,6 +11,7 @@ const SanctuaryAssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd"
 const PROP_SHEET_PATH := "res://assets/generated/sanctuary/settlement-props-sheet.png"
 const ENVIRONMENT_SHEET_PATH := "res://assets/generated/sanctuary/environment-sheet.png"
 const PLAYER_STRUCTURE_SHEET_PATH := "res://assets/generated/sanctuary/player-structures-sheet.png"
+const CONSTRUCTION_WORKER_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/mira-direction-walk-sheet-v2.png"
 const GROUND_MOSS_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_moss.tres"
 const GROUND_PATH_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_path.tres"
 const STRUCTURE_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
@@ -25,6 +26,8 @@ const ENVIRONMENT_CELL_HEIGHT_INSET := 404.0
 const PLAYER_STRUCTURE_CELL_SIZE := 512.0
 const PLAYER_STRUCTURE_CELL_INSET := 7.0
 const PLAYER_STRUCTURE_CELL_EXTENT := 498.0
+const WALK_SHEET_COLUMNS := 4
+const WALK_SHEET_ROWS := 4
 
 # Opaque bounds are measured inside each cropped atlas region. Keeping these
 # values beside the asset identifiers makes `world_size` mean visible artwork
@@ -146,6 +149,7 @@ var swaying_nodes: Array[Dictionary] = []
 var pulsing_nodes: Array[Dictionary] = []
 var fire_lights: Array[Dictionary] = []
 var activity_motion_nodes: Array[Dictionary] = []
+var construction_worker_nodes: Array[Dictionary] = []
 var resource_visual_roots: Array[Node3D] = []
 var canonical_landmark_roots: Dictionary = {}
 var lived_in_activity_root: Node3D
@@ -251,6 +255,30 @@ func _process(delta: float) -> void:
 		var lift := float(activity_data.get("lift", 0.025))
 		activity_node.position = base_position + Vector3(0.0, sin(elapsed * 1.35 + phase) * lift, 0.0)
 		activity_node.rotation.y = float(activity_data.get("base_rotation", activity_node.rotation.y)) + sin(elapsed * 0.82 + phase) * 0.035
+	for worker_data in construction_worker_nodes:
+		var raw_worker: Variant = worker_data.get("node")
+		if not is_instance_valid(raw_worker):
+			continue
+		var worker := raw_worker as Sprite3D
+		if worker == null:
+			continue
+		var worker_sheet := worker.texture as AtlasTexture
+		if worker_sheet == null:
+			continue
+		var frame_count := maxi(1, int(worker.get_meta("walk_frame_count", 4)))
+		var frame_rate := maxf(1.0, float(worker.get_meta("walk_frame_rate", 6.0)))
+		var frame_time := float(worker_data.get("frame_time", 0.0)) + delta
+		worker_data["frame_time"] = frame_time
+		var frame := posmod(int(floor(frame_time * frame_rate)), frame_count)
+		var cell_size: Array = worker.get_meta("walk_cell_size", [1.0, 1.0])
+		var cell_width := float(cell_size[0])
+		var cell_height := float(cell_size[1])
+		var direction_frame := int(worker.get_meta("direction_frame", 0))
+		worker_sheet.region = Rect2(float(frame) * cell_width, float(direction_frame) * cell_height, cell_width, cell_height)
+		worker.set_meta("animation_frame", frame)
+		var base_position: Vector3 = worker_data.get("base_position", worker.position)
+		var phase := float(worker_data.get("phase", 0.0))
+		worker.position = base_position + Vector3(0.0, absf(sin(frame_time * 5.2 + phase)) * 0.025, 0.0)
 
 func _hide_replaced_presentation(legacy_nodes: Array) -> void:
 	for legacy_node in legacy_nodes:
@@ -1256,6 +1284,10 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 		var motion_node: Variant = activity_motion_nodes[motion_index].get("node")
 		if not is_instance_valid(motion_node) or (motion_node as Node3D).get_parent() == null:
 			activity_motion_nodes.remove_at(motion_index)
+	for worker_index in range(construction_worker_nodes.size() - 1, -1, -1):
+		var worker_node: Variant = construction_worker_nodes[worker_index].get("node")
+		if not is_instance_valid(worker_node) or (worker_node as Node3D).get_parent() == null:
+			construction_worker_nodes.remove_at(worker_index)
 	var presentation := structure.get_node_or_null("IllustratedStructurePresentation") as Node3D
 	if presentation == null:
 		presentation = Node3D.new()
@@ -1490,6 +1522,8 @@ func _build_structure_activity_dressing(presentation: Node3D, structure: Node3D,
 	var rear_anchor := Vector3(-footprint.x * 0.46, 0.0, -footprint.y * 0.54)
 	if state != "operational":
 		_add_construction_material_dressing(dressing, data, footprint, front_zone, side_anchor, rear_anchor)
+		if state == "building":
+			_add_construction_worker(dressing, kind, footprint, data)
 		return
 	match kind:
 		"workshop":
@@ -1529,6 +1563,168 @@ func _build_structure_activity_dressing(presentation: Node3D, structure: Node3D,
 			_add_activity_box(dressing, "CisternBucket", Vector3(0.42, 0.34, 0.42), front_zone + Vector3(0.48, 0.18, 0.26), Color("#9a6245"), Vector3(0.0, 0.0, 0.0))
 			_add_activity_box(dressing, "CisternRopeCoil", Vector3(0.52, 0.12, 0.52), front_zone + Vector3(-0.46, 0.10, 0.26), Color("#d1ad68"), Vector3(0.0, 0.0, 0.0))
 			_add_activity_lamp(dressing, "CisternLantern", side_anchor + Vector3(0.0, 0.78, 0.0), Color("#8edbd5"))
+
+func _add_construction_worker(parent: Node3D, kind: String, footprint: Vector2, data: Dictionary) -> void:
+	if parent == null or CONSTRUCTION_WORKER_SPRITE_SHEET_PATH.is_empty() or not ResourceLoader.exists(CONSTRUCTION_WORKER_SPRITE_SHEET_PATH):
+		return
+	var sheet := load(CONSTRUCTION_WORKER_SPRITE_SHEET_PATH) as Texture2D
+	if sheet == null:
+		return
+	var frame_contract := _measure_walk_sheet(sheet)
+	var max_opaque_height := float(frame_contract.get("max_opaque_height", 0.0))
+	var max_opaque_width := float(frame_contract.get("max_opaque_width", 0.0))
+	if max_opaque_height <= 0.0 or max_opaque_width <= 0.0:
+		return
+	var cell_width := float(sheet.get_width()) / float(WALK_SHEET_COLUMNS)
+	var cell_height := float(sheet.get_height()) / float(WALK_SHEET_ROWS)
+	var worker_height := _reference_character_world_height()
+	var pixel_size := worker_height / max_opaque_height
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(0.0, 0.0, cell_width, cell_height)
+	atlas.filter_clip = true
+	var worker := Sprite3D.new()
+	worker.name = "ConstructionWorker"
+	worker.texture = atlas
+	worker.centered = false
+	var frame_offsets: Array = frame_contract.get("offsets", [])
+	var initial_offset: Array = frame_offsets[0][0] if frame_offsets.size() > 0 and frame_offsets[0] is Array and (frame_offsets[0] as Array).size() > 0 else [-cell_width * 0.5, 0.0]
+	worker.offset = Vector2(float(initial_offset[0]), float(initial_offset[1]))
+	worker.pixel_size = pixel_size
+	worker.axis = Vector3.AXIS_Z
+	worker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	worker.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	worker.shaded = true
+	worker.material_override = _structure_sprite_material(atlas)
+	worker.no_depth_test = false
+	worker.sorting_use_aabb_center = false
+	worker.sorting_offset = 0.0
+	var first_bounds := _walk_bounds_rect(frame_contract, 0, 0, cell_width, cell_height)
+	var visible_width := max_opaque_width * pixel_size
+	var profile := {
+		"asset_id": "sanctuary/characters/construction_worker_direction_walk_sheet_v2",
+		"footprint_ratio": Vector2(maxf(0.18, visible_width / worker_height * 0.52), 0.22),
+		"asset_path": CONSTRUCTION_WORKER_SPRITE_SHEET_PATH,
+	}
+	_set_sprite_contract_metadata(worker, profile, first_bounds, worker_height)
+	worker.set_meta("asset_path", CONSTRUCTION_WORKER_SPRITE_SHEET_PATH)
+	worker.set_meta("animation_rows", {"work": "directional_walk_rows"})
+	worker.set_meta("direction_frames", WALK_SHEET_ROWS)
+	worker.set_meta("walk_frame_count", WALK_SHEET_COLUMNS)
+	worker.set_meta("walk_frame_rate", 5.0)
+	worker.set_meta("walk_cell_size", [cell_width, cell_height])
+	worker.set_meta("walk_frame_offsets", frame_offsets)
+	worker.set_meta("walk_frame_bounds", frame_contract.get("bounds", []))
+	worker.set_meta("walk_max_visible_size", [max_opaque_width * pixel_size, worker_height])
+	worker.set_meta("animation_measurement_source", "per_cell_texture_alpha_used_rect")
+	worker.set_meta("presentation_only", true)
+	worker.set_meta("collision_layer", 0)
+	worker.set_meta("worker_role", "construction_activity")
+	worker.set_meta("construction_state", "building")
+	worker.set_meta("construction_progress", _construction_progress(data))
+	var zone := _construction_activity_zone(kind)
+	if zone.is_empty():
+		return
+	var zone_center := _array_to_vector3(zone.get("center", []), Vector3(0.0, 0.0, footprint.y * 0.54))
+	var zone_facing := _array_to_vector3(zone.get("facing", []), Vector3(0.0, 0.0, 1.0))
+	zone_facing.y = 0.0
+	zone_facing = zone_facing.normalized() if zone_facing.length_squared() > 0.01 else Vector3(0.0, 0.0, 1.0)
+	var worker_footprint_value: Array = worker.get_meta("visual_footprint", [0.6, 0.42])
+	var worker_depth := maxf(0.2, float(worker_footprint_value[1]))
+	var structure_half_extent := absf(zone_facing.x) * footprint.x * 0.5 + absf(zone_facing.z) * footprint.y * 0.5
+	var zone_projection := absf(zone_center.x * zone_facing.x + zone_center.z * zone_facing.z)
+	var boundary_correction := maxf(0.0, structure_half_extent - zone_projection)
+	var zone_size: Array = zone.get("size", [1.0, 1.0])
+	var zone_span := float(zone_size[1]) if absf(zone_facing.z) >= absf(zone_facing.x) else float(zone_size[0])
+	var approach_gap := maxf(worker_depth * 0.55, maxf(0.12, zone_span * 0.18))
+	var worker_position := zone_center + zone_facing * (boundary_correction + approach_gap)
+	worker.position = worker_position
+	var direction_frame := _walk_direction_frame(-zone_facing)
+	worker.set_meta("direction_frame", direction_frame)
+	worker.set_meta("activity_zone_id", str(zone.get("id", "")))
+	worker.set_meta("activity_zone_facing", [zone_facing.x, zone_facing.y, zone_facing.z])
+	worker.set_meta("ground_pivot", [0.0, 0.0, 0.0])
+	parent.add_child(worker)
+	var shadow := _add_contact_shadow(parent, worker_position + Vector3(0.0, 0.018, 0.0), Vector2(maxf(0.42, visible_width * 0.72), maxf(0.28, worker_depth * 1.55)), 0.0)
+	shadow.name = "ConstructionWorkerContactShadow"
+	shadow.set_meta("presentation_only", true)
+	shadow.set_meta("collision_layer", 0)
+	construction_worker_nodes.append({"node": worker, "base_position": worker_position, "phase": worker_position.x * 0.7 + worker_position.z * 0.35, "frame_time": 0.0})
+
+func _construction_activity_zone(kind: String) -> Dictionary:
+	var first_zone: Dictionary = {}
+	for zone_value in SanctuaryAssetCatalog.structure_access_zones(kind, 0):
+		if not (zone_value is Dictionary):
+			continue
+		var zone := zone_value as Dictionary
+		if first_zone.is_empty():
+			first_zone = zone
+		if str(zone.get("kind", "")) == "service":
+			return zone
+	return first_zone
+
+func _reference_character_world_height() -> float:
+	if host_world != null:
+		var guide := host_world.get("guide_npc") as Node3D
+		var guide_sprite := guide.get_node_or_null("Visual/IllustratedMira") as Sprite3D if guide != null else null
+		if guide_sprite != null:
+			var measured := float(guide_sprite.get_meta("visual_height_world_meters", 0.0))
+			if measured > 0.01:
+				return measured
+	return 2.02
+
+func _measure_walk_sheet(sheet: Texture2D) -> Dictionary:
+	var image := sheet.get_image() if sheet != null else null
+	if image == null:
+		return {"max_opaque_height": 0.0, "max_opaque_width": 0.0, "offsets": [], "bounds": []}
+	var cell_width := float(image.get_width()) / float(WALK_SHEET_COLUMNS)
+	var cell_height := float(image.get_height()) / float(WALK_SHEET_ROWS)
+	var offsets: Array = []
+	var bounds: Array = []
+	var max_opaque_height := 0.0
+	var max_opaque_width := 0.0
+	for direction in WALK_SHEET_ROWS:
+		var direction_offsets: Array = []
+		var direction_bounds: Array = []
+		for frame in WALK_SHEET_COLUMNS:
+			var left := int(round(float(frame) * cell_width))
+			var top := int(round(float(direction) * cell_height))
+			var right := int(round(float(frame + 1) * cell_width))
+			var bottom := int(round(float(direction + 1) * cell_height))
+			var cell_rect := Rect2i(left, top, maxi(1, right - left), maxi(1, bottom - top))
+			var used := image.get_region(cell_rect).get_used_rect()
+			if used.size.x <= 0 or used.size.y <= 0:
+				direction_offsets.append([-cell_width * 0.5, 0.0])
+				direction_bounds.append([0, 0, 0, 0])
+				continue
+			max_opaque_height = maxf(max_opaque_height, float(used.size.y))
+			max_opaque_width = maxf(max_opaque_width, float(used.size.x))
+			var bottom_gap := float(cell_rect.size.y - used.position.y - used.size.y)
+			direction_offsets.append([-(float(used.position.x) + float(used.size.x) * 0.5), -bottom_gap])
+			direction_bounds.append([used.position.x, used.position.y, used.size.x, used.size.y])
+		offsets.append(direction_offsets)
+		bounds.append(direction_bounds)
+	return {"max_opaque_height": max_opaque_height, "max_opaque_width": max_opaque_width, "offsets": offsets, "bounds": bounds}
+
+func _walk_bounds_rect(contract: Dictionary, direction: int, frame: int, cell_width: float, cell_height: float) -> Rect2i:
+	var bounds: Array = contract.get("bounds", [])
+	if direction < bounds.size() and bounds[direction] is Array and frame < (bounds[direction] as Array).size():
+		var value: Variant = (bounds[direction] as Array)[frame]
+		if value is Array and (value as Array).size() >= 4:
+			var rect := value as Array
+			return Rect2i(int(rect[0]), int(rect[1]), maxi(1, int(rect[2])), maxi(1, int(rect[3])))
+	return Rect2i(0, 0, maxi(1, int(cell_width)), maxi(1, int(cell_height)))
+
+func _walk_direction_frame(facing: Vector3) -> int:
+	if absf(facing.z) >= absf(facing.x):
+		return 2 if facing.z < 0.0 else 0
+	return 3 if facing.x < 0.0 else 1
+
+func _array_to_vector3(value: Variant, fallback: Vector3) -> Vector3:
+	if value is Array and (value as Array).size() >= 3:
+		var array := value as Array
+		return Vector3(float(array[0]), float(array[1]), float(array[2]))
+	return fallback
 
 func _structure_access_zone(kind: String, zone_id: String, fallback: Vector3) -> Vector3:
 	for zone_value in SanctuaryAssetCatalog.structure_access_zones(kind, 0):
