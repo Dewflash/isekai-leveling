@@ -20,6 +20,13 @@ Updated: 2026-07-23, Asia/Singapore
 
 ## 2026-07-23 visual contract checkpoint
 
+- The fresh Sanctuary now has a catalog-authored lived-in activity ring around
+  the player-directed build field: a shared kitchen garden, temporary wayfarer
+  tent, timber yard, and common well. These use the measured illustrated prop
+  pipeline with contact shadows and ambient motion, and are explicitly
+  presentation-only: they claim no build cells and create no collision bodies.
+  This makes a clean launch visibly inhabited without deciding the player's
+  eventual building layout.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,

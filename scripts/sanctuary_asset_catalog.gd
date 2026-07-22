@@ -272,6 +272,53 @@ const FRAMING_OBSTACLES := [
 	{"id": "framing_rock_3", "kind": "rock", "sprite_index": 3, "position": [10.8, 0.10, 8.8], "world_size": 2.5, "placement_clearance_ratio": [0.66, 0.30]},
 ]
 
+## Presentation-only activity sockets keep a fresh Sanctuary from reading as an
+## empty editor grid before the player has chosen a layout. These are communal
+## work areas and temporary settlement life, not player-owned structures: they
+## deliberately carry no occupancy, collision, costs, or interaction authority.
+## Their positions live in the content catalog so the art layer does not grow a
+## second scattered set of magic coordinates. The player-directed build field,
+## canonical landmarks, route gates, and measured framing obstacles remain the
+## authorities for placement and traversal.
+const LIVED_IN_ACTIVITY_SOCKETS := [
+	{
+		"id": "west_kitchen_garden",
+		"kind": "garden",
+		"role": "shared_food_plot",
+		"position": [-6.9, 0.10, 8.3],
+		"world_size": 3.4,
+		"ground_rotation_degrees": -7.0,
+		"animate": true,
+	},
+	{
+		"id": "east_wayfarer_tent",
+		"kind": "tent",
+		"role": "temporary_shelter",
+		"position": [3.8, 0.10, -10.7],
+		"world_size": 3.8,
+		"ground_rotation_degrees": 9.0,
+		"animate": true,
+	},
+	{
+		"id": "north_timber_yard",
+		"kind": "scaffold",
+		"role": "shared_material_yard",
+		"position": [-3.6, 0.10, -10.7],
+		"world_size": 3.4,
+		"ground_rotation_degrees": -12.0,
+		"animate": true,
+	},
+	{
+		"id": "west_common_well",
+		"kind": "well",
+		"role": "shared_water_point",
+		"position": [4.9, 0.10, 8.7],
+		"world_size": 2.5,
+		"ground_rotation_degrees": 4.0,
+		"animate": true,
+	},
+]
+
 static func framing_placement_rects() -> Array:
 	var result: Array = []
 	for obstacle_value in FRAMING_OBSTACLES:

@@ -148,6 +148,7 @@ var fire_lights: Array[Dictionary] = []
 var activity_motion_nodes: Array[Dictionary] = []
 var resource_visual_roots: Array[Node3D] = []
 var canonical_landmark_roots: Dictionary = {}
+var lived_in_activity_root: Node3D
 var key_light_direction := Vector3(-0.42, 0.84, 0.34)
 var build_sprite_regions := {
 	"scaffold": 0,
@@ -186,6 +187,7 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 	_build_story_campfire()
 	_build_canonical_landmarks()
 	_build_environment_framing()
+	_build_lived_in_activity()
 	_build_route_markers()
 	_build_ambient_lights()
 
@@ -645,6 +647,61 @@ func _build_environment_framing() -> void:
 	_add_environment_sprite(4, Vector3(10.9, 0.10, 4.2), 3.0, 0.9)
 	_add_contact_shadow(self, Vector3(9.0, 0.083, 0.52), Vector2(3.4, 1.35), 0.0)
 	_add_environment_sprite(5, Vector3(9.0, 0.10, 0.4), 4.1, 0.0)
+
+func _build_lived_in_activity() -> void:
+	# This ring is the visible bridge between a fresh save and a player-authored
+	# settlement. It adds believable work/life beats around the open reserve while
+	# keeping the reserve itself empty and freely placeable. Every socket is a
+	# presentation root only: no StaticBody3D, occupancy claim, or gameplay id is
+	# created here.
+	lived_in_activity_root = Node3D.new()
+	lived_in_activity_root.name = "LivedInActivityLayer"
+	lived_in_activity_root.set_meta("presentation_only", true)
+	lived_in_activity_root.set_meta("collision_authority", "none")
+	lived_in_activity_root.set_meta("occupancy_authority", "GameSession")
+	add_child(lived_in_activity_root)
+	for socket_value in SanctuaryAssetCatalog.LIVED_IN_ACTIVITY_SOCKETS:
+		if not (socket_value is Dictionary):
+			continue
+		var socket := socket_value as Dictionary
+		var position_data: Array = socket.get("position", [])
+		if position_data.size() < 3:
+			continue
+		var kind := str(socket.get("kind", ""))
+		var socket_id := str(socket.get("id", ""))
+		var world_size := float(socket.get("world_size", 0.0))
+		if kind.is_empty() or socket_id.is_empty() or world_size <= 0.0:
+			continue
+		var socket_position := Vector3(float(position_data[0]), float(position_data[1]), float(position_data[2]))
+		var sprite := _add_prop_sprite(kind, socket_position, world_size, bool(socket.get("animate", false)))
+		if sprite == null:
+			continue
+		# `_add_prop_sprite` uses the same measured atlas path as all Sanctuary
+		# presentation art. Reparenting keeps that exact feet pivot while giving
+		# the complete activity ring a stable inspection root.
+		sprite.reparent(lived_in_activity_root, false)
+		sprite.name = "ActivitySocketArt_%s" % socket_id
+		sprite.set_meta("activity_socket_id", socket_id)
+		sprite.set_meta("activity_role", str(socket.get("role", "")))
+		sprite.set_meta("presentation_only", true)
+		sprite.set_meta("collision_layer", 0)
+		sprite.set_meta("occupies_build_cells", false)
+		var footprint_value: Variant = sprite.get_meta("visual_footprint", [])
+		var footprint := Vector2(world_size * 0.62, world_size * 0.30)
+		if footprint_value is Array and (footprint_value as Array).size() >= 2:
+			var measured_footprint := footprint_value as Array
+			footprint = Vector2(maxf(0.1, float(measured_footprint[0])), maxf(0.1, float(measured_footprint[1])))
+		var shadow := _add_contact_shadow(
+			lived_in_activity_root,
+			Vector3(socket_position.x, 0.084, socket_position.z + 0.04),
+			footprint * Vector2(1.12, 1.20),
+			float(socket.get("ground_rotation_degrees", 0.0))
+		)
+		shadow.name = "ActivitySocketShadow_%s" % socket_id
+		shadow.set_meta("activity_socket_id", socket_id)
+		shadow.set_meta("presentation_only", true)
+		shadow.set_meta("collision_layer", 0)
+		shadow.set_meta("occupies_build_cells", false)
 
 func _build_route_markers() -> void:
 	# Route sockets stay legible as authored destinations, but their local
