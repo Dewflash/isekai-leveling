@@ -19,10 +19,10 @@ func _init() -> void:
 	assert(not session.can_place_interior_station(structure_id, "workbench", [-2.5, -1]))
 	assert(not session.can_place_interior_station(structure_id, "workbench", [-1, 2]))
 	assert(not session.can_place_interior_station("forged_parent", "workbench", [-2, -1]))
-	var placed := session.place_interior_station(structure_id, "workbench", [-2, -1], 0, [0, 0])
+	var placed := session.place_interior_station(structure_id, "workbench", [1, -1], 0, [0, 0])
 	assert(str(placed.get("state", "")) == "blueprint")
 	assert(not session.can_place_interior_station(structure_id, "workbench", [2, -1]))
-	assert(not session.can_place_interior_station(structure_id, "anvil", [-2, -1]))
+	assert(not session.can_place_interior_station(structure_id, "anvil", [1, -1]))
 	assert(session.interior_stations[structure_id].size() == 1)
 	assert(session.deliver_interior_station_material(structure_id, str(placed["id"]), "fiber", 1).is_empty())
 	session.inventory["wood"] = 4
@@ -41,10 +41,12 @@ func _init() -> void:
 	session.inventory["wood"] = 7
 	session.inventory["stone"] = 8
 	session.inventory["plank"] = 1
-	var furnace := session.place_interior_station(structure_id, "furnace_left", [-2, 0], 0, [3, 3])
-	var anvil := session.place_interior_station(structure_id, "anvil", [0, 0], 0, [3, 3])
-	var storage := session.place_interior_station(structure_id, "storage", [1, 0], 0, [3, 3])
-	assert(not furnace.is_empty() and not anvil.is_empty() and not storage.is_empty())
+	var furnace := session.place_interior_station(structure_id, "furnace_left", [-2, -2], 0, [4, 4])
+	var anvil := session.place_interior_station(structure_id, "anvil", [1, 0], 0, [4, 4])
+	var storage := session.place_interior_station(structure_id, "storage", [2, 1], 0, [4, 4])
+	assert(not furnace.is_empty(), "furnace placement failed: %s" % furnace)
+	assert(not anvil.is_empty(), "anvil placement failed: %s" % anvil)
+	assert(not storage.is_empty(), "storage placement failed: %s" % storage)
 	assert(str(session.deliver_interior_station_material(structure_id, str(furnace["id"]), "wood", 2).get("state", "")) == "blueprint")
 	assert(str(session.deliver_interior_station_material(structure_id, str(furnace["id"]), "stone", 3).get("state", "")) == "building")
 	assert(str(session.deliver_interior_station_material(structure_id, str(anvil["id"]), "stone", 2).get("state", "")) == "blueprint")
@@ -64,10 +66,12 @@ func _init() -> void:
 	assert(session.advance_day(session.day + 1))
 	assert(int(session.claim_workshop_job().get("output", 0)) == 2)
 	assert(int(session.inventory["ingot"]) == 2)
-	session.inventory["plank"] = 2
+	# A broken default hatchet is missing 18 durability. Field repair costs
+	# ceil(18 / 6) = 3 planks; the station delegates to that same authority.
+	session.inventory["plank"] = 3
 	session.equipment["hatchet"]["durability"] = 0
 	assert(session.repair_tool_at_station("hatchet", str(anvil["id"]), structure_id))
-	assert(int(session.inventory["plank"]) == 1)
+	assert(int(session.inventory["plank"]) == 0)
 	assert(int(session.cargo_capacity) == 18)
 	# A capability is bound to one parent and one exact station identity.
 	session.inventory["wood"] = 3

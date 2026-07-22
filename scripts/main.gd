@@ -6153,7 +6153,7 @@ func _update_interior_station_preview() -> void:
 	var valid := bool(session.call("can_place_interior_station", interior_instance_id, selected_interior_station_kind, [candidate_cell.x, candidate_cell.y], interior_station_rotation, [player_cell.x, player_cell.y]))
 	interior_station_preview_cell = candidate_cell
 	interior_station_preview_valid = valid
-	building_interior.call("set_station_preview", candidate_cell, interior_station_rotation, valid)
+	building_interior.call("set_station_preview", candidate_cell, interior_station_rotation, valid, selected_interior_station_kind)
 
 func _toggle_interior_station_placement() -> void:
 	if not interior_active or interior_transitioning:

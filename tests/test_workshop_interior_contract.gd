@@ -3,6 +3,7 @@ extends SceneTree
 const InteriorScript = preload("res://scripts/building_interior.gd")
 const AssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd")
 const AssetMeasurement = preload("res://scripts/sanctuary_asset_measurement.gd")
+const ContentRegistry = preload("res://scripts/content_registry.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -130,6 +131,13 @@ func _run() -> void:
 				_check(str(body.get_meta("measurement_source", "")) in ["visible_mesh_aabb", "generated_texture_alpha_calibrated_by_measured_mesh_aspect"], "%s collision must be measured from visible asset bounds" % station.name)
 			if box != null and footprint.size() == 2:
 				_check(is_equal_approx(box.size.x, float(footprint[0])) and is_equal_approx(box.size.z, float(footprint[1])), "%s collision footprint must match visible footprint" % station.name)
+				var station_kind := str(station.get_meta("interior_station_kind", ""))
+				var placement_footprint := ContentRegistry.interior_station_footprint(station_kind, int(station.get_meta("rotation_quarter_turns", 0)))
+				var interior_cell_size := float(interior.get("cell_size"))
+				var collision_body := body
+				var fits_claimed_cells := absf(collision_body.position.x) + box.size.x * 0.5 <= float(placement_footprint.x) * interior_cell_size * 0.5 + 0.01 and absf(collision_body.position.z) + box.size.z * 0.5 <= float(placement_footprint.y) * interior_cell_size * 0.5 + 0.01
+				if not station_kind.is_empty():
+					_check(placement_footprint != Vector2i.ZERO and fits_claimed_cells, "%s measured collider must fit its claimed placement footprint (body=%s box=%s footprint=%s)" % [station.name, collision_body.position, box.size, placement_footprint])
 				var independently_measured := _independent_station_bounds(station)
 				_check(independently_measured.size.x > 0.0 and independently_measured.size.z > 0.0, "%s must have independently measurable physical visual bounds" % station.name)
 				_check(is_equal_approx(box.size.x, independently_measured.size.x) and is_equal_approx(box.size.z, independently_measured.size.z), "%s collider X/Z must match independently measured bounds" % station.name)
@@ -146,6 +154,28 @@ func _run() -> void:
 	if room != null:
 		var active_shape := room.find_child("MeasuredProxy", true, false) as CollisionShape3D
 		_check(active_shape != null and not active_shape.disabled, "interior collision must enable on entry")
+		# The visual placement frame must consume the same station-kind and
+		# quarter-turn footprint as the authoritative placement validator. This
+		# catches the old failure where every preview was drawn as a Workbench.
+		for station_kind in ["workbench", "furnace_left", "furnace_right", "anvil", "storage"]:
+			for rotation in 4:
+				interior.call("set_station_preview", Vector2i(-2, -2), rotation, rotation % 2 == 0, station_kind)
+				var preview := room.get_node_or_null("InteriorStationPlacementPreview") as Node3D
+				var expected_footprint := ContentRegistry.interior_station_footprint(station_kind, rotation)
+				_check(preview != null, "%s rotation %d must expose a placement preview" % [station_kind, rotation])
+				if preview == null:
+					continue
+				_check(str(preview.get_meta("interior_station_kind", "")) == station_kind, "%s rotation %d preview must retain station kind" % [station_kind, rotation])
+				_check(preview.get_meta("footprint_cells", []) == [expected_footprint.x, expected_footprint.y], "%s rotation %d preview footprint must match registry" % [station_kind, rotation])
+				_check(int(preview.get_meta("rotation_quarter_turns", -1)) == rotation, "%s rotation %d preview must retain rotation" % [station_kind, rotation])
+				_check(bool(preview.get_meta("preview_valid", false)) == (rotation % 2 == 0), "%s rotation %d preview validity must be visible" % [station_kind, rotation])
+				var frame := preview.get_node_or_null("ConstructionFrame") as Node3D
+				_check(frame != null, "%s rotation %d preview must expose construction frame" % [station_kind, rotation])
+				if frame != null:
+					_check(frame.get_meta("footprint_cells", []) == [expected_footprint.x, expected_footprint.y], "%s rotation %d frame footprint must match registry" % [station_kind, rotation])
+					_check(str(frame.get_meta("measurement_source", "")) == "content_registry_footprint", "%s rotation %d frame must declare footprint provenance" % [station_kind, rotation])
+				await process_frame
+		interior.call("clear_station_preview")
 	var exited := bool(interior.call("transition_to", false))
 	_check(exited, "workshop exit transition must start")
 	await _wait_transition(interior)

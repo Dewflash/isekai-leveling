@@ -567,6 +567,31 @@ Updated: 2026-07-22, Asia/Singapore
   combat/harvest timelines, creature animation coverage, final Sanctuary
   presentation, and the full-game content pass remain open.
 
+## 2026-07-22 measured Workshop fit-out checkpoint
+
+- The transient station placement preview now receives the selected station
+  kind and quarter-turn from the gameplay controller. Its frame footprint,
+  validity tint, rotation metadata, and provenance are derived from the same
+  `ContentRegistry` footprint consumed by `GameSession`, instead of always
+  drawing a Workbench-sized frame. Preview teardown is immediate so rapid
+  cycle/rotate input cannot leave stale same-named frames in the room.
+- The generated furnace sprites were measured against their visible alpha
+  envelopes. Both furnace variants now claim a three-by-three physical grid
+  footprint, preserving their authored scale while keeping placement,
+  collision, and persistence aligned. The interior contract now checks all five
+  station kinds across all four rotations and verifies measured colliders fit
+  within their claimed cells.
+- Verification: `WORKSHOP_INTERIOR_CONTRACT_PASS checks=311`,
+  `WORKSHOP_FITOUT_TESTS_PASS`, `PLAYER_ANIMATION_CONTRACT_PASS checks=29`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=160`,
+  `ASSET_HITBOX_TESTS_PASS checks=612`, and
+  `REFERENCE_HUD_TESTS_PASS checks=19`. The Godot macOS certificate warning
+  remains environmental; isolated runs use a writable temporary Godot home.
+- This is a correctness/scale milestone inside the gold-standard Workshop
+  slice, not a final Sanctuary or full-game claim. Final authored density,
+  broader facility interiors, production biome art, richer action animation,
+  device capture, and full audio/content completion remain open.
+
 ## Next actions (the project is not being called finished)
 
 1. Keep the Sanctuary gate active: strengthen lived-in activity density,

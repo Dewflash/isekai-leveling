@@ -244,24 +244,33 @@ func sync_persisted_stations(persisted_stations: Dictionary) -> void:
 	room_measurements_valid = _validate_room_measurements()
 	_set_room_collisions(was_active)
 
-func set_station_preview(local_cell: Vector2i, rotation_quarter_turns: int, valid: bool) -> void:
+func set_station_preview(local_cell: Vector2i, rotation_quarter_turns: int, valid: bool, station_kind := "workbench") -> void:
 	clear_station_preview()
 	if room_root == null or not active:
 		return
-	var footprint := ContentRegistry.interior_station_footprint("workbench", rotation_quarter_turns)
+	var footprint := ContentRegistry.interior_station_footprint(station_kind, rotation_quarter_turns)
 	if footprint == Vector2i.ZERO:
 		return
 	station_preview = Node3D.new()
 	station_preview.name = "InteriorStationPlacementPreview"
+	station_preview.set_meta("interior_station_kind", station_kind)
+	station_preview.set_meta("footprint_cells", [footprint.x, footprint.y])
+	station_preview.set_meta("rotation_quarter_turns", posmod(rotation_quarter_turns, 4))
+	station_preview.set_meta("preview_valid", valid)
+	station_preview.set_meta("measurement_source", "content_registry_footprint")
+	station_preview.set_meta("collision_contributor", false)
 	station_preview.position = InteriorGrid.cell_to_local(local_cell, footprint, room_size, cell_size)
 	station_preview.rotation.y = float(rotation_quarter_turns) * PI * 0.5
-	station_preview.modulate = Color(0.38, 0.95, 0.72, 0.88) if valid else Color(0.95, 0.30, 0.28, 0.88)
 	room_root.add_child(station_preview)
 	_add_construction_frame(station_preview, footprint)
+	_set_construction_frame_tint(station_preview.get_node_or_null("ConstructionFrame") as Node3D, valid)
 
 func clear_station_preview() -> void:
 	if station_preview != null and is_instance_valid(station_preview):
-		station_preview.queue_free()
+		# This node is a transient input preview, never part of the saved world.
+		# Free it immediately so a rotate/cycle update cannot leave a same-named
+		# stale frame in the room until the next idle frame.
+		station_preview.free()
 	station_preview = null
 
 func station_ids() -> Array[String]:
@@ -737,6 +746,9 @@ func _create_persisted_station(station_id: String, record: Dictionary) -> void:
 		return
 	station.rotation.y = float(rotation) * PI * 0.5
 	station.set_meta("interior_station_kind", station_kind)
+	station.set_meta("rotation_quarter_turns", posmod(rotation, 4))
+	station.set_meta("placement_footprint_cells", [footprint.x, footprint.y])
+	station.set_meta("placement_measurement_source", "content_registry_footprint")
 	station.set_meta("interior_structure_id", str(record.get("structure_id", active_instance_id)))
 	station.set_meta("installation_state", str(record.get("state", "blueprint")))
 	_add_construction_frame(station, footprint)
@@ -830,6 +842,10 @@ func _add_construction_frame(station: Node3D, footprint: Vector2i) -> void:
 		return
 	var frame := Node3D.new()
 	frame.name = "ConstructionFrame"
+	frame.set_meta("footprint_cells", [footprint.x, footprint.y])
+	frame.set_meta("footprint_world_size", [maxf(0.6, float(footprint.x) * cell_size * 0.90), maxf(0.6, float(footprint.y) * cell_size * 0.90)])
+	frame.set_meta("measurement_source", "content_registry_footprint")
+	frame.set_meta("collision_contributor", false)
 	station.add_child(frame)
 	var width := maxf(0.6, float(footprint.x) * cell_size * 0.90)
 	var depth := maxf(0.6, float(footprint.y) * cell_size * 0.90)
@@ -925,6 +941,21 @@ func _add_construction_frame(station: Node3D, footprint: Vector2i) -> void:
 		stone.set_meta("physical_asset_mesh", false)
 		stone.set_meta("collision_contributor", false)
 		materials.add_child(stone)
+
+func _set_construction_frame_tint(frame: Node3D, valid: bool) -> void:
+	if frame == null:
+		return
+	var frame_color := Color(0.38, 0.95, 0.72, 0.88) if valid else Color(0.95, 0.30, 0.28, 0.88)
+	for mesh_value in frame.find_children("*", "MeshInstance3D", true, false):
+		var mesh := mesh_value as MeshInstance3D
+		if mesh == null:
+			continue
+		var source_material := mesh.material_override as StandardMaterial3D
+		if source_material == null:
+			continue
+		var tinted_material := source_material.duplicate() as StandardMaterial3D
+		tinted_material.albedo_color = Color(frame_color.r, frame_color.g, frame_color.b, source_material.albedo_color.a * frame_color.a)
+		mesh.material_override = tinted_material
 
 func _create_dressing() -> void:
 	var shelf := Node3D.new()
