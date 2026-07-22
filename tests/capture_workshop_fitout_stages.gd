@@ -112,11 +112,13 @@ func _capture() -> void:
 
 func _place_legal_stations(session: Node) -> Dictionary:
 	var placements := [
-		["furnace_left", [-2, -1]],
-		["furnace_right", [0, -1]],
-		["workbench", [-2, 0]],
-		["anvil", [0, 0]],
-		["storage", [1, 0]],
+		# Furnaces use their measured three-by-three claim and stay behind the
+		# doorway; the remaining stations fill the front row without overlap.
+		["furnace_left", [-3, -2]],
+		["furnace_right", [1, -2]],
+		["workbench", [-2, 1]],
+		["anvil", [1, 1]],
+		["storage", [2, 2]],
 	]
 	session.set("interior_stations", {STRUCTURE_ID: {}})
 	for placement in placements:
