@@ -184,6 +184,18 @@ var reference_cargo_text: Label
 var reference_quick_labels: Dictionary = {}
 var reference_top_buttons: Array[Button] = []
 var reference_slots: Array[Button] = []
+var build_catalog_backdrop: ColorRect
+var build_catalog_panel: Panel
+var build_catalog_cards: HBoxContainer
+var build_catalog_title: Label
+var build_catalog_subtitle: Label
+var build_catalog_detail: Label
+var build_catalog_status: Label
+var build_catalog_place_button: Button
+var build_catalog_rotate_button: Button
+var build_catalog_close_button: Button
+var build_catalog_card_controls: Dictionary = {}
+var build_catalog_open := false
 var hud_safe_rect := Rect2()
 var hud_layout_signature := ""
 var mastery_label: Label
@@ -248,6 +260,8 @@ var placement_mode := false
 var placement_structure_id := "rain_cistern"
 var placement_rotation_quarter_turns := 0
 var settlement_visuals := {}
+
+const BUILD_CATALOG_ORDER := ["workshop", "archive", "storage_shed", "livestock_pen", "rain_cistern"]
 
 var palette := {
 	"ink": Color("#18282b"),
@@ -387,6 +401,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
 	if interior_transitioning:
+		return
+	if build_catalog_open:
+		if event.is_action_pressed("pause") or event.is_action_pressed("build"):
+			_set_build_catalog_open(false)
+			return
+		if event.is_action_pressed("interact"):
+			_build_catalog_place_selected()
+			return
+		if event.is_action_pressed("rotate_build"):
+			_rotate_build_catalog_selection()
+			return
 		return
 	if event.is_action_pressed("pause"):
 		if settings_open:
@@ -2423,6 +2448,232 @@ func _build_reference_hud(root: Control) -> void:
 	reference_cargo_label.custom_minimum_size = Vector2(98, 20)
 	reference_cargo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	cargo_row.add_child(reference_cargo_label)
+	_build_catalogue(reference_hud)
+
+func _build_catalogue(parent: Control) -> void:
+	# This is a player-facing construction surface, not a second rules engine.
+	# Cards read ContentRegistry for costs/footprints and SanctuaryAssetCatalog for
+	# the exact directional art that the world placement ghost will use.
+	build_catalog_backdrop = ColorRect.new()
+	build_catalog_backdrop.name = "BuildCatalogBackdrop"
+	build_catalog_backdrop.color = Color(0.025, 0.035, 0.03, 0.48)
+	build_catalog_backdrop.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	build_catalog_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	build_catalog_backdrop.visible = false
+	parent.add_child(build_catalog_backdrop)
+
+	build_catalog_panel = _reference_panel(Color(0.055, 0.042, 0.035, 0.98), Color("#e0b86c"), 18)
+	build_catalog_panel.name = "BuildCatalogPanel"
+	build_catalog_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	build_catalog_panel.visible = false
+	parent.add_child(build_catalog_panel)
+
+	var header := VBoxContainer.new()
+	header.name = "BuildCatalogHeader"
+	header.position = Vector2(18, 14)
+	header.size = Vector2(600, 48)
+	header.add_theme_constant_override("separation", 1)
+	build_catalog_panel.add_child(header)
+	build_catalog_title = _label("SANCTUARY BUILD", 20, Color("#fff0c6"))
+	build_catalog_title.name = "BuildCatalogTitle"
+	header.add_child(build_catalog_title)
+	build_catalog_subtitle = _label("Choose a structure, read its real footprint, then place the outline in the world.", 11, Color("#d4bd91"))
+	build_catalog_subtitle.name = "BuildCatalogSubtitle"
+	header.add_child(build_catalog_subtitle)
+
+	build_catalog_close_button = _reference_icon_button("×", "Close build catalogue", Callable(self, "_toggle_build_context"))
+	build_catalog_close_button.name = "BuildCatalogClose"
+	build_catalog_close_button.position = Vector2(0, 12)
+	build_catalog_panel.add_child(build_catalog_close_button)
+
+	var cards_scroll := ScrollContainer.new()
+	cards_scroll.name = "BuildCatalogCardScroll"
+	cards_scroll.position = Vector2(18, 70)
+	cards_scroll.size = Vector2(780, 188)
+	cards_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	cards_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	build_catalog_panel.add_child(cards_scroll)
+	build_catalog_cards = HBoxContainer.new()
+	build_catalog_cards.name = "BuildCatalogCards"
+	build_catalog_cards.add_theme_constant_override("separation", 10)
+	cards_scroll.add_child(build_catalog_cards)
+	for structure_id in BUILD_CATALOG_ORDER:
+		_build_catalog_card(str(structure_id))
+
+	build_catalog_detail = _label("", 11, Color("#f1dfb4"))
+	build_catalog_detail.name = "BuildCatalogDetail"
+	build_catalog_detail.position = Vector2(18, 264)
+	build_catalog_detail.size = Vector2(720, 26)
+	build_catalog_detail.clip_text = true
+	build_catalog_panel.add_child(build_catalog_detail)
+	build_catalog_status = _label("", 11, Color("#a8c68a"))
+	build_catalog_status.name = "BuildCatalogStatus"
+	build_catalog_status.position = Vector2(18, 290)
+	build_catalog_status.size = Vector2(500, 22)
+	build_catalog_panel.add_child(build_catalog_status)
+
+	build_catalog_place_button = _reference_action_button("PLACE BLUEPRINT  [E]", Callable(self, "_build_catalog_place_selected"), 196)
+	build_catalog_place_button.name = "BuildCatalogPlace"
+	build_catalog_place_button.position = Vector2(530, 284)
+	build_catalog_place_button.size = Vector2(196, 34)
+	build_catalog_panel.add_child(build_catalog_place_button)
+	build_catalog_rotate_button = _reference_action_button("ROTATE  [X]", Callable(self, "_rotate_build_catalog_selection"), 122)
+	build_catalog_rotate_button.name = "BuildCatalogRotate"
+	build_catalog_rotate_button.position = Vector2(730, 284)
+	build_catalog_rotate_button.size = Vector2(122, 34)
+	build_catalog_panel.add_child(build_catalog_rotate_button)
+	_update_build_catalog()
+
+func _build_catalog_card(structure_id: String) -> void:
+	var card := Button.new()
+	card.name = "BuildCatalogCard_%s" % structure_id
+	card.custom_minimum_size = Vector2(142, 178)
+	card.tooltip_text = "Select %s" % _structure_display_name(structure_id)
+	card.text = ""
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_apply_reference_button_texture(card, Color(0.25, 0.16, 0.09, 0.98), Color(0.42, 0.25, 0.12, 1.0))
+	card.pressed.connect(func() -> void: _select_build_catalog_structure(structure_id))
+	build_catalog_cards.add_child(card)
+
+	var art_frame := Panel.new()
+	art_frame.name = "ArtFrame"
+	art_frame.position = Vector2(7, 7)
+	art_frame.size = Vector2(128, 88)
+	art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art_frame.add_theme_stylebox_override("panel", _reference_style(Color(0.07, 0.09, 0.07, 0.72), Color("#d3a65c"), 9, 1))
+	card.add_child(art_frame)
+	var art := TextureRect.new()
+	art.name = "StructureArt"
+	art.position = Vector2(4, 4)
+	art.size = Vector2(120, 80)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.texture = _build_catalog_texture(structure_id)
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art_frame.add_child(art)
+
+	var name_label := _label(_structure_display_name(structure_id).to_upper(), 10, Color("#fff0c6"))
+	name_label.name = "StructureName"
+	name_label.position = Vector2(8, 99)
+	name_label.size = Vector2(126, 18)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.clip_text = true
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(name_label)
+	var footprint := _structure_unrotated_footprint_text(structure_id)
+	var footprint_label := _label("%s m  •  1 cell = 1 m" % footprint, 9, Color("#d4bd91"))
+	footprint_label.name = "Footprint"
+	footprint_label.position = Vector2(6, 119)
+	footprint_label.size = Vector2(130, 16)
+	footprint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	footprint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(footprint_label)
+	var state_label := _label("", 9, Color("#a8c68a"))
+	state_label.name = "Availability"
+	state_label.position = Vector2(6, 138)
+	state_label.size = Vector2(130, 31)
+	state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	state_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	state_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	state_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(state_label)
+	build_catalog_card_controls[structure_id] = {"card": card, "art": art, "name": name_label, "state": state_label}
+
+func _build_catalog_texture(structure_id: String) -> Texture2D:
+	var variant := SanctuaryAssetCatalog.structure_directional_variant(structure_id, 0)
+	var path := str(variant.get("asset_path", ""))
+	return load(path) as Texture2D if not path.is_empty() else null
+
+func _structure_unrotated_footprint_text(structure_id: String) -> String:
+	var definition := ContentRegistry.structure_definition(structure_id)
+	var footprint: Array = definition.get("footprint", [1, 1])
+	if footprint.size() < 2:
+		return "1 × 1"
+	return "%d × %d" % [int(footprint[0]), int(footprint[1])]
+
+func _catalogue_structure_unlocked(structure_id: String) -> bool:
+	return session != null and session.has_method("has_structure_blueprint") and bool(session.call("has_structure_blueprint", structure_id))
+
+func _select_build_catalog_structure(structure_id: String) -> void:
+	if not BUILD_CATALOG_ORDER.has(structure_id):
+		return
+	placement_structure_id = structure_id
+	_update_build_catalog()
+	if not _catalogue_structure_unlocked(structure_id):
+		var definition := ContentRegistry.structure_definition(structure_id)
+		_show_toast("Blueprint locked. Decode %s at the Archive first." % str(definition.get("requires_blueprint", "a new discovery")), 2.4)
+		return
+	_show_toast("%s selected. Check the footprint, then place its outline." % _structure_display_name(structure_id), 1.8)
+
+func _build_catalog_place_selected() -> void:
+	if not build_catalog_open:
+		return
+	if not _catalogue_structure_unlocked(placement_structure_id):
+		_select_build_catalog_structure(placement_structure_id)
+		return
+	_set_build_catalog_open(false)
+	_toggle_structure_placement()
+
+func _rotate_build_catalog_selection() -> void:
+	if not build_catalog_open:
+		return
+	placement_rotation_quarter_turns = posmod(placement_rotation_quarter_turns + 1, 4)
+	_update_build_catalog()
+
+func _update_build_catalog() -> void:
+	if build_catalog_cards == null:
+		return
+	for structure_id in BUILD_CATALOG_ORDER:
+		var controls: Dictionary = build_catalog_card_controls.get(structure_id, {})
+		var card := controls.get("card") as Button
+		var state_label := controls.get("state") as Label
+		if card == null or state_label == null:
+			continue
+		var unlocked := _catalogue_structure_unlocked(structure_id)
+		var selected: bool = structure_id == placement_structure_id
+		card.modulate = Color.WHITE if unlocked else Color(0.58, 0.58, 0.58, 1.0)
+		if selected:
+			card.modulate = Color(1.0, 0.90, 0.64, 1.0) if unlocked else Color(0.80, 0.72, 0.54, 1.0)
+		var definition := ContentRegistry.structure_definition(structure_id)
+		var cost_parts: Array[String] = []
+		for material_id in definition.get("cost", {}):
+			cost_parts.append("%s %d" % [str(material_id).capitalize(), int(definition["cost"][material_id])])
+		if not unlocked:
+			state_label.text = "LOCKED\n%s" % str(definition.get("requires_blueprint", "ARCHIVE DISCOVERY"))
+			state_label.add_theme_color_override("font_color", Color("#d08a72"))
+		else:
+			state_label.text = "READY\n%s" % "  ".join(cost_parts)
+			state_label.add_theme_color_override("font_color", Color("#a8c68a"))
+		if selected:
+			state_label.add_theme_color_override("font_color", Color("#ffe08c"))
+	if build_catalog_detail != null:
+		var selected_definition := ContentRegistry.structure_definition(placement_structure_id)
+		var selected_cost: Array[String] = []
+		for material_id in selected_definition.get("cost", {}):
+			selected_cost.append("%s %d" % [str(material_id).capitalize(), int(selected_definition["cost"][material_id])])
+		build_catalog_detail.text = "%s  |  footprint %s m  |  %d°  |  %s" % [_structure_display_name(placement_structure_id), _structure_unrotated_footprint_text(placement_structure_id), placement_rotation_quarter_turns * 90, " + ".join(selected_cost)]
+	if build_catalog_status != null:
+		build_catalog_status.text = "OUTLINE → FRAME → WALLS → ROOF  |  measured grid footprint" if _catalogue_structure_unlocked(placement_structure_id) else "Decode this blueprint at the Archive to unlock placement."
+	if build_catalog_place_button != null:
+		build_catalog_place_button.disabled = not _catalogue_structure_unlocked(placement_structure_id)
+		build_catalog_place_button.text = "PLACE BLUEPRINT  [E]" if _catalogue_structure_unlocked(placement_structure_id) else "BLUEPRINT LOCKED"
+	if build_catalog_rotate_button != null:
+		build_catalog_rotate_button.text = "ROTATE  %d°" % (placement_rotation_quarter_turns * 90)
+
+func _set_build_catalog_open(open: bool) -> void:
+	build_catalog_open = open and current_zone == "Sanctuary" and not interior_active
+	if build_catalog_backdrop != null:
+		build_catalog_backdrop.visible = build_catalog_open
+	if build_catalog_panel != null:
+		build_catalog_panel.visible = build_catalog_open
+	if build_catalog_open:
+		_reset_manual_input()
+		_update_build_catalog()
+		_show_toast("Build catalogue open. Choose a structure or press Esc to close.", 2.0)
+	else:
+		if placement_mode:
+			_update_structure_preview()
+		_layout_hud()
 
 func _reference_player_portrait_texture() -> Texture2D:
 	var sheet := load(PLAYER_SPRITE_SHEET_PATH) as Texture2D
@@ -2763,6 +3014,8 @@ func _apply_player_settings() -> void:
 func _toggle_settings() -> void:
 	if interior_transitioning:
 		return
+	if build_catalog_open:
+		_set_build_catalog_open(false)
 	settings_open = not settings_open
 	if settings_panel != null:
 		settings_panel.visible = settings_open
@@ -2995,6 +3248,38 @@ func _layout_hud() -> void:
 		if bottom_box != null:
 			bottom_box.position = Vector2(12.0, 9.0)
 			bottom_box.size = Vector2(maxf(260.0, belt_width - 24.0), belt_height - 18.0)
+		if build_catalog_backdrop != null:
+			build_catalog_backdrop.position = Vector2.ZERO
+			build_catalog_backdrop.size = viewport_size
+		if build_catalog_panel != null:
+			var catalogue_width := minf(880.0, maxf(620.0, content_size.x * 0.80))
+			catalogue_width = minf(catalogue_width, content_size.x)
+			var catalogue_height := minf(336.0, maxf(300.0, content_size.y * 0.52))
+			var catalogue_top := content_position.y + top_height + 8.0
+			var catalogue_bottom := reference_bottom_panel.position.y - 8.0
+			if catalogue_top + catalogue_height > catalogue_bottom:
+				catalogue_height = maxf(270.0, catalogue_bottom - catalogue_top)
+			build_catalog_panel.size = Vector2(catalogue_width, catalogue_height)
+			build_catalog_panel.position = content_position + Vector2((content_size.x - catalogue_width) * 0.5, 0.0)
+			build_catalog_panel.position.y = catalogue_top
+			if build_catalog_panel.get_node_or_null("BuildCatalogHeader") != null:
+				var catalogue_header := build_catalog_panel.get_node("BuildCatalogHeader") as VBoxContainer
+				catalogue_header.size.x = maxf(240.0, catalogue_width - 96.0)
+			if build_catalog_close_button != null:
+				build_catalog_close_button.position = Vector2(catalogue_width - 60.0, 12.0)
+			if build_catalog_panel.get_node_or_null("BuildCatalogCardScroll") != null:
+				var catalogue_scroll := build_catalog_panel.get_node("BuildCatalogCardScroll") as ScrollContainer
+				catalogue_scroll.size = Vector2(maxf(260.0, catalogue_width - 36.0), maxf(150.0, catalogue_height - 148.0))
+			if build_catalog_detail != null:
+				build_catalog_detail.position = Vector2(18.0, catalogue_height - 72.0)
+				build_catalog_detail.size = Vector2(maxf(260.0, catalogue_width - 36.0), 22.0)
+			if build_catalog_status != null:
+				build_catalog_status.position = Vector2(18.0, catalogue_height - 48.0)
+				build_catalog_status.size = Vector2(maxf(240.0, catalogue_width - 420.0), 22.0)
+			if build_catalog_place_button != null:
+				build_catalog_place_button.position = Vector2(catalogue_width - 326.0, catalogue_height - 52.0)
+			if build_catalog_rotate_button != null:
+				build_catalog_rotate_button.position = Vector2(catalogue_width - 126.0, catalogue_height - 52.0)
 	hud_layout_signature = _current_hud_layout_signature()
 
 func _create_floor(parent: Node3D, position: Vector3, size: Vector2, color: Color, node_name: String) -> void:
@@ -4795,6 +5080,9 @@ func _cycle_stat_selection() -> void:
 func _toggle_pause() -> void:
 	if interior_transitioning:
 		return
+	if build_catalog_open:
+		_set_build_catalog_open(false)
+		return
 	if settings_open:
 		# The HUD pause button is reachable while the settings modal is open.
 		# Close the modal first so the button cannot leave an invisible settings
@@ -4827,6 +5115,9 @@ func _on_joystick_vector_changed(value: Vector2) -> void:
 		player.call("set_joystick_vector", value)
 
 func _toggle_utilities() -> void:
+	if build_catalog_open:
+		_set_build_catalog_open(false)
+		return
 	if get_tree().paused or is_player_input_locked() or interior_active:
 		return
 	utilities_open = not utilities_open
@@ -4892,7 +5183,7 @@ func _update_world_motion(delta: float) -> void:
 		pickup.rotation.y += delta * 0.7
 
 func is_player_input_locked() -> bool:
-	return interior_transitioning or (session != null and session.has_method("has_active_fishing") and bool(session.call("has_active_fishing")))
+	return build_catalog_open or interior_transitioning or (session != null and session.has_method("has_active_fishing") and bool(session.call("has_active_fishing")))
 
 func _fishing_visual_spot(spot_id: String = "") -> Node3D:
 	if spot_id.is_empty() and session != null:
@@ -5163,6 +5454,9 @@ func _current_surface() -> String:
 func _update_hud() -> void:
 	if zone_label == null:
 		return
+	if build_catalog_open and (current_zone != "Sanctuary" or interior_active or utilities_open or settings_open):
+		_set_build_catalog_open(false)
+	_update_build_catalog()
 	zone_label.text = current_zone
 	if hud_title_label != null:
 		hud_title_label.text = "WORKSHOP" if interior_active else ("SANCTUARY" if current_zone == "Sanctuary" else "PRODEWTY")
@@ -5295,8 +5589,8 @@ func _update_hud() -> void:
 	if action_hint != null and hud_joystick != null:
 		action_hint.visible = not reference_gameplay_hud and (hud_joystick.visible or current_zone != "Sanctuary")
 	var fishing_locked := is_player_input_locked()
+	var fishing_active := session != null and session.has_method("has_active_fishing") and bool(session.call("has_active_fishing"))
 	if interact_button != null:
-		var fishing_active := fishing_locked
 		var fishing_phase := str(session.get("fishing_attempt").get("phase", "idle")) if fishing_active and session != null else ""
 		interact_button.text = ("Hook / Reel" if fishing_phase in ["bite", "reeling"] else "Wait for Bite") if fishing_active else ("Confirm placement" if placement_mode else "Interact")
 		interact_button.disabled = get_tree().paused or interior_transitioning
@@ -5318,7 +5612,7 @@ func _update_hud() -> void:
 		if interact_button != null:
 			reference_action_text = str(interact_button.text).replace("  [E]", "")
 		reference_context_button.text = "%s  [E]" % reference_action_text
-		reference_context_button.disabled = get_tree().paused or interior_transitioning
+		reference_context_button.disabled = get_tree().paused or interior_transitioning or build_catalog_open
 	# Management controls remain top-right. Context-sensitive gameplay buttons
 	# occupy their own bottom-right dock so touch movement and actions stay on
 	# opposite thumbs without covering the Sanctuary composition.
@@ -5492,7 +5786,7 @@ func _update_reference_action_slots(context_node: Node) -> void:
 	var food_available := _food_count() > 0
 	var water_available := int(inventory.get("water", 0)) > 0 and hydration < 100
 	var farm_context := not interior_active and current_zone == "Sanctuary" and context_node == farm_plot
-	var build_context := (not interior_active and current_zone == "Sanctuary" and context_node != null) or (interior_active and interior_kind == "workshop")
+	var build_context := (not interior_active and current_zone == "Sanctuary") or (interior_active and interior_kind == "workshop")
 	for slot in reference_slots:
 		if slot == null:
 			continue
@@ -5502,7 +5796,7 @@ func _update_reference_action_slots(context_node: Node) -> void:
 			"USE":
 				# USE remains available while fishing so it can advance the reel/
 				# bite state machine and remains the universal context action.
-				disabled = paused_or_transitioning
+				disabled = paused_or_transitioning or build_catalog_open
 			"ATTACK":
 				disabled = paused_or_transitioning or action_locked or not attack_target_available
 			"DODGE":
@@ -5514,7 +5808,7 @@ func _update_reference_action_slots(context_node: Node) -> void:
 			"FARM":
 				disabled = paused_or_transitioning or action_locked or not farm_context
 			"BUILD":
-				disabled = paused_or_transitioning or action_locked or not build_context
+				disabled = paused_or_transitioning or (action_locked and not build_catalog_open) or not build_context
 			"EXTRACT":
 				disabled = paused_or_transitioning or action_locked or not at_extraction or return_route_blocked
 			"LEDGER":
@@ -5876,12 +6170,18 @@ func _contextual_interact() -> void:
 		_interact()
 
 func _toggle_build_context() -> void:
+	if build_catalog_open:
+		_set_build_catalog_open(false)
+		return
 	if interior_active:
 		if interior_kind != "workshop":
 			return
 		_toggle_interior_station_placement()
 	else:
-		_toggle_structure_placement()
+		if placement_mode:
+			_toggle_structure_placement()
+		else:
+			_set_build_catalog_open(true)
 
 func _construction_interact(structure_node: Node3D) -> void:
 	if structure_node == null or session == null or not structure_node.has_meta("construction_id"):
@@ -8697,6 +8997,8 @@ func _set_zone_collisions(root: Node, active: bool) -> void:
 
 func _set_zone(zone: String) -> void:
 	current_zone = zone
+	if zone != "Sanctuary" and build_catalog_open:
+		_set_build_catalog_open(false)
 	if camera != null:
 		# Sanctuary is a planning diorama; expeditions use a tighter 2.5D
 		# framing so the player reads the next landmark, not the entire map at

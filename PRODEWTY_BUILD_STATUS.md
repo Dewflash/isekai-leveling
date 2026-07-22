@@ -20,6 +20,17 @@ Updated: 2026-07-23, Asia/Singapore
 
 ## 2026-07-23 visual contract checkpoint
 
+- The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
+  Press `B` or the `BUILD` action slot to open it. Each structure card reads the
+  authoritative ContentRegistry footprint/cost, displays its authored q0 art,
+  and shows the unlock state. `PLACE BLUEPRINT` and `ROTATE` route directly into
+  the existing measured placement ghost, grid occupancy, construction stages,
+  and measured collision/access contract; the catalogue does not duplicate
+  placement rules.
+- The catalogue is intentionally a visible workflow slice, not a claim that the
+  Sanctuary is final. It makes the construction system inspectable in-game while
+  the broader density, final HUD polish, facility families, and device captures
+  remain open.
 - Workshop operational presentation now binds one authored cozy v2 family across
   all four quarter-turn directions: q0 front, q1 right side, q2 rear, and q3
   opposite side. The stable directional variant IDs and saved rotation semantics
