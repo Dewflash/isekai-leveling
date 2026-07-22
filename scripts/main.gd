@@ -39,7 +39,7 @@ const KENNEY_BUTTON_HOVER_TEXTURE := "res://assets/sourced/kenney-ui-adventure/P
 const SANCTUARY_PACK_ROOT := "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/"
 const PLAYER_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/player-direction-sheet.png"
 const PLAYER_WALK_SHEET_PATH := "res://assets/generated/sanctuary/player-walk-sheet.png"
-const MIRA_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/mira-direction-sheet.png"
+const MIRA_WALK_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/mira-direction-walk-sheet-v2.png"
 ## The reference and LDOE-style base view need a clearly readable ground plane
 ## without flattening the building facades. Keep the diagonal southeast yaw but
 ## use a genuinely elevated 43.3° pitch; this also makes the screen-space
@@ -4754,21 +4754,24 @@ func _create_guide_npc(parent: Node3D, position: Vector3) -> void:
 func _add_illustrated_mira_sprite(visual: Node3D) -> Sprite3D:
 	if visual == null:
 		return null
-	var sheet := load(MIRA_SPRITE_SHEET_PATH) as Texture2D
+	var sheet := load(MIRA_WALK_SPRITE_SHEET_PATH) as Texture2D
 	if sheet == null:
 		return null
 	var sprite := Sprite3D.new()
 	sprite.name = "IllustratedMira"
 	var cell_width := float(sheet.get_width()) / 4.0
-	var cell_height := float(sheet.get_height()) / 2.0
+	var cell_height := float(sheet.get_height()) / 4.0
+	var frame_contract := _measure_mira_walk_frames(sheet)
 	var atlas := AtlasTexture.new()
 	atlas.atlas = sheet
 	atlas.region = Rect2(0.0, 0.0, cell_width, cell_height)
 	atlas.filter_clip = true
 	sprite.texture = atlas
 	sprite.centered = false
-	sprite.offset = Vector2(-cell_width * 0.5, -22.0)
-	sprite.pixel_size = MIRA_ART_WORLD_HEIGHT / 468.0
+	var frame_offsets: Array = frame_contract.get("offsets", [])
+	var initial_offset: Array = frame_offsets[0][0] if frame_offsets.size() > 0 and frame_offsets[0] is Array and (frame_offsets[0] as Array).size() > 0 else [-cell_width * 0.5, 0.0]
+	sprite.offset = Vector2(float(initial_offset[0]), float(initial_offset[1]))
+	sprite.pixel_size = MIRA_ART_WORLD_HEIGHT / maxf(1.0, float(frame_contract.get("max_opaque_height", 1.0)))
 	sprite.set_meta("visual_height_world_meters", MIRA_ART_WORLD_HEIGHT)
 	sprite.axis = Vector3.AXIS_Z
 	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -4777,10 +4780,17 @@ func _add_illustrated_mira_sprite(visual: Node3D) -> Sprite3D:
 	sprite.no_depth_test = false
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.0
-	sprite.set_meta("asset_id", "sanctuary/characters/mira_direction_sheet")
-	sprite.set_meta("animation_rows", {"idle": 0, "walk": 1})
+	sprite.set_meta("asset_id", "sanctuary/characters/mira_direction_walk_sheet_v2")
+	sprite.set_meta("asset_path", MIRA_WALK_SPRITE_SHEET_PATH)
+	sprite.set_meta("animation_rows", {"walk": "directional_walk_rows"})
 	sprite.set_meta("direction_frames", 4)
+	sprite.set_meta("walk_frame_count", 4)
+	sprite.set_meta("walk_frame_rate", 6.0)
 	sprite.set_meta("cell_size", [cell_width, cell_height])
+	sprite.set_meta("walk_cell_size", [cell_width, cell_height])
+	sprite.set_meta("walk_frame_offsets", frame_offsets)
+	sprite.set_meta("walk_frame_bounds", frame_contract.get("bounds", []))
+	sprite.set_meta("animation_measurement_source", "per_cell_texture_alpha_used_rect")
 	sprite.set_meta("ground_pivot", [0.0, 0.0, 0.0])
 	sprite.set_meta("sorting_anchor_mode", "feet")
 	sprite.set_meta("sorting_anchor_space", "sprite_local")
@@ -4803,6 +4813,44 @@ func _add_illustrated_mira_sprite(visual: Node3D) -> Sprite3D:
 	contact_shadow.position = Vector3(0.0, 0.02, 0.0)
 	guide_npc.add_child(contact_shadow)
 	return sprite
+
+func _measure_mira_walk_frames(sheet: Texture2D) -> Dictionary:
+	# The generated sheet is a four-by-four directional walk family. Measure each
+	# alpha envelope instead of copying a transparent margin or boot offset from a
+	# single frame; this keeps Mira's feet on the same world pivot while her coat,
+	# satchel, and stride change from frame to frame.
+	var image := sheet.get_image() if sheet != null else null
+	if image == null:
+		return {"max_opaque_height": 1.0, "offsets": [], "bounds": []}
+	var cell_width := float(image.get_width()) / 4.0
+	var cell_height := float(image.get_height()) / 4.0
+	var offsets: Array = []
+	var bounds: Array = []
+	var max_opaque_height := 1.0
+	for direction in 4:
+		var direction_offsets: Array = []
+		var direction_bounds: Array = []
+		for frame in 4:
+			var left := int(round(float(frame) * cell_width))
+			var top := int(round(float(direction) * cell_height))
+			var right := int(round(float(frame + 1) * cell_width))
+			var bottom := int(round(float(direction + 1) * cell_height))
+			var cell_rect := Rect2i(left, top, maxi(1, right - left), maxi(1, bottom - top))
+			var used := image.get_region(cell_rect).get_used_rect()
+			if used.size.x <= 0 or used.size.y <= 0:
+				direction_offsets.append([-cell_width * 0.5, 0.0])
+				direction_bounds.append([0, 0, 0, 0])
+				continue
+			max_opaque_height = maxf(max_opaque_height, float(used.size.y))
+			var bottom_gap := float(cell_rect.size.y - used.position.y - used.size.y)
+			direction_offsets.append([
+				-(float(used.position.x) + float(used.size.x) * 0.5),
+				-bottom_gap,
+			])
+			direction_bounds.append([used.position.x, used.position.y, used.size.x, used.size.y])
+		offsets.append(direction_offsets)
+		bounds.append(direction_bounds)
+	return {"max_opaque_height": max_opaque_height, "offsets": offsets, "bounds": bounds}
 
 func _sphere_mesh(radius: float, height: float, radial_segments: int, rings: int) -> SphereMesh:
 	var mesh := SphereMesh.new()

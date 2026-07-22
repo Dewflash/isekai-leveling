@@ -27,6 +27,12 @@ Updated: 2026-07-23, Asia/Singapore
   presentation-only: they claim no build cells and create no collision bodies.
   This makes a clean launch visibly inhabited without deciding the player's
   eventual building layout.
+- Mira now uses a generated four-direction, four-frame walk sheet with
+  per-cell alpha-measured feet offsets. Her route routine advances the authored
+  frame sequence while walking and holds a stable first frame when idle; the
+  old single-frame walk row remains only as an unreferenced source/reference
+  asset. `tests/test_mira_animation.gd` verifies the project-bound sheet,
+  directional rows, frame cadence, and measured atlas contract.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,

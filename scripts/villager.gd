@@ -10,6 +10,7 @@ var _route_index := 0
 var _route_progress := 0.0
 var _bob_phase := 0.0
 var _walk_phase := 0.0
+var _walk_frame_time := 0.0
 
 func _ready() -> void:
 	_bob_phase = randf_range(0.0, TAU)
@@ -41,6 +42,7 @@ func _process(delta: float) -> void:
 		var now := Time.get_ticks_msec() * 0.001
 		if walking:
 			_walk_phase += delta * 8.4
+			_walk_frame_time += delta
 			var stride := sin(_walk_phase)
 			visual.position.y = absf(stride) * 0.038 + sin(now * 2.6 + _bob_phase) * 0.018
 			visual.rotation.z = lerpf(visual.rotation.z, sin(_walk_phase * 0.5) * 0.032, delta * 8.0)
@@ -58,6 +60,7 @@ func _process(delta: float) -> void:
 				right_arm.rotation.x = stride * 0.20
 		else:
 			_walk_phase = move_toward(_walk_phase, 0.0, delta * 3.0)
+			_walk_frame_time = 0.0
 			visual.position.y = sin(now * 2.0 + _bob_phase) * 0.018
 			visual.rotation.z = move_toward(visual.rotation.z, 0.0, delta * 0.8)
 			for limb_name in ["LegLeft", "LegRight", "ArmLeft", "ArmRight"]:
@@ -76,21 +79,31 @@ func _update_illustrated_mira(walking: bool, travel: Vector3) -> void:
 	var atlas := sprite.texture as AtlasTexture
 	if atlas == null:
 		return
-	var cell_size_value: Variant = sprite.get_meta("cell_size", [384.0, 512.0])
+	var cell_size_value: Variant = sprite.get_meta("walk_cell_size", sprite.get_meta("cell_size", [384.0, 512.0]))
 	if not (cell_size_value is Array) or (cell_size_value as Array).size() < 2:
 		return
 	var cell_size := cell_size_value as Array
 	var cell_width := float(cell_size[0])
 	var cell_height := float(cell_size[1])
 	var facing := travel if travel.length_squared() > 0.01 else Vector3(sin(rotation.y), 0.0, cos(rotation.y))
-	var frame := 0
+	var direction_frame := 0
 	if absf(facing.z) >= absf(facing.x):
-		frame = 2 if facing.z < 0.0 else 0
+		direction_frame = 2 if facing.z < 0.0 else 0
 	else:
-		frame = 3 if facing.x < 0.0 else 1
-	atlas.region = Rect2(float(frame) * cell_width, (1.0 if walking else 0.0) * cell_height, cell_width, cell_height)
+		direction_frame = 3 if facing.x < 0.0 else 1
+	var frame_count := maxi(1, int(sprite.get_meta("walk_frame_count", 4)))
+	var frame_rate := maxf(1.0, float(sprite.get_meta("walk_frame_rate", 6.0)))
+	var frame := posmod(int(floor(_walk_frame_time * frame_rate)), frame_count) if walking else 0
+	atlas.region = Rect2(float(frame) * cell_width, float(direction_frame) * cell_height, cell_width, cell_height)
+	var frame_offsets: Array = sprite.get_meta("walk_frame_offsets", [])
+	if direction_frame < frame_offsets.size() and frame_offsets[direction_frame] is Array and frame < (frame_offsets[direction_frame] as Array).size():
+		var offset_value: Variant = (frame_offsets[direction_frame] as Array)[frame]
+		if offset_value is Array and (offset_value as Array).size() >= 2:
+			sprite.offset = Vector2(float((offset_value as Array)[0]), float((offset_value as Array)[1]))
 	sprite.set_meta("animation_state", "walk" if walking else "idle")
-	sprite.set_meta("direction_frame", frame)
+	sprite.set_meta("animation_frame", frame)
+	sprite.set_meta("animation_frame_rate", frame_rate if walking else 0.0)
+	sprite.set_meta("direction_frame", direction_frame)
 
 func _route_for_hour(hour: float) -> Array[Vector3]:
 	var route_key := "morning"
