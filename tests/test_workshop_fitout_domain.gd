@@ -73,6 +73,29 @@ func _init() -> void:
 	assert(session.repair_tool_at_station("hatchet", str(anvil["id"]), structure_id))
 	assert(int(session.inventory["plank"]) == 0)
 	assert(int(session.cargo_capacity) == 18)
+	# The measured exterior can be tighter than the fallback room. The complete
+	# fit-out must still be placeable through the same authoritative validator;
+	# this catches oversized logical claims that make a facility impossible to
+	# furnish even though each individual station looks valid.
+	var measured_session := SessionScript.new()
+	measured_session.save_slot = "qa_workshop_fitout_measured_room"
+	root.add_child(measured_session)
+	var measured_structure_id := _operational_shell(measured_session)
+	var measured_layout := {"room_size": [5.25, 4.38], "door_width": 1.18, "cell_size": 1.0, "wall_clearance": 0.45, "door_clearance_depth": 0.85, "door_facing": [0.0, 0.0, 1.0]}
+	assert(measured_session.set_interior_layout(measured_structure_id, measured_layout))
+	measured_session.interior_stations[measured_structure_id] = {}
+	for station_kind in ["furnace_left", "furnace_right", "workbench", "anvil", "storage"]:
+		var placed_measured := {}
+		for x in range(-12, 13):
+			for z in range(-12, 13):
+				if not measured_session.can_place_interior_station(measured_structure_id, station_kind, [x, z], 0, []):
+					continue
+				placed_measured = measured_session.place_interior_station(measured_structure_id, station_kind, [x, z], 0, [])
+				break
+			if not placed_measured.is_empty():
+				break
+		assert(not placed_measured.is_empty(), "measured room must accept %s" % station_kind)
+	assert(measured_session.interior_stations[measured_structure_id].size() == 5)
 	# A capability is bound to one parent and one exact station identity.
 	session.inventory["wood"] = 3
 	session.inventory["stone"] = 1

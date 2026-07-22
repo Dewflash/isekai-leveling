@@ -123,7 +123,7 @@ func _run() -> void:
 			if station == null or not station.is_in_group("building_interior_station"):
 				continue
 			var station_collision_source := str(station.get_meta("collision_source", ""))
-			_check(station_collision_source in ["visible_mesh_aabb", "generated_texture_alpha_calibrated_by_measured_mesh_aspect"], "%s must declare measured visible-asset collision provenance" % station.name)
+			_check(station_collision_source in ["visible_mesh_aabb", "generated_texture_alpha_calibrated_by_measured_mesh_aspect", "generated_texture_alpha_fitted_to_content_footprint"], "%s must declare measured visible-asset collision provenance" % station.name)
 			_check((station.get_meta("visible_mesh_bounds", []) as Array).size() == 6, "%s must retain measured visible mesh bounds" % station.name)
 			for mesh_value in station.find_children("*", "MeshInstance3D", true, false):
 				var source_mesh := mesh_value as MeshInstance3D
@@ -138,7 +138,7 @@ func _run() -> void:
 			var box := shape_node.shape as BoxShape3D if shape_node != null else null
 			_check(body != null and shape_node != null and box != null, "%s must have a measured box proxy" % station.name)
 			if body != null:
-				_check(str(body.get_meta("measurement_source", "")) in ["visible_mesh_aabb", "generated_texture_alpha_calibrated_by_measured_mesh_aspect"], "%s collision must be measured from visible asset bounds" % station.name)
+				_check(str(body.get_meta("measurement_source", "")) in ["visible_mesh_aabb", "generated_texture_alpha_calibrated_by_measured_mesh_aspect", "generated_texture_alpha_fitted_to_content_footprint"], "%s collision must be measured from visible asset bounds" % station.name)
 			if box != null and footprint.size() == 2:
 				_check(is_equal_approx(box.size.x, float(footprint[0])) and is_equal_approx(box.size.z, float(footprint[1])), "%s collision footprint must match visible footprint" % station.name)
 				var station_kind := str(station.get_meta("interior_station_kind", ""))

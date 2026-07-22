@@ -111,20 +111,28 @@ func _capture() -> void:
 	quit()
 
 func _place_legal_stations(session: Node) -> Dictionary:
-	var placements := [
-		# Furnaces use their measured three-by-three claim and stay behind the
-		# doorway; the remaining stations fill the front row without overlap.
-		["furnace_left", [-3, -2]],
-		["furnace_right", [1, -2]],
-		["workbench", [-2, 1]],
-		["anvil", [1, 1]],
-		["storage", [2, 2]],
-	]
 	session.set("interior_stations", {STRUCTURE_ID: {}})
-	for placement in placements:
-		var record: Dictionary = session.call("place_interior_station", STRUCTURE_ID, str(placement[0]), placement[1], 0, [])
-		if record.is_empty():
-			push_error("WORKSHOP_FITOUT_CAPTURE_FAIL: illegal placement " + str(placement))
+	# The interior is fitted from the placed Workshop's measured exterior, so its
+	# usable cell rectangle is not guaranteed to match the fallback 8.2x6.2 room.
+	# Query the same GameSession validator used by the live placement cursor and
+	# choose the first legal cell for each required station. This keeps the proof
+	# valid as authored building proportions evolve and prevents a stale capture
+	# coordinate from masquerading as a gameplay failure.
+	for station_kind in ["furnace_left", "furnace_right", "workbench", "anvil", "storage"]:
+		var placed := false
+		for x in range(-12, 13):
+			for z in range(-12, 13):
+				if not bool(session.call("can_place_interior_station", STRUCTURE_ID, station_kind, [x, z], 0, [])):
+					continue
+				var record: Dictionary = session.call("place_interior_station", STRUCTURE_ID, station_kind, [x, z], 0, [])
+				if record.is_empty():
+					continue
+				placed = true
+				break
+			if placed:
+				break
+		if not placed:
+			push_error("WORKSHOP_FITOUT_CAPTURE_FAIL: no legal measured-room placement for %s" % station_kind)
 			return {}
 	return session.get("interior_stations").get(STRUCTURE_ID, {}).duplicate(true)
 

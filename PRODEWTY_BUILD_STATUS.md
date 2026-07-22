@@ -49,6 +49,14 @@ Updated: 2026-07-23, Asia/Singapore
 - The authored Wayfarer silhouette now has an explicit readable-character draw
   layer over transparent environment foliage. Depth testing remains enabled, so
   canopy disappearance is corrected without disabling world occlusion.
+- Workshop fit-out now uses measured-room station placement end to end. Furnace
+  claims are 2x1 cells to match the generated station base, the final alpha
+  envelope is fitted inside that claim before its collision proxy is rebuilt,
+  and the display-backed fit-out capture places all five stations through the
+  live GameSession validator rather than stale fallback-room coordinates.
+- The Workshop interior capture waits for the real fade state to settle and now
+  produces a readable empty room; blueprint, assembling, and operational
+  station stages are captured in `/private/tmp/isekai-workshop-fitout-3/`.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,

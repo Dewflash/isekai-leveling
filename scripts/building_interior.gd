@@ -790,6 +790,7 @@ func _create_persisted_station(station_id: String, record: Dictionary) -> void:
 	station.set_meta("placement_measurement_source", "content_registry_footprint")
 	station.set_meta("interior_structure_id", str(record.get("structure_id", active_instance_id)))
 	station.set_meta("installation_state", str(record.get("state", "blueprint")))
+	_fit_generated_station_to_placement(station, footprint)
 	_add_construction_frame(station, footprint)
 	_apply_station_state(station, record)
 
@@ -1187,6 +1188,51 @@ func _add_generated_station_sprite(station: Node3D, station_id: String) -> void:
 		shape_node.set_meta("measurement_valid", true)
 		shape_node.set_meta("measured_size", [box.size.x, box.size.y, box.size.z])
 		shape_node.set_meta("measured_center", [shape_node.position.x, shape_node.position.y, shape_node.position.z])
+
+func _fit_generated_station_to_placement(station: Node3D, footprint: Vector2i) -> void:
+	# The generated sheet is authored from a complete station silhouette (a
+	# furnace includes its chimney), while the placement claim describes the
+	# walkable service base. Fit the measured alpha envelope inside that claim
+	# before deriving the final collider; this avoids a tall decorative chimney
+	# inflating the station's ground footprint or blocking neighbouring stations.
+	if station == null or footprint.x <= 0 or footprint.y <= 0:
+		return
+	var sprite := station.get_node_or_null("GeneratedStationSprite") as Sprite3D
+	if sprite == null:
+		return
+	var visual_size: Array = sprite.get_meta("visual_world_size", [])
+	var collision_footprint: Array = sprite.get_meta("collision_world_footprint", [])
+	if visual_size.size() < 2 or collision_footprint.size() < 2:
+		return
+	var current_width := float(visual_size[0])
+	var current_depth := float(collision_footprint[1])
+	if current_width <= 0.01 or current_depth <= 0.01:
+		return
+	var target_width := float(footprint.x) * cell_size * 0.92
+	var target_depth := float(footprint.y) * cell_size * 0.92
+	var fit_scale := minf(1.0, minf(target_width / current_width, target_depth / current_depth))
+	if fit_scale >= 0.9999:
+		return
+	sprite.pixel_size *= fit_scale
+	var fitted_width := current_width * fit_scale
+	var fitted_depth := current_depth * fit_scale
+	sprite.set_meta("visual_world_size", [fitted_width, float(visual_size[1]) * fit_scale])
+	sprite.set_meta("collision_world_footprint", [fitted_width, fitted_depth])
+	sprite.set_meta("placement_fit_scale", fit_scale)
+	sprite.set_meta("placement_fit_source", "content_registry_footprint_and_alpha_bounds")
+	var body := station.get_node_or_null("VisibleAssetCollision") as StaticBody3D
+	var shape_node := body.get_node_or_null("MeasuredProxy") as CollisionShape3D if body != null else null
+	var box := shape_node.shape as BoxShape3D if shape_node != null else null
+	if body == null or shape_node == null or box == null:
+		return
+	box.size = Vector3(fitted_width, box.size.y, fitted_depth)
+	shape_node.position = Vector3(0.0, box.size.y * 0.5, 0.0)
+	station.set_meta("visual_footprint", [fitted_width, fitted_depth])
+	station.set_meta("collision_source", "generated_texture_alpha_fitted_to_content_footprint")
+	body.set_meta("measurement_source", "generated_texture_alpha_fitted_to_content_footprint")
+	shape_node.set_meta("measurement_source", "generated_texture_alpha_fitted_to_content_footprint")
+	shape_node.set_meta("measured_size", [box.size.x, box.size.y, box.size.z])
+	shape_node.set_meta("measured_center", [shape_node.position.x, shape_node.position.y, shape_node.position.z])
 
 func _validate_room_measurements() -> bool:
 	if room_root == null:

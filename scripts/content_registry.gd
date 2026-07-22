@@ -400,12 +400,13 @@ const INTERIOR_LAYOUTS := {
 ## use the same physical claim.
 const INTERIOR_STATIONS := {
 	"workbench": {"structure_kind": "workshop", "label": "Crafting Workbench", "footprint": [2, 1], "cost": {"wood": 4, "stone": 2}, "hours": 12.0, "capability": "workshop_crafting", "action": "workshop", "asset_kind": "workbench", "unique": true},
-	# The generated furnace envelopes are physically larger than a two-by-one
-	# station. Their placement claims therefore use the measured three-by-three
-	# footprint, keeping the authored scale instead of hiding an oversized
-	# collision inside a smaller logical cell claim.
-	"furnace_left": {"structure_kind": "workshop", "label": "Smelter Furnace", "footprint": [3, 3], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_left", "unique": true},
-	"furnace_right": {"structure_kind": "workshop", "label": "Forge Furnace", "footprint": [3, 3], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_right", "unique": true},
+	# The generated furnace sheet is measured at roughly 1.3m wide by 1.0m
+	# deep in the room's world scale. A two-by-one claim gives the art a real
+	# service footprint without inventing a 3x3 invisible blocker that makes the
+	# measured Workshop unable to hold both furnaces, a workbench, an anvil, and
+	# storage. The visual collider remains alpha/mesh-measured inside this claim.
+	"furnace_left": {"structure_kind": "workshop", "label": "Smelter Furnace", "footprint": [2, 1], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_left", "unique": true},
+	"furnace_right": {"structure_kind": "workshop", "label": "Forge Furnace", "footprint": [2, 1], "cost": {"stone": 3, "wood": 2}, "hours": 12.0, "capability": "workshop_smelting", "action": "furnace", "asset_kind": "furnace_right", "unique": true},
 	"anvil": {"structure_kind": "workshop", "label": "Anvil", "footprint": [1, 1], "cost": {"stone": 2, "plank": 1}, "hours": 12.0, "capability": "workshop_metalwork", "action": "anvil", "asset_kind": "anvil", "unique": true},
 	"storage": {"structure_kind": "workshop", "label": "Material Storage", "footprint": [2, 1], "cost": {"wood": 3, "stone": 1}, "hours": 8.0, "capability": "workshop_storage", "action": "storage", "asset_kind": "storage", "cargo_bonus": 6, "unique": true},
 }

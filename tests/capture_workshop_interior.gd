@@ -60,7 +60,7 @@ func _capture() -> void:
 	player.global_position = door_world + door_outward * 0.90
 	player.global_position.y = 1.0
 	world.call("_enter_building_interior", structure)
-	await _wait_seconds(0.90)
+	await _wait_for_interior_transition()
 	var toast := world.get("toast_label") as Label
 	if toast != null:
 		toast.visible = false
@@ -87,3 +87,14 @@ func _wait_frames(count: int) -> void:
 
 func _wait_seconds(seconds: float) -> void:
 	await create_timer(seconds).timeout
+
+func _wait_for_interior_transition() -> void:
+	# The fade duration is owned by BuildingInterior; wait on its state rather
+	# than assuming a wall-clock duration that can race a display-backed capture.
+	for _index in 120:
+		if not bool(world.get("interior_transitioning")):
+			var interior := world.get("building_interior") as Node
+			if interior == null or not bool(interior.call("is_transitioning")):
+				return
+		await process_frame
+	push_error("WORKSHOP_INTERIOR_CAPTURE_FAIL: interior transition did not settle")
