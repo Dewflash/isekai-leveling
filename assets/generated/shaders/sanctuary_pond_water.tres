@@ -1,0 +1,19 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/generated/shaders/cozy_water_ripple.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/deep_color = Color(0.12, 0.39, 0.48, 1)
+shader_parameter/shallow_color = Color(0.31, 0.7, 0.71, 1)
+shader_parameter/foam_color = Color(0.66, 0.86, 0.76, 1)
+shader_parameter/wave_direction_a = Vector2(0.88, 0.48)
+shader_parameter/wave_direction_b = Vector2(-0.34, 0.94)
+shader_parameter/wave_frequency = 1.55
+shader_parameter/wave_speed = 0.72
+shader_parameter/wave_height = 0.026
+shader_parameter/flow_scale = 2.2
+shader_parameter/foam_start = 0.4
+shader_parameter/foam_end = 0.5
+shader_parameter/foam_strength = 0.52
+shader_parameter/color_motion = 0.12

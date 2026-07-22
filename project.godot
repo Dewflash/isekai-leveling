@@ -18,6 +18,10 @@ config/features=PackedStringArray("4.7")
 
 default_bus_layout="res://default_bus_layout.tres"
 
+[autoload]
+
+GameplayExtensions="*res://scripts/gameplay_extensions.gd"
+
 [display]
 
 window/size/viewport_width=1280

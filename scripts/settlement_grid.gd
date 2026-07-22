@@ -5,8 +5,8 @@ extends RefCounted
 
 const MIN_X := -13
 const MAX_X := 13
-const MIN_Z := -9
-const MAX_Z := 9
+const MIN_Z := -13
+const MAX_Z := 13
 
 static func world_to_cell(position: Vector3) -> Vector2i:
 	return Vector2i(roundi(position.x), roundi(position.z))

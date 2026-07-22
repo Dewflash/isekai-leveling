@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/generated/shaders/cozy_toon_sprite.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(1, 1, 1, 1)
+shader_parameter/key_light_direction = Vector3(-0.42, 0.84, 0.34)
+shader_parameter/shadow_tint = Color(0.72, 0.82, 0.78, 1)
+shader_parameter/light_tint = Color(1, 0.94, 0.82, 1)
+shader_parameter/step_center = 0.52
+shader_parameter/step_softness = 0.12
+shader_parameter/shadow_value = 0.72
+shader_parameter/light_value = 1.04

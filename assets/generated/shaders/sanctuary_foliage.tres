@@ -1,0 +1,26 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/generated/shaders/cozy_foliage_sway.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.38, 0.52, 0.29, 1)
+shader_parameter/use_albedo_texture = false
+shader_parameter/use_vertex_color = false
+shader_parameter/alpha_cutoff = 0.42
+shader_parameter/use_uv_anchor = false
+shader_parameter/anchor_height = 0.0
+shader_parameter/height_span = 2.5
+shader_parameter/uv_anchor_start = 0.08
+shader_parameter/wind_direction = Vector2(0.88, 0.48)
+shader_parameter/wind_strength = 0.055
+shader_parameter/wind_speed = 0.78
+shader_parameter/wind_phase = 0.0
+shader_parameter/gust_strength = 0.3
+shader_parameter/key_light_direction = Vector3(-0.42, 0.84, 0.34)
+shader_parameter/shadow_tint = Color(0.64, 0.76, 0.7, 1)
+shader_parameter/light_tint = Color(1, 0.94, 0.74, 1)
+shader_parameter/step_center = 0.52
+shader_parameter/step_softness = 0.14
+shader_parameter/saturation = 1.08
+shader_parameter/roughness = 0.94
