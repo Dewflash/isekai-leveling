@@ -19,6 +19,30 @@ func _enter_route(world: Node, destination: String) -> void:
 	world.call("_interact")
 	assert(world.get("current_zone") == destination)
 
+func _advance_route_to_fork(world: Node, destination: String) -> void:
+	var route_root := "%s/ExpeditionRoute/AuthoredTopology" % destination.replace(" ", "")
+	var arrival := world.get_node_or_null("%s/RouteBeatArrival" % route_root) as Node3D
+	var fork := world.get_node_or_null("%s/RouteBeatFork" % route_root) as Node3D
+	assert(arrival != null and fork != null)
+	world.player.global_position = arrival.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_update_authored_route_progress")
+	assert(str(world.get("session").get("expedition_run").get("route_phase", "")) == "arrival")
+	world.player.global_position = fork.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_update_authored_route_progress")
+	assert(str(world.get("session").get("expedition_run").get("route_phase", "")) == "fork")
+
+func _advance_whisperwood_to_fork(world: Node) -> void:
+	var topology := world.get_node_or_null("Whisperwood/WhisperwoodRoute/AuthoredTopology") as Node3D
+	var arrival := topology.get_node_or_null("ArrivalGrove") as Node3D
+	var fork := topology.get_node_or_null("OldTrailFork") as Node3D
+	assert(topology != null and arrival != null and fork != null)
+	world.player.global_position = arrival.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_update_authored_route_progress")
+	assert(str(world.get("session").get("expedition_run").get("route_phase", "")) == "arrival")
+	world.player.global_position = fork.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_update_authored_route_progress")
+	assert(str(world.get("session").get("expedition_run").get("route_phase", "")) == "fork")
+
 func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	var workshop_id := "qa_visual_workshop"
 	var storage_id := "qa_visual_storage"
@@ -379,6 +403,7 @@ func _run() -> void:
 	assert(shell_node != null)
 	var beach_marker := world.get_node_or_null("SunlitBeach/ExpeditionRoute/RouteChoiceMarker")
 	assert(beach_marker != null)
+	_advance_route_to_fork(world, "Sunlit Beach")
 	world.player.global_position = beach_marker.global_position + Vector3(-0.8, 1.0, 0.0)
 	world.call("_interact")
 	assert(session.get("expedition_run").get("branch_id") == "tidepool")
@@ -471,6 +496,7 @@ func _run() -> void:
 	var clearing_barrier := world.get_node_or_null("Whisperwood/WhisperwoodRoute/WhisperwoodBarrier_Clearing") as StaticBody3D
 	assert(grove_barrier != null and clearing_barrier != null)
 	assert(not grove_barrier.visible and not clearing_barrier.visible)
+	_advance_whisperwood_to_fork(world)
 	world.player.global_position = branch_marker.global_position + Vector3(0.8, 1.0, 0.0)
 	world.call("_interact")
 	assert(session.get("expedition_run").get("branch_id") == "clearing")
@@ -629,6 +655,7 @@ func _run() -> void:
 	assert(relic_node != null)
 	var dungeon_marker := world.get_node_or_null("SunkenDungeon/ExpeditionRoute/RouteChoiceMarker")
 	assert(dungeon_marker != null)
+	_advance_route_to_fork(world, "Sunken Dungeon")
 	world.player.global_position = dungeon_marker.global_position + Vector3(-0.8, 1.0, 0.0)
 	world.call("_interact")
 	assert(session.get("expedition_run").get("branch_id") == "vault")

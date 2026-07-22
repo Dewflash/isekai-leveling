@@ -548,6 +548,25 @@ Updated: 2026-07-22, Asia/Singapore
   final Sanctuary density, all facility layered families, touch-device capture,
   and five production expedition presentations remain open.
 
+## 2026-07-22 authored player-animation checkpoint
+
+- Added a Codex-generated, chroma-cleaned four-by-four walk atlas at
+  `assets/generated/sanctuary/player-walk-sheet.png`. Rows are the four
+  camera-facing directions and columns are four authored walk frames; the
+  keyed source is retained beside it for provenance.
+- The runtime measures each idle and walk cell's alpha envelope, derives the
+  visible height and feet gap, and binds the same measured atlas regions to the
+  player Sprite3D. Movement advances the walk atlas at 8 FPS and idle returns
+  to the directional idle atlas without changing the collision body's ground
+  pivot.
+- Verification: `test_player_animation_contract.gd` passes 29 checks. The
+  world-loop contract also passes after its fork tests were corrected to walk
+  the authored arrival and fork checkpoints; the new `_interact` ordering
+  resolves a checkpoint on the same frame as a route-marker press.
+- This closes one animation pipeline gap only. Mira's authored action frames,
+  combat/harvest timelines, creature animation coverage, final Sanctuary
+  presentation, and the full-game content pass remain open.
+
 ## Next actions (the project is not being called finished)
 
 1. Keep the Sanctuary gate active: strengthen lived-in activity density,

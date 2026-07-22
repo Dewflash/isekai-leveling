@@ -38,6 +38,7 @@ const KENNEY_BUTTON_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Def
 const KENNEY_BUTTON_HOVER_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Default/button_grey.png"
 const SANCTUARY_PACK_ROOT := "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/"
 const PLAYER_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/player-direction-sheet.png"
+const PLAYER_WALK_SHEET_PATH := "res://assets/generated/sanctuary/player-walk-sheet.png"
 const MIRA_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/mira-direction-sheet.png"
 ## The reference and LDOE-style base view need a clearly readable ground plane
 ## without flattening the building facades. Keep the diagonal southeast yaw but
@@ -2002,24 +2003,54 @@ func _build_player() -> void:
 func _add_illustrated_player_sprite(visual: Node3D) -> Sprite3D:
 	if visual == null:
 		return null
-	var sheet := load(PLAYER_SPRITE_SHEET_PATH) as Texture2D
-	if sheet == null:
+	var idle_sheet := load(PLAYER_SPRITE_SHEET_PATH) as Texture2D
+	var walk_sheet := load(PLAYER_WALK_SHEET_PATH) as Texture2D
+	if idle_sheet == null or walk_sheet == null:
+		return null
+	var idle_image := idle_sheet.get_image()
+	var walk_image := walk_sheet.get_image()
+	if idle_image == null or walk_image == null:
 		return null
 	var sprite := Sprite3D.new()
 	sprite.name = "IllustratedCharacter"
-	var cell_width := float(sheet.get_width()) / 4.0
-	var cell_height := float(sheet.get_height()) / 2.0
-	var atlas := AtlasTexture.new()
-	atlas.atlas = sheet
-	atlas.region = Rect2(0.0, 0.0, cell_width, cell_height)
-	atlas.filter_clip = true
-	sprite.texture = atlas
+	var idle_cell_width := float(idle_sheet.get_width()) / 4.0
+	var idle_cell_height := float(idle_sheet.get_height()) / 2.0
+	var walk_cell_width := float(walk_sheet.get_width()) / 4.0
+	var walk_cell_height := float(walk_sheet.get_height()) / 4.0
+	var idle_bottom_gaps: Array[float] = []
+	var walk_bottom_gaps: Array = []
+	var measured_visible_height := 1
+	for direction in 4:
+		var idle_rect := _character_cell_rect(idle_sheet, direction, 0, 4, 2)
+		var idle_bounds := idle_image.get_region(idle_rect).get_used_rect()
+		if idle_bounds.size.x <= 0 or idle_bounds.size.y <= 0:
+			return null
+		idle_bottom_gaps.append(float(idle_rect.size.y - (idle_bounds.position.y + idle_bounds.size.y)))
+		measured_visible_height = maxi(measured_visible_height, idle_bounds.size.y)
+		var direction_gaps: Array[float] = []
+		for frame in 4:
+			var walk_rect := _character_cell_rect(walk_sheet, frame, direction, 4, 4)
+			var walk_bounds := walk_image.get_region(walk_rect).get_used_rect()
+			if walk_bounds.size.x <= 0 or walk_bounds.size.y <= 0:
+				return null
+			direction_gaps.append(float(walk_rect.size.y - (walk_bounds.position.y + walk_bounds.size.y)))
+			measured_visible_height = maxi(measured_visible_height, walk_bounds.size.y)
+		walk_bottom_gaps.append(direction_gaps)
+	var idle_atlas := AtlasTexture.new()
+	idle_atlas.atlas = idle_sheet
+	idle_atlas.region = Rect2(0.0, 0.0, idle_cell_width, idle_cell_height)
+	idle_atlas.filter_clip = true
+	var walk_atlas := AtlasTexture.new()
+	walk_atlas.atlas = walk_sheet
+	walk_atlas.region = Rect2(0.0, 0.0, walk_cell_width, walk_cell_height)
+	walk_atlas.filter_clip = true
+	sprite.texture = idle_atlas
 	# The generated cells contain measured transparent padding below the boots.
 	# Keep the artwork's feet at the player body's ground pivot and let the
 	# CharacterBody3D remain the collision/interaction authority.
 	sprite.centered = false
-	sprite.offset = Vector2(-cell_width * 0.5, -18.0)
-	sprite.pixel_size = PLAYER_ART_WORLD_HEIGHT / 392.0
+	sprite.offset = Vector2(-idle_cell_width * 0.5, -idle_bottom_gaps[0])
+	sprite.pixel_size = PLAYER_ART_WORLD_HEIGHT / float(measured_visible_height)
 	sprite.set_meta("visual_height_world_meters", PLAYER_ART_WORLD_HEIGHT)
 	sprite.axis = Vector3.AXIS_Z
 	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -2029,9 +2060,20 @@ func _add_illustrated_player_sprite(visual: Node3D) -> Sprite3D:
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.0
 	sprite.set_meta("asset_id", "sanctuary/characters/wayfarer_direction_sheet")
-	sprite.set_meta("animation_rows", {"idle": 0, "walk": 1})
+	sprite.set_meta("idle_asset_path", PLAYER_SPRITE_SHEET_PATH)
+	sprite.set_meta("walk_asset_path", PLAYER_WALK_SHEET_PATH)
+	sprite.set_meta("idle_atlas", idle_atlas)
+	sprite.set_meta("walk_atlas", walk_atlas)
+	sprite.set_meta("animation_rows", {"idle": "directional_idle", "walk": "directional_walk"})
 	sprite.set_meta("direction_frames", 4)
-	sprite.set_meta("cell_size", [cell_width, cell_height])
+	sprite.set_meta("walk_frame_count", 4)
+	sprite.set_meta("walk_frame_rate", 8.0)
+	sprite.set_meta("idle_cell_size", [idle_cell_width, idle_cell_height])
+	sprite.set_meta("walk_cell_size", [walk_cell_width, walk_cell_height])
+	sprite.set_meta("cell_size", [idle_cell_width, idle_cell_height])
+	sprite.set_meta("idle_bottom_gaps", idle_bottom_gaps)
+	sprite.set_meta("walk_bottom_gaps", walk_bottom_gaps)
+	sprite.set_meta("animation_measurement_source", "per_cell_texture_alpha_used_rect")
 	sprite.set_meta("ground_pivot", [0.0, 0.0, 0.0])
 	sprite.set_meta("sorting_anchor_mode", "feet")
 	sprite.set_meta("sorting_anchor_space", "sprite_local")
@@ -2057,6 +2099,17 @@ func _add_illustrated_player_sprite(visual: Node3D) -> Sprite3D:
 	contact_shadow.position = Vector3(0.0, 0.02, 0.0)
 	player.add_child(contact_shadow)
 	return sprite
+
+func _character_cell_rect(texture: Texture2D, column: int, row: int, columns: int, rows: int) -> Rect2i:
+	if texture == null or columns <= 0 or rows <= 0:
+		return Rect2i()
+	var width := texture.get_width()
+	var height := texture.get_height()
+	var x0 := int(round(float(column) * float(width) / float(columns)))
+	var x1 := int(round(float(column + 1) * float(width) / float(columns)))
+	var y0 := int(round(float(row) * float(height) / float(rows)))
+	var y1 := int(round(float(row + 1) * float(height) / float(rows)))
+	return Rect2i(x0, y0, maxi(1, x1 - x0), maxi(1, y1 - y0))
 
 func _build_audio() -> void:
 	audio_director = AudioDirectorScript.new() as Node
@@ -5669,6 +5722,11 @@ func _interact() -> void:
 	if interior_active:
 		_interior_interact()
 		return
+	# A player can press Interact on the same frame they enter a route beat.
+	# Resolve the measured checkpoint before resolving the nearby marker so a
+	# physical fork never depends on a frame-order race between movement and UI.
+	if current_zone != "Sanctuary" and session != null and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition")):
+		_update_authored_route_progress()
 	var nearest := _nearest_interactable()
 	if nearest == null:
 		_show_toast("Nothing close enough to interact with.", 1.8)

@@ -17,6 +17,7 @@ var invulnerable_time := 0.0
 var last_direction := Vector3(0.0, 0.0, -1.0)
 var visual: Node3D
 var walk_time := 0.0
+var walk_frame_time := 0.0
 var hurt_time := 0.0
 var gather_active := false
 var action_pose_time := 0.0
@@ -73,6 +74,7 @@ func _physics_process(delta: float) -> void:
 	velocity.y = 0.0
 	if direction.length() > 0.05:
 		walk_time += delta * 10.0
+		walk_frame_time += delta
 		last_direction = direction.normalized()
 		var horizontal_velocity := Vector2(velocity.x, velocity.z)
 		var target_horizontal_velocity := Vector2(direction.x, direction.z) * speed
@@ -100,6 +102,7 @@ func _physics_process(delta: float) -> void:
 					right_arm.rotation.x = stride * 0.20
 	else:
 		walk_time = 0.0
+		walk_frame_time = 0.0
 		var horizontal_velocity := Vector2(velocity.x, velocity.z)
 		horizontal_velocity = horizontal_velocity.move_toward(Vector2.ZERO, 30.0 * delta)
 		velocity.x = horizontal_velocity.x
@@ -144,20 +147,41 @@ func _update_illustrated_character() -> void:
 	var sprite := visual.get_node_or_null("IllustratedCharacter") as Sprite3D
 	if sprite == null:
 		return
-	var atlas := sprite.texture as AtlasTexture
-	if atlas == null:
+	var idle_atlas := sprite.get_meta("idle_atlas", null) as AtlasTexture
+	var walk_atlas := sprite.get_meta("walk_atlas", null) as AtlasTexture
+	if idle_atlas == null or walk_atlas == null:
 		return
-	var cell_size_value: Variant = sprite.get_meta("cell_size", [443.5, 443.5])
-	if not (cell_size_value is Array) or (cell_size_value as Array).size() < 2:
+	var idle_cell_size: Array = sprite.get_meta("idle_cell_size", sprite.get_meta("cell_size", []))
+	var walk_cell_size: Array = sprite.get_meta("walk_cell_size", [])
+	if idle_cell_size.size() < 2 or walk_cell_size.size() < 2:
 		return
-	var cell_size := cell_size_value as Array
-	var cell_width := float(cell_size[0])
-	var cell_height := float(cell_size[1])
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
 	var walking := horizontal_speed > 0.28
 	var direction_frame := _character_direction_frame(last_direction)
-	var row := 1 if walking else 0
-	atlas.region = Rect2(float(direction_frame) * cell_width, float(row) * cell_height, cell_width, cell_height)
+	var idle_width := float(idle_cell_size[0])
+	var idle_height := float(idle_cell_size[1])
+	var walk_width := float(walk_cell_size[0])
+	var walk_height := float(walk_cell_size[1])
+	var idle_gaps: Array = sprite.get_meta("idle_bottom_gaps", [])
+	var walk_gaps: Array = sprite.get_meta("walk_bottom_gaps", [])
+	if walking:
+		var frame_count := maxi(1, int(sprite.get_meta("walk_frame_count", 4)))
+		var frame_rate := maxf(1.0, float(sprite.get_meta("walk_frame_rate", 8.0)))
+		var walk_frame := posmod(int(floor(walk_frame_time * frame_rate)), frame_count)
+		walk_atlas.region = Rect2(float(walk_frame) * walk_width, float(direction_frame) * walk_height, walk_width, walk_height)
+		sprite.texture = walk_atlas
+		var direction_gaps: Array = walk_gaps[direction_frame] if direction_frame < walk_gaps.size() and walk_gaps[direction_frame] is Array else []
+		var bottom_gap := float(direction_gaps[walk_frame]) if walk_frame < direction_gaps.size() else 0.0
+		sprite.offset = Vector2(-walk_width * 0.5, -bottom_gap)
+		sprite.set_meta("animation_frame", walk_frame)
+		sprite.set_meta("animation_frame_rate", frame_rate)
+	else:
+		idle_atlas.region = Rect2(float(direction_frame) * idle_width, 0.0, idle_width, idle_height)
+		sprite.texture = idle_atlas
+		var bottom_gap := float(idle_gaps[direction_frame]) if direction_frame < idle_gaps.size() else 0.0
+		sprite.offset = Vector2(-idle_width * 0.5, -bottom_gap)
+		sprite.set_meta("animation_frame", 0)
+		sprite.set_meta("animation_frame_rate", 0.0)
 	sprite.set_meta("animation_state", "walk" if walking else "idle")
 	sprite.set_meta("direction_frame", direction_frame)
 

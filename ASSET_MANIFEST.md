@@ -76,11 +76,17 @@ the Godot gameplay/session code.
 - License/status: Original generated project artwork; no external asset license
   dependency
 - Files: `assets/generated/sanctuary/player-direction-sheet.png` and
-  `assets/generated/sanctuary/mira-direction-sheet.png`
-- Runtime use: four-direction idle/walk atlases for the player and Mira, with
-  explicit feet pivots, animation-row metadata, and Sprite3D sorting anchors
+  `assets/generated/sanctuary/mira-direction-sheet.png`, plus the separate
+  `assets/generated/sanctuary/player-walk-sheet.png` four-by-four walk atlas
+- Runtime use: measured four-direction idle art for the player and Mira, and a
+  four-frame walk cycle per player direction. Each atlas retains explicit feet
+  pivots, per-cell animation metadata, and Sprite3D sorting anchors
 
-The magenta source sheets are retained beside the cleaned runtime sheets for
+The player walk source is generated from the existing character design and
+locally chroma-key processed into the transparent runtime atlas. The source is
+retained beside the cleaned sheet for provenance.
+
+The generated source sheets are retained beside the cleaned runtime sheets for
 provenance; the game loads only the transparent RGBA runtime sheets.
 
 ## Original procedural wildlife

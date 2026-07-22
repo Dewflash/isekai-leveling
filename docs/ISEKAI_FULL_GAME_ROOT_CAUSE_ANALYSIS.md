@@ -197,7 +197,7 @@ reported as passing the art/feel gate.
 | Workshop interior | Runtime shell and station tests exist | It is not yet the final art/audio/interior presentation |
 | Camera/movement | Desktop, mouse, joystick contracts exist | Feel and screen-space direction still need live acceptance |
 | Hitboxes | Measurement metadata and tests exist | Several sources still infer instead of sharing one authored footprint |
-| Character animation | Directional idle/walk state exists | No real multi-frame action animation pipeline |
+| Character animation | Player now has a measured four-frame walk cycle per direction; Mira still has directional idle/walk state | Action timelines, Mira's multi-frame cycle, and authored NPC/creature animation coverage remain |
 | Sanctuary graphics | A+C generated assets are on the launch path | Live scene is still visibly below the target reference |
 | Expedition maps | Five mechanical zones exist | They are not five fully authored production biomes |
 | Audio | CC0 music/foley plus procedural layers exist | Depth, variation, and final mix are still a production pass |

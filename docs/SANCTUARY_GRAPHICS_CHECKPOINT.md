@@ -42,8 +42,10 @@ free to choose the actual building layout.
   distinct illustrated facility silhouette per kind; the imported kit remains
   instantiated for provenance but is hidden from rendering so silhouettes never
   double-render.
-- Added Codex-generated four-direction idle/walk atlases for the player and
-  Mira, with runtime direction-frame switching and feet-anchored sorting.
+- Added Codex-generated four-direction idle art for the player and Mira, plus a
+  dedicated four-by-four player walk atlas. Runtime now advances four authored
+  walk frames per direction, measures every cell's alpha feet offset, and
+  switches back to the stable idle atlas when movement stops.
 - Added an asset/collision contract. Canonical authored geometry, quarter-turn
   root rotation, world footprint metadata, and collision extents are tested
   together so a sprite cannot visually drift away from its hit box.

@@ -52,6 +52,17 @@ func _choose_branch(world: Node, branch_index: int) -> bool:
 	var marker := world.get_node_or_null("%s/%s/%s" % [zone_node_name, route_node_name, marker_name]) as Node3D
 	if not _expect(marker != null, "branch marker missing: %s" % zone_node_name):
 		return false
+	var topology := world.get_node_or_null("%s/%s/AuthoredTopology" % [zone_node_name, route_node_name]) as Node3D
+	var arrival_name := "ArrivalGrove" if zone_node_name == "Whisperwood" else "RouteBeatArrival"
+	var fork_name := "OldTrailFork" if zone_node_name == "Whisperwood" else "RouteBeatFork"
+	var arrival := topology.get_node_or_null(arrival_name) as Node3D if topology != null else null
+	var fork := topology.get_node_or_null(fork_name) as Node3D if topology != null else null
+	if not _expect(arrival != null and fork != null, "route checkpoints missing: %s" % zone_node_name):
+		return false
+	world.player.global_position = arrival.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_update_authored_route_progress")
+	world.player.global_position = fork.global_position + Vector3(0.0, 1.0, 0.0)
+	world.call("_update_authored_route_progress")
 	world.player.global_position = marker.global_position + Vector3(-0.8 if branch_index == 0 else 0.8, 1.0, 0.0)
 	world.call("_interact")
 	await process_frame
