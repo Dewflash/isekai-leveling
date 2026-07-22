@@ -276,14 +276,14 @@ Updated: 2026-07-22, Asia/Singapore
   responsive settings panel.
 - The gameplay HUD now follows the saved mobile reference hierarchy: compact
   hero portrait/status bars, a left stat rail, a contextual interact action,
-  quick resource counts, eight wired action slots, and cargo/XP feedback. The
+  quick resource counts, nine context-gated action slots, and cargo/XP feedback. The
   full ledger remains an on-demand surface so normal Sanctuary traversal keeps
   the world readable. The action belt now uses the sourced warm panel/button
   textures with large icon and caption treatments instead of a flat dark slab.
 - The first-save cargo target now matches the authored two-unit field bundle;
-  the reference action belt also exposes a touchable X/EXTRACT action at the
-  expedition beacon, with the same authoritative extraction command available
-  from keyboard input.
+  the reference action belt also exposes one authored EXTRACT action that is
+  disabled until the beacon/checkpoint contract is satisfied, with the same
+  authoritative extraction command available from the keyboard X bridge.
 - Whisperwood guardians are dormant until the player commits their branch;
   route entry cannot wake or damage the player before the clearing encounter is
   actually owned. Blocked investigation lines now recover into pursuit instead

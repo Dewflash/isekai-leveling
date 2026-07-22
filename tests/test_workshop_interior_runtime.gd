@@ -94,8 +94,9 @@ func _run() -> void:
 		var slot := slot_value as Button
 		if slot == null:
 			continue
-		if str(slot.get_meta("action_label", "")) == "USE":
-			_check(not slot.disabled, "interior USE slot must remain available")
+		var action_label := str(slot.get_meta("action_label", ""))
+		if action_label in ["USE", "WATER", "BUILD"]:
+			_check(not slot.disabled, "interior %s action must remain available" % action_label)
 		else:
 			_check(slot.disabled, "interior Sanctuary action slots must be disabled")
 	var room := interior.get_node_or_null("WorkshopInteriorRoom") as Node3D

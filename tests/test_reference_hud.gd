@@ -37,8 +37,16 @@ func _run() -> void:
 	_check(objective != null and objective.text.begins_with("START"), "fresh gameplay must begin with a clear first-run objective")
 	_check(stat_rail != null and stat_rail.get_child_count() == 5, "stat rail must expose five compact status pills")
 	_check(belt != null, "bottom action belt must exist")
-	_check(slots != null and slots.get_child_count() >= 8, "bottom action belt must expose the repeatable action slots")
-	_check(slots != null and slots.get_node_or_null("ReferenceSlot_EXTRACT") is Button, "bottom action belt must expose the extraction action")
+	_check(slots != null and slots.get_child_count() >= 9, "bottom action belt must expose the repeatable action slots")
+	var extract_slot := slots.get_node_or_null("ReferenceSlot_EXTRACT") as Button if slots != null else null
+	_check(extract_slot != null, "bottom action belt must expose the extraction action")
+	_check(extract_slot != null and extract_slot.disabled, "extraction must be disabled until the player reaches a valid expedition beacon")
+	var attack_slot := slots.get_node_or_null("ReferenceSlot_ATTACK") as Button if slots != null else null
+	var dodge_slot := slots.get_node_or_null("ReferenceSlot_DODGE") as Button if slots != null else null
+	var water_slot := slots.get_node_or_null("ReferenceSlot_WATER") as Button if slots != null else null
+	_check(attack_slot != null and attack_slot.disabled, "attack must be disabled outside guardian range")
+	_check(dodge_slot != null and dodge_slot.disabled, "dodge must be disabled in the Sanctuary")
+	_check(water_slot != null and not water_slot.disabled, "water must remain available in the Sanctuary when the pouch can be used")
 	var belt_style := belt.get_theme_stylebox("panel") if belt != null else null
 	_check(belt_style is StyleBoxTexture, "bottom action belt must use the sourced warm panel texture")
 	var first_slot := slots.get_child(0) as Button if slots != null and slots.get_child_count() > 0 else null
@@ -54,9 +62,39 @@ func _run() -> void:
 	world.call("_toggle_utilities")
 	world.call("_update_hud")
 	_check(reference.visible, "reference gameplay HUD returns after closing the ledger")
+	var session := world.get("session") as Node
+	var started_expedition := session != null and bool(session.call("start_expedition", "Whisperwood"))
+	_check(started_expedition, "HUD state test must be able to start a disposable expedition")
+	if started_expedition:
+		world.call("_set_zone", "Whisperwood")
+		var player := world.get("player") as Node3D
+		player.global_position = Vector3(0.0, 1.0, 7.5)
+		world.call("_update_hud")
+		_check(not bool(extract_slot.disabled), "extraction must enable at the expedition beacon before a route checkpoint is required")
+		var route_definition: Dictionary = session.call("expedition_route_definition", "grove")
+		var expedition_run: Dictionary = session.get("expedition_run").duplicate(true)
+		expedition_run["branch_id"] = "grove"
+		expedition_run["objective_id"] = str(route_definition.get("objective_id", ""))
+		expedition_run["objective_kind"] = str(route_definition.get("objective_kind", ""))
+		expedition_run["objective_progress"] = int(route_definition.get("objective_target", 1))
+		expedition_run["objective_target"] = int(route_definition.get("objective_target", 1))
+		expedition_run["objective_complete"] = true
+		expedition_run["shortcut_open"] = true
+		expedition_run["cache_claimed"] = true
+		expedition_run["route_checkpoints"] = ["arrival", "fork"]
+		expedition_run["route_phase"] = "shortcut"
+		session.set("expedition_run", expedition_run)
+		world.call("_update_hud")
+		_check(bool(extract_slot.disabled), "extraction must remain disabled while the return checkpoint is required")
+		expedition_run["route_phase"] = "return"
+		expedition_run["return_checkpoint_crossed"] = true
+		expedition_run["route_checkpoints"] = ["arrival", "fork", "return"]
+		session.set("expedition_run", expedition_run)
+		world.call("_update_hud")
+		_check(not bool(extract_slot.disabled), "extraction must re-enable after the return checkpoint is crossed")
 	world.queue_free()
 	if failures.is_empty():
-		print("REFERENCE_HUD_TESTS_PASS checks=19")
+		print("REFERENCE_HUD_TESTS_PASS checks=27")
 		quit(0)
 	else:
 		print("REFERENCE_HUD_TESTS_FAIL failures=%d" % failures.size())

@@ -2404,6 +2404,7 @@ func _build_reference_hud(root: Control) -> void:
 		["H", "WATER", Callable(self, "_drink_water")],
 		["F", "FARM", func() -> void: farm_plot_interact(farm_plot)],
 		["B", "BUILD", Callable(self, "_toggle_build_context")],
+		["↩", "EXTRACT", Callable(self, "_return_home")],
 		["✦", "LEDGER", Callable(self, "_toggle_utilities")],
 	]
 	for slot_value in slot_data:
@@ -5457,11 +5458,68 @@ func _update_hud() -> void:
 		for child in button_box.get_children():
 			if child is Button and child != pause_button and child != interact_button:
 				(child as Button).disabled = get_tree().paused or interior_transitioning or interior_active
-	for slot in reference_slots:
-		if slot != null:
-			var interior_safe := str(slot.get_meta("action_label", "")) == "USE"
-			slot.disabled = get_tree().paused or interior_transitioning or (interior_active and not interior_safe)
+	_update_reference_action_slots(context_node)
 	_refresh_hud_layout_if_needed()
+
+func _update_reference_action_slots(context_node: Node) -> void:
+	# The reference belt is an action surface, not a decorative row. Every slot
+	# advertises whether its action is meaningful in the current place, state,
+	# and interaction context. This keeps touch and keyboard flows aligned and
+	# avoids letting an invalid tap silently do nothing.
+	var paused_or_transitioning := get_tree().paused or interior_transitioning
+	var action_locked := is_player_input_locked()
+	var expedition_active := current_zone != "Sanctuary" and session != null and session.has_method("has_active_expedition") and bool(session.call("has_active_expedition"))
+	var at_extraction := expedition_active and player != null and _ground_distance(player.global_position, Vector3(0.0, 1.0, 7.5)) <= 2.8
+	var return_route_blocked := expedition_active and session.has_method("expedition_return_checkpoint_required") and bool(session.call("expedition_return_checkpoint_required"))
+	var attack_target_available := false
+	if expedition_active and player != null:
+		var expedition_run: Dictionary = session.get("expedition_run") if session.get("expedition_run") is Dictionary else {}
+		var attack_route_selected := not str(expedition_run.get("branch_id", "")).is_empty()
+		var attack_resources_ready := int(session.get("energy")) > 0 and attack_cooldown <= 0.0 and pending_attack_target == null
+		var facing_direction: Vector3 = player.get("last_direction") if player.get("last_direction") is Vector3 else Vector3(0.0, 0.0, -1.0)
+		facing_direction.y = 0.0
+		if facing_direction.length_squared() > 0.0001:
+			facing_direction = facing_direction.normalized()
+		for guardian_node in get_tree().get_nodes_in_group("guardian"):
+			var guardian := guardian_node as Node3D
+			if not attack_route_selected or not attack_resources_ready or guardian == null or not is_instance_valid(guardian) or not guardian.is_visible_in_tree():
+				continue
+			var candidate_distance := _ground_distance(player.global_position, guardian.global_position)
+			var to_guardian := (guardian.global_position - player.global_position).normalized()
+			if candidate_distance < 3.6 and facing_direction.dot(to_guardian) > 0.15:
+				attack_target_available = true
+				break
+	var food_available := _food_count() > 0
+	var water_available := int(inventory.get("water", 0)) > 0 and hydration < 100
+	var farm_context := not interior_active and current_zone == "Sanctuary" and context_node == farm_plot
+	var build_context := (not interior_active and current_zone == "Sanctuary" and context_node != null) or (interior_active and interior_kind == "workshop")
+	for slot in reference_slots:
+		if slot == null:
+			continue
+		var action_label := str(slot.get_meta("action_label", ""))
+		var disabled := paused_or_transitioning
+		match action_label:
+			"USE":
+				# USE remains available while fishing so it can advance the reel/
+				# bite state machine and remains the universal context action.
+				disabled = paused_or_transitioning
+			"ATTACK":
+				disabled = paused_or_transitioning or action_locked or not attack_target_available
+			"DODGE":
+				disabled = paused_or_transitioning or action_locked or not expedition_active
+			"FOOD":
+				disabled = paused_or_transitioning or action_locked or not food_available
+			"WATER":
+				disabled = paused_or_transitioning or action_locked or not water_available
+			"FARM":
+				disabled = paused_or_transitioning or action_locked or not farm_context
+			"BUILD":
+				disabled = paused_or_transitioning or action_locked or not build_context
+			"EXTRACT":
+				disabled = paused_or_transitioning or action_locked or not at_extraction or return_route_blocked
+			"LEDGER":
+				disabled = paused_or_transitioning or action_locked or interior_active
+		slot.disabled = disabled
 
 func _update_interaction_marker(delta: float) -> void:
 	if interaction_marker == null or player == null:

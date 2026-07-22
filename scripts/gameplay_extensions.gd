@@ -7,6 +7,7 @@ extends Node
 
 var world: Node
 var extract_button: Button
+var authored_extract_slot := false
 var feedback_session: Node
 var shortcut_gate: StaticBody3D
 var last_pickup_signature := ""
@@ -45,6 +46,14 @@ func _ensure_extract_button() -> void:
 		return
 	var slot_box := world.get("reference_slot_box") as HBoxContainer
 	if slot_box == null:
+		return
+	var authored_slot := slot_box.get_node_or_null("ReferenceSlot_EXTRACT") as Button
+	if authored_slot != null:
+		# The composition root owns the authored belt now. Bind to it instead of
+		# appending a second button with the same name; this autoload remains the
+		# keyboard/legacy bridge only.
+		extract_button = authored_slot
+		authored_extract_slot = true
 		return
 	extract_button = Button.new()
 	extract_button.name = "ReferenceSlot_EXTRACT"
@@ -88,6 +97,8 @@ func _ensure_extract_button() -> void:
 
 func _update_extract_button() -> void:
 	if not is_instance_valid(extract_button):
+		return
+	if authored_extract_slot:
 		return
 	var expedition := is_instance_valid(world) and str(world.get("current_zone")) != "Sanctuary"
 	extract_button.visible = expedition

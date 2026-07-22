@@ -81,7 +81,7 @@ free to choose the actual building layout.
   a separate action dock, touch-safe joystick placement, and responsive settings.
 - Added a reference-guided gameplay HUD pass: a compact hero/status header,
   vertical stat rail, contextual interact button, quick resource readouts,
-  eight wired action slots, and cargo/XP feedback. The action belt now uses the
+  nine context-gated action slots, and cargo/XP feedback. The action belt now uses the
   sourced warm Kenney panel/button textures with large icon/caption treatments,
   while the expanded ledger and settings surfaces remain available on demand
   so the Sanctuary composition is not covered during ordinary traversal.
