@@ -1384,6 +1384,7 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	var measured_hero_world_size := _measured_hero_world_size(structure, kind, rotation_quarter_turns)
 	var directional_stage_art := false
 	var layered_construction_art := false
+	var construction_hero_overlay := false
 	if not use_measured_3d_art:
 		if state == "blueprint" or state == "building":
 			var stage_id := "blueprint" if state == "blueprint" else _construction_stage_for_progress(build_progress)
@@ -1397,6 +1398,14 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 				directional_stage_art = sprite != null
 		if sprite == null and use_player_structure_art and not (directional_art_required and (state == "blueprint" or state == "building")):
 			sprite = _player_structure_hero_sprite(kind, rotation_quarter_turns, measured_hero_world_size)
+		if sprite == null and state == "building" and not directional_art_required:
+			# Facilities without a dedicated stage family still use their own measured
+			# directional silhouette as a low-alpha phase envelope. This is materially
+			# different from showing a generic garden/well card: the player can read
+			# the actual Pen or Cistern being assembled, while the ledger-driven
+			# construction components remain the visible progress authority.
+			sprite = _player_structure_hero_sprite(kind, rotation_quarter_turns, measured_hero_world_size)
+			construction_hero_overlay = sprite != null
 		if sprite == null and not directional_art_required:
 			sprite = _player_structure_sprite_from_sheet(kind, _structure_world_size(kind))
 		if sprite == null and directional_art_required:
@@ -1411,8 +1420,16 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 			sprite.reparent(presentation)
 			sprite.position = Vector3.ZERO
 			if not layered_construction_art:
-				sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
-				_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
+				if construction_hero_overlay:
+					var phase_alpha := lerpf(0.16, 0.74, clampf(build_progress, 0.0, 1.0))
+					sprite.modulate = Color(1.0, 1.0, 1.0, phase_alpha)
+					sprite.render_priority = -1
+					sprite.set_meta("construction_phase_overlay", true)
+					sprite.set_meta("construction_phase_progress", build_progress)
+					_set_structure_sprite_metadata(sprite, structure, kind, state, "construction_phase_overlay", structure_footprint)
+				else:
+					sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
+					_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
 		if layered_construction_art:
 			structure.set_meta("operational_art_source", "generated_workshop_layered_construction")
 			structure.set_meta("visual_art_missing", false)
@@ -1424,6 +1441,8 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 			# replacement, but its render tree is hidden so the art never double-renders.
 			structure.set_meta("operational_art_source", "generated_player_structure_directional" if sprite.has_meta("directional_asset_path") else "generated_player_structure")
 			structure.set_meta("operational_visual_world_height", measured_hero_world_size)
+		elif construction_hero_overlay:
+			structure.set_meta("operational_art_source", "generated_construction_hero_overlay")
 		elif directional_art_required and sprite == null:
 			structure.set_meta("operational_art_source", "missing_required_art")
 		elif state == "operational":

@@ -115,6 +115,27 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	var worker_region_before := worker_atlas.region
 	(world.get("sanctuary_style") as Node).call("_process", 0.25)
 	assert(not is_equal_approx(worker_atlas.region.position.x, worker_region_before.position.x))
+	for construction_kind in ["livestock_pen", "rain_cistern"]:
+		for construction_rotation in 4:
+			var construction_id := "qa_%s_construction_overlay_q%d" % [construction_kind, construction_rotation]
+			var construction_data := {
+				"id": construction_id,
+				"kind": construction_kind,
+				"cell": [34 + construction_rotation * 8, 20] if construction_kind == "livestock_pen" else [42 + construction_rotation * 8, 20],
+				"rotation": construction_rotation,
+				"state": "building",
+				"remaining_hours": 14.0,
+				"total_hours": 24.0,
+				"delivered_materials": {"wood": 4, "fiber": 3, "plank": 1},
+			}
+			world.call("_spawn_structure_visual", construction_id, construction_data)
+			var construction_visual := visuals.get(construction_id) as Node3D
+			var phase_sprite := construction_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") as Sprite3D
+			assert(phase_sprite != null and phase_sprite.visible)
+			assert(bool(phase_sprite.get_meta("construction_phase_overlay", false)))
+			assert(str(phase_sprite.get_meta("presentation_layer", "")) == "construction_phase_overlay")
+			assert(phase_sprite.modulate.a > 0.0 and phase_sprite.modulate.a < 1.0)
+			assert(str(construction_visual.get_meta("operational_art_source", "")) == "generated_construction_hero_overlay")
 	building_data["remaining_hours"] = 10.0
 	world.call("_spawn_structure_visual", staged_id, building_data)
 	staged_visual = visuals.get(staged_id) as Node3D
@@ -154,6 +175,13 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	assert(not smoke.visible)
 	assert(workshop_label.text.contains("ORDER READY"))
 	session.set("station_job", original_job)
+	for construction_kind in ["livestock_pen", "rain_cistern"]:
+		for construction_rotation in 4:
+			var construction_id := "qa_%s_construction_overlay_q%d" % [construction_kind, construction_rotation]
+			var construction_visual := visuals.get(construction_id) as Node3D
+			if construction_visual != null:
+				construction_visual.queue_free()
+			visuals.erase(construction_id)
 	for visual_id in [workshop_id, storage_id, staged_id]:
 		var visual := visuals.get(visual_id) as Node3D
 		if visual != null:

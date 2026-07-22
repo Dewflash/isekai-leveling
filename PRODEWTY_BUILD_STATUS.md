@@ -40,6 +40,12 @@ Updated: 2026-07-23, Asia/Singapore
   explicitly presentation-only with no collision or occupancy authority.
   `tests/test_world_loop.gd` verifies its state binding, service-zone anchor,
   frame advance, and physics separation.
+- Livestock Pen and Rain Cistern construction no longer fall back to generic
+  garden/well cards. During `building`, each now reveals its own measured,
+  rotation-resolved operational silhouette as a controlled phase envelope,
+  while the authoritative material components and construction timer continue
+  to govern the actual stage. World-loop coverage exercises all four rotations
+  for both facilities.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,
