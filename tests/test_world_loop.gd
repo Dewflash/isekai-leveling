@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MainScene = preload("res://main.tscn")
+const AssetCatalog = preload("res://scripts/sanctuary_asset_catalog.gd")
 const AssetMeasurement = preload("res://scripts/sanctuary_asset_measurement.gd")
 
 func _enter_route(world: Node, destination: String) -> void:
@@ -83,7 +84,7 @@ func _assert_player_structure_visuals(world: Node, session: Node) -> void:
 	var operational_art := workshop_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") as Sprite3D
 	assert(operational_art != null and operational_art.visible)
 	assert(str(operational_art.get_meta("asset_id", "")).begins_with("sanctuary/player_structures/workshop/operational/"))
-	assert(operational_art.get_meta("directional_asset_path", "") == "res://assets/generated/sanctuary/workshop/workshop-q0.png")
+	assert(operational_art.get_meta("directional_asset_path", "") == str(AssetCatalog.structure_directional_variant("workshop", 0).get("asset_path", "")))
 	var staged_id := "qa_construction_stages"
 	var blueprint_data := {"id": staged_id, "kind": "storage_shed", "cell": [28, 20], "state": "blueprint", "remaining_hours": 24.0, "total_hours": 24.0, "delivered_materials": {}}
 	world.call("_spawn_structure_visual", staged_id, blueprint_data)

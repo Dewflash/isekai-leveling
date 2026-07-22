@@ -28,6 +28,9 @@ func _run() -> void:
 	var layered_construction: Dictionary = AssetCatalog.structure_definition("workshop").get("layered_construction", {})
 	var layered_asset_paths: Dictionary = layered_construction.get("directional_asset_paths", {})
 	_check(layered_asset_paths.size() == 4, "Workshop layered construction must declare all four directional kits")
+	var canonical_operational_path := str(AssetCatalog.structure_directional_variant("workshop", 0).get("asset_path", ""))
+	_check(canonical_operational_path == "res://assets/generated/sanctuary/workshop/workshop-cozy-v2.png", "Workshop q0 must use the current authored cozy hero candidate")
+	_check(ResourceLoader.exists(canonical_operational_path), "Workshop q0 authored cozy hero candidate must be importable")
 	_check_no_live_green_fringe("res://assets/generated/sanctuary/workshop/workshop-stage-roof-q2.png", Rect2i(520, 0, 210, 220), "roof q2 chimney smoke")
 	_check_no_live_green_fringe("res://assets/generated/sanctuary/workshop/workshop-stage-walls-q3.png", Rect2i(1075, 220, 155, 130), "walls q3 upper rafters")
 	for stage_id in ["blueprint", "frame", "walls", "roof"]:
@@ -110,7 +113,7 @@ func _run() -> void:
 	var operational_sprite := operational_visual.get_node_or_null("IllustratedStructurePresentation/IllustratedStateSprite") as Sprite3D if operational_visual != null else null
 	_check(operational_sprite != null, "operational Workshop must retain a state sprite")
 	if operational_sprite != null:
-		_check(str(operational_sprite.get_meta("directional_asset_path", "")) == "res://assets/generated/sanctuary/workshop/workshop-q0.png", "operational Workshop must bind the canonical directional hero asset")
+		_check(str(operational_sprite.get_meta("directional_asset_path", "")) == canonical_operational_path, "operational Workshop must bind the catalog-resolved directional hero asset")
 		_check(str(operational_visual.get_meta("operational_art_source", "")) == "generated_player_structure_directional", "operational Workshop must identify the directional hero renderer")
 	for rotation in [1, 2, 3]:
 		var rotated_id := "workshop_stage_qa_rotated_%d" % rotation

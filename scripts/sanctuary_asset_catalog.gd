@@ -79,7 +79,10 @@ const STRUCTURES := {
 			},
 		},
 		"directional_variants": [
-			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q0.png", "facing": [0.0, 0.0, 1.0]},
+			# The current player-facing q0 hero is the cozy authored pass. Keep the
+			# semantic variant ID stable so saved rotations and interaction metadata
+			# do not change when art is iterated; only the presentation source moves.
+			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-cozy-v2.png", "facing": [0.0, 0.0, 1.0]},
 			{"quarter_turn": 1, "variant_id": "workshop_q1_pos_x", "asset_id": "sanctuary/player_structures/workshop/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q1.png", "facing": [1.0, 0.0, 0.0]},
 			{"quarter_turn": 2, "variant_id": "workshop_q2_neg_z", "asset_id": "sanctuary/player_structures/workshop/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q2.png", "facing": [0.0, 0.0, -1.0]},
 			{"quarter_turn": 3, "variant_id": "workshop_q3_neg_x", "asset_id": "sanctuary/player_structures/workshop/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q3.png", "facing": [-1.0, 0.0, 0.0]},

@@ -652,3 +652,27 @@ capture, deeper audio, and the complete content pass remain open.
    desktop/headless evidence is strong but not a completeness claim.
 6. Replace the temporary manual effort logger with the chosen Prodewty data
    bridge without changing the receipt contract.
+
+## 2026-07-23 authored Workshop hero wiring checkpoint
+
+- The visible quarter-turn-zero Workshop hero now resolves to the authored
+  `workshop-cozy-v2.png` RGBA cutout: a readable front door, forge, chimney,
+  covered work yard, anvil, logs, and lanterns in the agreed cozy illustrated
+  direction. The catalog keeps the stable `workshop_q0_pos_z` identity, so
+  saved rotation and interaction records do not change when art is iterated.
+- Presentation still measures the cutout alpha envelope at runtime, fits it to
+  the imported physical Workshop measurement, anchors it at the feet, and
+  leaves occupancy, compound collision, access zones, and construction phases
+  under their existing authoritative systems. No hitbox was copied from the
+  bitmap.
+- Verification: `WORKSHOP_STAGE_VISUAL_PASS checks=217`,
+  `WORLD_LOOP_TESTS_PASS`, `SANCTUARY_VISUAL_CONTRACT_PASS checks=5473`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=160`,
+  `ASSET_HITBOX_TESTS_PASS checks=612`, and
+  `SANCTUARY_DIRECTIONAL_FAMILY_PASS checks=99 facilities=3`.
+- This is a player-facing visual checkpoint, not the final graphics gate:
+  Workshop q1–q3 still use the existing directional family until coherent
+  authored quarter-turns are available, and pixel-backed macOS capture was
+  unavailable in the current environment. The final Sanctuary density,
+  broader facility art/interiors, richer action animation, audio depth,
+  production expedition visuals, and full content pass remain open.
