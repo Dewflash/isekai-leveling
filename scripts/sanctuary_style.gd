@@ -1316,29 +1316,39 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 			structure.set_meta("visual_art_missing", false)
 		if sprite == null and not directional_art_required:
 			sprite = _sprite_from_sheet(prop_sheet, cell_index, Vector3.ZERO, _structure_world_size(kind))
-	if sprite != null:
-		if not layered_construction_art:
-			sprite.name = "IllustratedStateSprite"
+		if sprite != null:
+			if not layered_construction_art:
+				sprite.name = "IllustratedStateSprite"
 			sprite.reparent(presentation)
 			sprite.position = Vector3.ZERO
-		if not layered_construction_art:
-			sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
-			_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
+			if not layered_construction_art:
+				sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
+				_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
 		if layered_construction_art:
 			structure.set_meta("operational_art_source", "generated_workshop_layered_construction")
 			structure.set_meta("visual_art_missing", false)
 		elif directional_stage_art:
 			structure.set_meta("operational_art_source", "generated_%s_construction_stage" % kind)
-		elif use_player_structure_art:
+		elif use_player_structure_art and sprite != null:
 			# The generated cutout is the single opaque operational silhouette. The
 			# imported kit remains instantiated for provenance and future directional
 			# replacement, but its render tree is hidden so the art never double-renders.
 			structure.set_meta("operational_art_source", "generated_player_structure_directional" if sprite.has_meta("directional_asset_path") else "generated_player_structure")
 			structure.set_meta("operational_visual_world_height", measured_hero_world_size)
+		elif directional_art_required and sprite == null:
+			structure.set_meta("operational_art_source", "missing_required_art")
 		elif state == "operational":
 			structure.set_meta("operational_art_source", "sourced_or_sheet_fallback")
 		else:
 			structure.set_meta("operational_art_source", "sourced_or_sheet_fallback")
+		# Archive's construction kit intentionally carries the timber frame and
+		# blueprint shell in one coherent silhouette. As the authoritative material
+		# ledger crosses the wall and roof milestones, reveal the same archive's
+		# measured hero art underneath it. This keeps the build readable without
+		# pretending that a generic scaffold is the archive, and without changing
+		# the collision/occupancy authority.
+		if kind == "archive" and state == "building" and directional_stage_art:
+			_add_archive_construction_phase_overlay(presentation, structure, rotation_quarter_turns, measured_hero_world_size, build_progress, structure_footprint)
 	if use_measured_3d_art:
 		# The imported source model is already fitted to the same measured bounds
 		# that created the active compound collision shell. Keep it as the single
@@ -1392,6 +1402,22 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	base.visible = not layered_construction or state == "blueprint"
 	base.material_override = _soft_material(Color(0.48, 0.58, 0.41, 0.04 if layered_construction else (0.12 if state != "operational" else 0.0)), true, false)
 	_build_structure_activity_dressing(presentation, structure, kind, state, data, structure_footprint)
+
+func _add_archive_construction_phase_overlay(presentation: Node3D, structure: Node3D, rotation_quarter_turns: int, world_size: float, progress: float, footprint: Vector2) -> void:
+	if presentation == null or structure == null or progress < 0.50:
+		return
+	var overlay := _player_structure_hero_sprite("archive", rotation_quarter_turns, world_size)
+	if overlay == null:
+		return
+	overlay.name = "ArchiveConstructionPhaseOverlay"
+	overlay.reparent(presentation)
+	overlay.position = Vector3(0.0, 0.018, 0.0)
+	overlay.render_priority = -1
+	var fill_alpha := 0.24 if progress < 0.76 else 0.50
+	overlay.modulate = Color(0.86, 0.95, 0.86, fill_alpha)
+	_set_structure_sprite_metadata(overlay, structure, "archive", "building", "phase_overlay", footprint)
+	overlay.set_meta("construction_phase_overlay", "walls" if progress < 0.76 else "roof")
+	overlay.set_meta("construction_phase_progress", progress)
 
 func _build_structure_activity_dressing(presentation: Node3D, structure: Node3D, kind: String, state: String, data: Dictionary, footprint: Vector2) -> void:
 	if presentation == null or structure == null:

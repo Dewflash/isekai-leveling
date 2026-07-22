@@ -142,6 +142,13 @@ Updated: 2026-07-22, Asia/Singapore
   but only one illustrated operational silhouette renders at a time; the
   corrected alpha sheet is reimported and smoke-fringe checked in the
   display-backed stage capture.
+- Archive construction now has a dedicated authored four-direction frame kit
+  for blueprint/frame/walls/roof stages. The same measured, ground-pivoted
+  silhouette remains tied to the authoritative construction footprint, and the
+  walls/roof milestones reveal the matching directional hero overlay instead of
+  falling back to generic scaffold art. Focused runtime proof passes with 177
+  checks; this closes the Archive-family gap only and is not the full Sanctuary
+  art gate.
 - Fixed Sanctuary landmarks now use the same generated A+C presentation path:
   Hearth, Archive, and Bazaar retain their measured imported source scenes only
   as hidden provenance/measurement nodes while their visible roots render the

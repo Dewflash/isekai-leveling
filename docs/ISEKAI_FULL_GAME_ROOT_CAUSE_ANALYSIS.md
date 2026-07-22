@@ -187,6 +187,17 @@ not establish that:
 The visual gate is still open by design. Passing contract tests must not be
 reported as passing the art/feel gate.
 
+### Update after the 2026-07-21 audit
+
+The Archive is the first follow-up slice from this audit: it now has a
+dedicated four-direction construction frame family, authored alpha envelopes,
+and a runtime phase overlay that reveals its measured hero silhouette at the
+walls/roof milestones. `tests/test_archive_construction_visuals.gd` passes 177
+focused checks. This proves that one additional facility can use the intended
+construction contract; it does not prove that the full Sanctuary, workshop
+interior, five expedition maps, or complete game are finished. The broader
+visual gate remains open.
+
 ## Status against the requested end state
 
 | Area | Evidence-backed status | Why it is not final |

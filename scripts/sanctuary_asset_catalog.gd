@@ -100,14 +100,22 @@ const STRUCTURES := {
 	"archive": {
 		"profile_id": "sanctuary_structure_archive_v1",
 		"asset_id": "sanctuary/player_structures/archive",
-		# Operational art is a dedicated four-view authored family. Construction
-		# stages remain on the shared scaffold contract until their matching archive
-		# frame/walls/roof family is authored; this prevents a half-complete family
-		# from silently producing an empty build state.
+		# Archive now has its own four-view construction family. The source is a
+		# frame-with-blueprint-shell kit: the renderer uses the same physically
+		# measured silhouette through the build, then fades in the authored hero
+		# envelope as walls and roof materials are delivered. It must never fall back
+		# to the generic scaffold or Workshop's construction art.
 		"sprite_kind": "workshop",
 		"source_asset": "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/Buildings/FBX/House_3.fbx",
 		"operational_art_mode": "illustrated_2_5d",
+		"directional_art_required": true,
 		"world_size": 7.1,
+		"construction_stage_directional_paths": {
+			"blueprint": {0: "res://assets/generated/sanctuary/archive/archive-construction-frame-q0.png", 1: "res://assets/generated/sanctuary/archive/archive-construction-frame-q1.png", 2: "res://assets/generated/sanctuary/archive/archive-construction-frame-q2.png", 3: "res://assets/generated/sanctuary/archive/archive-construction-frame-q3.png"},
+			"frame": {0: "res://assets/generated/sanctuary/archive/archive-construction-frame-q0.png", 1: "res://assets/generated/sanctuary/archive/archive-construction-frame-q1.png", 2: "res://assets/generated/sanctuary/archive/archive-construction-frame-q2.png", 3: "res://assets/generated/sanctuary/archive/archive-construction-frame-q3.png"},
+			"walls": {0: "res://assets/generated/sanctuary/archive/archive-construction-frame-q0.png", 1: "res://assets/generated/sanctuary/archive/archive-construction-frame-q1.png", 2: "res://assets/generated/sanctuary/archive/archive-construction-frame-q2.png", 3: "res://assets/generated/sanctuary/archive/archive-construction-frame-q3.png"},
+			"roof": {0: "res://assets/generated/sanctuary/archive/archive-construction-frame-q0.png", 1: "res://assets/generated/sanctuary/archive/archive-construction-frame-q1.png", 2: "res://assets/generated/sanctuary/archive/archive-construction-frame-q2.png", 3: "res://assets/generated/sanctuary/archive/archive-construction-frame-q3.png"},
+		},
 		"directional_variants": [
 			{"quarter_turn": 0, "variant_id": "archive_q0_pos_z", "asset_id": "sanctuary/player_structures/archive/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/archive/archive-q0.png", "facing": [0.0, 0.0, 1.0]},
 			{"quarter_turn": 1, "variant_id": "archive_q1_pos_x", "asset_id": "sanctuary/player_structures/archive/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/archive/archive-q1.png", "facing": [1.0, 0.0, 0.0]},
