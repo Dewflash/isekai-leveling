@@ -2089,6 +2089,10 @@ func _add_illustrated_player_sprite(visual: Node3D) -> Sprite3D:
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	sprite.shaded = false
 	sprite.no_depth_test = false
+	# Transparent world sprites can otherwise let a full foreground canopy erase
+	# the avatar after the player walks behind a framing tree. Keep the authored
+	# character readable while retaining real depth testing against world geometry.
+	sprite.render_priority = 8
 	sprite.sorting_use_aabb_center = false
 	sprite.sorting_offset = 0.0
 	sprite.set_meta("asset_id", "sanctuary/characters/wayfarer_direction_sheet")
@@ -2109,6 +2113,7 @@ func _add_illustrated_player_sprite(visual: Node3D) -> Sprite3D:
 	sprite.set_meta("ground_pivot", [0.0, 0.0, 0.0])
 	sprite.set_meta("sorting_anchor_mode", "feet")
 	sprite.set_meta("sorting_anchor_space", "sprite_local")
+	sprite.set_meta("occlusion_policy", "readable_character_over_environment_foliage")
 	visual.add_child(sprite)
 	# Keep the old procedural rig nodes alive for action/collision tests and
 	# gameplay pose hooks, but remove their visible geometry so the authored

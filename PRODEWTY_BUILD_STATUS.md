@@ -46,6 +46,9 @@ Updated: 2026-07-23, Asia/Singapore
   while the authoritative material components and construction timer continue
   to govern the actual stage. World-loop coverage exercises all four rotations
   for both facilities.
+- The authored Wayfarer silhouette now has an explicit readable-character draw
+  layer over transparent environment foliage. Depth testing remains enabled, so
+  canopy disappearance is corrected without disabling world occlusion.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,

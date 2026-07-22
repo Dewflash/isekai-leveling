@@ -47,6 +47,8 @@ func _run() -> void:
 	var idle_gaps: Array = sprite.get_meta("idle_bottom_gaps", [])
 	_check(idle_gaps.size() == 4, "idle alpha measurement must retain one feet offset per direction")
 	_check(sprite.pixel_size > 0.0, "player animation must use a positive measured world scale")
+	_check(sprite.render_priority > 0, "player silhouette must remain readable over transparent environment foliage")
+	_check(str(sprite.get_meta("occlusion_policy", "")) == "readable_character_over_environment_foliage", "player occlusion policy must be explicit")
 	var idle_atlas := sprite.get_meta("idle_atlas", null) as AtlasTexture
 	var walk_atlas := sprite.get_meta("walk_atlas", null) as AtlasTexture
 	_check(idle_atlas != null and idle_atlas.atlas == idle_sheet, "idle animation must use the idle source atlas")
