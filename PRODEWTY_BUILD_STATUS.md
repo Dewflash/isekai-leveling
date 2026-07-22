@@ -1,6 +1,6 @@
 # Prodewty Build Status
 
-Updated: 2026-07-22, Asia/Singapore
+Updated: 2026-07-23, Asia/Singapore
 
 ## Current target
 
@@ -17,6 +17,24 @@ Updated: 2026-07-22, Asia/Singapore
 - Persisted A+C evidence set: `docs/evidence/sanctuary-a-plus-c-v27/`
 - Launch note: restart any Godot editor or export opened before the A+C
   authority checkpoint; stale/committed builds cannot render the new assets.
+
+## 2026-07-23 visual contract checkpoint
+
+- Workshop operational presentation now binds one authored cozy v2 family across
+  all four quarter-turn directions: q0 front, q1 right side, q2 rear, and q3
+  opposite side. The stable directional variant IDs and saved rotation semantics
+  were preserved.
+- The runtime still measures each imported cutout's alpha envelope for visible
+  scale, while the structure collision shell is derived from the imported
+  physical bounds and semantic access zone. No per-direction hitbox constants
+  were introduced for this art pass.
+- The focused Workshop stage/operational test now verifies the art revision,
+  every directional asset path, importability, alpha coverage against the
+  measured projected shell, and the generated layered construction states.
+- This is a production-contract slice, not a full-game completion claim:
+  Workshop construction-stage art is still the earlier authored layered family,
+  and the remaining Sanctuary art, interior transitions, device capture, and
+  full content pass are still open.
 
 ## What exists (current checkpoint)
 

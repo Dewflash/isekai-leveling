@@ -28,9 +28,18 @@ func _run() -> void:
 	var layered_construction: Dictionary = AssetCatalog.structure_definition("workshop").get("layered_construction", {})
 	var layered_asset_paths: Dictionary = layered_construction.get("directional_asset_paths", {})
 	_check(layered_asset_paths.size() == 4, "Workshop layered construction must declare all four directional kits")
+	var workshop_definition: Dictionary = AssetCatalog.structure_definition("workshop")
+	var directional_art_revision := str(workshop_definition.get("directional_art_revision", ""))
+	_check(directional_art_revision == "workshop_cozy_v2", "Workshop directional art must identify the authored cozy v2 family")
 	var canonical_operational_path := str(AssetCatalog.structure_directional_variant("workshop", 0).get("asset_path", ""))
 	_check(canonical_operational_path == "res://assets/generated/sanctuary/workshop/workshop-cozy-v2.png", "Workshop q0 must use the current authored cozy hero candidate")
 	_check(ResourceLoader.exists(canonical_operational_path), "Workshop q0 authored cozy hero candidate must be importable")
+	for rotation in [0, 1, 2, 3]:
+		var directional_variant: Dictionary = AssetCatalog.structure_directional_variant("workshop", rotation)
+		var directional_path := str(directional_variant.get("asset_path", ""))
+		_check(str(directional_variant.get("art_revision", "")) == directional_art_revision, "Workshop rotation %d must stay in the authored directional art family" % rotation)
+		_check(directional_path.contains("workshop-cozy-v2"), "Workshop rotation %d must bind the cozy v2 directional source" % rotation)
+		_check(ResourceLoader.exists(directional_path), "Workshop rotation %d authored cozy hero candidate must be importable" % rotation)
 	_check_no_live_green_fringe("res://assets/generated/sanctuary/workshop/workshop-stage-roof-q2.png", Rect2i(520, 0, 210, 220), "roof q2 chimney smoke")
 	_check_no_live_green_fringe("res://assets/generated/sanctuary/workshop/workshop-stage-walls-q3.png", Rect2i(1075, 220, 155, 130), "walls q3 upper rafters")
 	for stage_id in ["blueprint", "frame", "walls", "roof"]:

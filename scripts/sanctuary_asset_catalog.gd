@@ -33,6 +33,7 @@ const STRUCTURES := {
 		# operational hero art. Fail closed to that authored family instead of
 		# letting the legacy scaffold reappear during a state refresh.
 		"directional_art_required": true,
+		"directional_art_revision": "workshop_cozy_v2",
 		"world_size": 8.2,
 		"interior_profile": {
 			"interior_id": "workshop_v1",
@@ -79,13 +80,13 @@ const STRUCTURES := {
 			},
 		},
 		"directional_variants": [
-			# The current player-facing q0 hero is the cozy authored pass. Keep the
-			# semantic variant ID stable so saved rotations and interaction metadata
-			# do not change when art is iterated; only the presentation source moves.
-			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-cozy-v2.png", "facing": [0.0, 0.0, 1.0]},
-			{"quarter_turn": 1, "variant_id": "workshop_q1_pos_x", "asset_id": "sanctuary/player_structures/workshop/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q1.png", "facing": [1.0, 0.0, 0.0]},
-			{"quarter_turn": 2, "variant_id": "workshop_q2_neg_z", "asset_id": "sanctuary/player_structures/workshop/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q2.png", "facing": [0.0, 0.0, -1.0]},
-			{"quarter_turn": 3, "variant_id": "workshop_q3_neg_x", "asset_id": "sanctuary/player_structures/workshop/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-q3.png", "facing": [-1.0, 0.0, 0.0]},
+			# Keep the semantic variant IDs stable so saved rotations and interaction
+			# metadata do not change when art is iterated; only the presentation
+			# sources move as one authored family.
+			{"quarter_turn": 0, "variant_id": "workshop_q0_pos_z", "asset_id": "sanctuary/player_structures/workshop/operational/q0_pos_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-cozy-v2.png", "facing": [0.0, 0.0, 1.0], "art_revision": "workshop_cozy_v2"},
+			{"quarter_turn": 1, "variant_id": "workshop_q1_pos_x", "asset_id": "sanctuary/player_structures/workshop/operational/q1_pos_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-cozy-v2-q1.png", "facing": [1.0, 0.0, 0.0], "art_revision": "workshop_cozy_v2"},
+			{"quarter_turn": 2, "variant_id": "workshop_q2_neg_z", "asset_id": "sanctuary/player_structures/workshop/operational/q2_neg_z", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-cozy-v2-q2.png", "facing": [0.0, 0.0, -1.0], "art_revision": "workshop_cozy_v2"},
+			{"quarter_turn": 3, "variant_id": "workshop_q3_neg_x", "asset_id": "sanctuary/player_structures/workshop/operational/q3_neg_x", "asset_path": "res://assets/generated/sanctuary/workshop/workshop-cozy-v2-q3-mirrored.png", "facing": [-1.0, 0.0, 0.0], "art_revision": "workshop_cozy_v2"},
 		],
 		"access_zones": [
 			{"id": "front_door", "kind": "door", "visible_feature_id": "workshop_double_door", "center": [0.0, 0.0, 2.20], "size": [1.30, 0.80], "facing": [0.0, 0.0, 1.0], "must_be_visible_in_asset": true},
