@@ -6,7 +6,8 @@ Updated: 2026-07-22, Asia/Singapore
 
 - Local checkout: `/Users/kevinyongcj/Programming/isekai-leveling`
 - Remote: `https://github.com/Dewflash/isekai-leveling.git`
-- Remote code checkpoint: `b806060` on `codex/visual-workshop-storage-operating`
+- Remote code checkpoint: latest pushed commit on
+  `codex/visual-workshop-storage-operating`
 - Staging project: `/Users/kevinyongcj/Documents/Codex/2026-07-17/wha/work/isekai-leveling`
 - Godot: `4.7.stable.official.5b4e0cb0f`
 - Xcode: `26.5`
@@ -149,6 +150,16 @@ Updated: 2026-07-22, Asia/Singapore
   falling back to generic scaffold art. Focused runtime proof passes with 177
   checks; this closes the Archive-family gap only and is not the full Sanctuary
   art gate.
+- The player-owned Archive now has a measured interior transition: its room
+  envelope is derived from the placed House_3 source measurement, the entry
+  and egress retain the authored door facing for all four rotations, and the
+  interior exposes a research desk plus a real exit station. The desk uses a
+  visible-envelope-derived collision proxy and routes into the existing
+  research transaction; focused runtime proof passes with 95 checks, while the
+  Workshop interior and persistence contracts remain green. This is a systems
+  checkpoint, not the final Sanctuary visual pass: an exterior screenshot will
+  remain materially unchanged until the authored Sanctuary density/building
+  family pass is implemented.
 - Fixed Sanctuary landmarks now use the same generated A+C presentation path:
   Hearth, Archive, and Bazaar retain their measured imported source scenes only
   as hidden provenance/measurement nodes while their visible roots render the

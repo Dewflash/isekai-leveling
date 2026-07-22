@@ -88,7 +88,17 @@ func _run() -> void:
 					_check(not bool(frame_mesh.get_meta("collision_contributor", true)), "%s scaffold mesh must not expand the measured hitbox" % construction_id)
 		if construction_materials != null:
 			_check(construction_materials.visible == (construction_id == "furnace_right_001"), "%s material visibility must follow its persisted construction state" % construction_id)
-	_check(not bool(interior.call("configure_for_structure", "archive", workshop_measurement, AssetCatalog.structure_access_zones("workshop", 0), {})), "Workshop controller must reject unsupported interior kinds")
+	var archive_host := Node3D.new()
+	archive_host.name = "ArchiveInteriorContractHost"
+	host.add_child(archive_host)
+	var archive_interior := InteriorScript.new() as Node3D
+	archive_interior.call("build", archive_host)
+	var archive_definition: Dictionary = AssetCatalog.structure_definition("archive")
+	var archive_measurement: Dictionary = AssetMeasurement.structure_measurement("archive", Vector2i(5, 4))
+	_check(bool(archive_interior.call("configure_for_structure", "archive", archive_measurement, AssetCatalog.structure_access_zones("archive", 0), archive_definition.get("interior_profile", {}))), "Archive controller must configure from its measured exterior profile")
+	_check(int(archive_interior.call("active_station_count")) == 2, "Archive room must expose its measured exit and research desk")
+	archive_interior.queue_free()
+	archive_host.queue_free()
 	var invalid_host := Node3D.new()
 	invalid_host.name = "InvalidMeasurementHost"
 	host.add_child(invalid_host)

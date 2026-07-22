@@ -110,6 +110,13 @@ const STRUCTURES := {
 		"operational_art_mode": "illustrated_2_5d",
 		"directional_art_required": true,
 		"world_size": 7.1,
+		"interior_profile": {
+			"interior_id": "archive_v1",
+			"entry_zone_id": "front_door",
+			"ceiling_height_ratio": 0.80,
+			"egress_clearance_ratio": 0.18,
+			"illustrated_shell_width_ratio": 1.0,
+		},
 		"construction_stage_directional_paths": {
 			"blueprint": {0: "res://assets/generated/sanctuary/archive/archive-construction-frame-q0.png", 1: "res://assets/generated/sanctuary/archive/archive-construction-frame-q1.png", 2: "res://assets/generated/sanctuary/archive/archive-construction-frame-q2.png", 3: "res://assets/generated/sanctuary/archive/archive-construction-frame-q3.png"},
 			"frame": {0: "res://assets/generated/sanctuary/archive/archive-construction-frame-q0.png", 1: "res://assets/generated/sanctuary/archive/archive-construction-frame-q1.png", 2: "res://assets/generated/sanctuary/archive/archive-construction-frame-q2.png", 3: "res://assets/generated/sanctuary/archive/archive-construction-frame-q3.png"},

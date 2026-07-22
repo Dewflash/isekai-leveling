@@ -59,6 +59,7 @@ func build(world: Node3D) -> void:
 	host_world = world
 	name = "BuildingInteriorController"
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	active_kind = "workshop"
 	world.add_child(self)
 	_apply_layout(ContentRegistry.interior_layout("workshop"))
 	toon_wood_material = load(TOON_WOOD_MATERIAL_PATH) as ShaderMaterial
@@ -77,7 +78,7 @@ func configure_for_structure(kind: String, measurement: Dictionary, access_zones
 	# placed building's collision. The small inset is derived as a shared interior
 	# clearance; no Workshop-specific room rectangle is allowed to drift from the
 	# exterior claim.
-	if kind != "workshop" or not bool(measurement.get("valid", false)):
+	if kind not in ["workshop", "archive"] or not bool(measurement.get("valid", false)):
 		return false
 	var fitted_size: Vector3 = measurement.get("fitted_size", Vector3.ZERO)
 	if fitted_size.x <= 0.01 or fitted_size.y <= 0.01 or fitted_size.z <= 0.01:
@@ -92,20 +93,24 @@ func configure_for_structure(kind: String, measurement: Dictionary, access_zones
 	if authored_door_size.size() < 2:
 		return false
 	var next_room_size := Vector2(fitted_size.x - 0.34, fitted_size.z - 0.34)
-	if next_room_size.x < 3.4 or next_room_size.y < 3.0:
-		return false
 	var ceiling_ratio := clampf(float(interior_profile.get("ceiling_height_ratio", 0.82)), 0.60, 0.94)
 	var next_illustrated_shell_width_ratio := clampf(float(interior_profile.get("illustrated_shell_width_ratio", 1.0)), 0.90, 1.80)
 	var next_room_height := minf(fitted_size.y - 0.24, fitted_size.y * ceiling_ratio)
 	if next_room_height < 2.75:
 		return false
 	var next_door_width := clampf(float(authored_door_size[0]), 0.95, next_room_size.x - 0.70)
+	# The room minimum is derived from the measured envelope and door opening. A
+	# small but valid player building must not be rejected by a larger Workshop
+	# fallback minimum; the shell and all interaction proxies remain measured.
+	if next_room_size.x < maxf(2.80, next_door_width + 1.20) or next_room_size.y < 2.80:
+		return false
 	var next_door_facing := _array_to_vector3(door_zone.get("facing", [0.0, 0.0, 1.0]))
 	if next_door_facing.length_squared() < 0.01:
 		next_door_facing = Vector3(0.0, 0.0, 1.0)
 	else:
 		next_door_facing = next_door_facing.normalized()
-	var next_profile_id := "%s|%s|%.3f|%.3f|%.3f|%.3f|%.3f" % [kind, str(measurement.get("source_path", "")), next_room_size.x, next_room_size.y, next_room_height, next_door_width, next_illustrated_shell_width_ratio]
+	var next_profile_id := "%s|%s|%.3f|%.3f|%.3f|%.3f|%.3f|%.3f|%.3f" % [kind, str(measurement.get("source_path", "")), next_room_size.x, next_room_size.y, next_room_height, next_door_width, next_illustrated_shell_width_ratio, next_door_facing.x, next_door_facing.z]
+	active_kind = kind
 	if next_profile_id == configured_profile_id:
 		return room_measurements_valid
 	if active or transitioning:
@@ -129,7 +134,7 @@ func configure_for_structure(kind: String, measurement: Dictionary, access_zones
 	return room_measurements_valid
 
 func supports_kind(kind: String) -> bool:
-	return kind == "workshop"
+	return kind in ["workshop", "archive"]
 
 func room_dimensions() -> Vector3:
 	return Vector3(room_size.x, room_height, room_size.y)
@@ -358,6 +363,7 @@ func _clear_room() -> void:
 	animated_fire.clear()
 	animated_smoke.clear()
 	animated_wheel = null
+	illustrated_shell = null
 	interior_fill_light = null
 	door_fill_light = null
 	registered_floor_panel = null
@@ -384,22 +390,25 @@ func _array_to_vector3(value: Variant) -> Vector3:
 
 func _build_workshop_room() -> void:
 	room_root = Node3D.new()
-	room_root.name = "WorkshopInteriorRoom"
-	room_root.set_meta("interior_id", "workshop_v1")
+	room_root.name = "%sInteriorRoom" % active_kind.capitalize()
+	room_root.set_meta("interior_id", "%s_v1" % active_kind)
 	room_root.set_meta("world_size_m", [room_size.x, room_height, room_size.y])
 	add_child(room_root)
 	room_shell = Node3D.new()
-	room_shell.name = "WorkshopRoomShell"
+	room_shell.name = "%sRoomShell" % active_kind.capitalize()
 	room_root.add_child(room_shell)
 	_create_floor()
 	_create_walls()
-	_create_workshop_stations()
+	_create_archive_stations() if active_kind == "archive" else _create_workshop_stations()
 	_create_dressing()
-	_create_illustrated_shell()
-	_create_registered_floor_panel()
-	_create_registered_wall_panels()
+	if active_kind == "workshop":
+		_create_illustrated_shell()
+		_create_registered_floor_panel()
+		_create_registered_wall_panels()
 
 func _create_illustrated_shell() -> void:
+	if active_kind != "workshop":
+		return
 	# The room architecture is an authored cutaway card behind the live station
 	# meshes. The stations remain real, separately measured assets in front of it;
 	# this improves the reference silhouette without making their hitboxes depend
@@ -484,16 +493,19 @@ func _create_illustrated_shell() -> void:
 	room_root.add_child(illustrated_shell)
 
 func _create_floor() -> void:
-	var floor := _box(room_shell, "WorkshopFloorVisible", Vector3(room_size.x, 0.12, room_size.y), Vector3(0.0, -0.06, 0.0), Color("#70695d"))
-	floor.set_meta("visible_asset_id", "interior/workshop/floor_tiles")
-	var body := _collision_body(room_shell, "WorkshopFloorCollision", Vector3(room_size.x, 0.12, room_size.y), Vector3(0.0, -0.06, 0.0), "interior/workshop/floor_tiles")
+	var floor_color := Color("#70695d") if active_kind == "workshop" else Color("#7a685f")
+	var floor_asset := "interior/workshop/floor_tiles" if active_kind == "workshop" else "interior/archive/floor_boards"
+	var floor := _box(room_shell, "%sFloorVisible" % active_kind.capitalize(), Vector3(room_size.x, 0.12, room_size.y), Vector3(0.0, -0.06, 0.0), floor_color)
+	floor.set_meta("visible_asset_id", floor_asset)
+	var body := _collision_body(room_shell, "%sFloorCollision" % active_kind.capitalize(), Vector3(room_size.x, 0.12, room_size.y), Vector3(0.0, -0.06, 0.0), floor_asset)
 	_bind_collision_to_visible_mesh(floor, body)
 	body.set_meta("blocks_movement", true)
 	for x in range(-4, 5):
 		for z in range(-3, 4):
 			if (x + z) % 2 != 0:
 				continue
-			var tile := _box(room_shell, "FloorInset_%d_%d" % [x, z], Vector3(0.93, 0.014, 0.93), Vector3(float(x) * 0.98, 0.008, float(z) * 0.96), Color("#827867"), false, false, false)
+			var tile_color := Color("#827867") if active_kind == "workshop" else Color("#8b7264")
+			var tile := _box(room_shell, "FloorInset_%d_%d" % [x, z], Vector3(0.93, 0.014, 0.93), Vector3(float(x) * 0.98, 0.008, float(z) * 0.96), tile_color, false, false, false)
 			tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func _create_registered_floor_panel() -> void:
@@ -593,17 +605,19 @@ func _workshop_wall_material() -> Material:
 	return fallback
 
 func _create_walls() -> void:
-	var wall_color := Color("#6f5a4b")
-	var timber := Color("#483833")
+	var wall_color := Color("#6f5a4b") if active_kind == "workshop" else Color("#65515a")
+	var timber := Color("#483833") if active_kind == "workshop" else Color("#493846")
 	# The upper walls are intentionally visible while the roof is omitted: the
 	# player reads a real room without losing the fixed 3/4 camera or station
 	# silhouettes.
-	_create_wall_segment("WorkshopBackWall", Vector3(room_size.x, room_height, 0.18), Vector3(0.0, room_height * 0.5, -room_size.y * 0.5), wall_color, "interior/workshop/back_wall")
-	_create_wall_segment("WorkshopLeftWall", Vector3(0.18, room_height, room_size.y), Vector3(-room_size.x * 0.5, room_height * 0.5, 0.0), wall_color, "interior/workshop/left_wall")
-	_create_wall_segment("WorkshopRightWall", Vector3(0.18, room_height, room_size.y), Vector3(room_size.x * 0.5, room_height * 0.5, 0.0), wall_color, "interior/workshop/right_wall")
+	var wall_prefix := "Workshop" if active_kind == "workshop" else "Archive"
+	var wall_asset_prefix := "workshop" if active_kind == "workshop" else "archive"
+	_create_wall_segment("%sBackWall" % wall_prefix, Vector3(room_size.x, room_height, 0.18), Vector3(0.0, room_height * 0.5, -room_size.y * 0.5), wall_color, "interior/%s/back_wall" % wall_asset_prefix)
+	_create_wall_segment("%sLeftWall" % wall_prefix, Vector3(0.18, room_height, room_size.y), Vector3(-room_size.x * 0.5, room_height * 0.5, 0.0), wall_color, "interior/%s/left_wall" % wall_asset_prefix)
+	_create_wall_segment("%sRightWall" % wall_prefix, Vector3(0.18, room_height, room_size.y), Vector3(room_size.x * 0.5, room_height * 0.5, 0.0), wall_color, "interior/%s/right_wall" % wall_asset_prefix)
 	var front_side_width := (room_size.x - door_width) * 0.5
-	_create_wall_segment("WorkshopFrontWallLeft", Vector3(front_side_width, room_height, 0.18), Vector3(-((room_size.x + door_width) * 0.25), room_height * 0.5, room_size.y * 0.5), wall_color, "interior/workshop/front_wall_left")
-	_create_wall_segment("WorkshopFrontWallRight", Vector3(front_side_width, room_height, 0.18), Vector3(((room_size.x + door_width) * 0.25), room_height * 0.5, room_size.y * 0.5), wall_color, "interior/workshop/front_wall_right")
+	_create_wall_segment("%sFrontWallLeft" % wall_prefix, Vector3(front_side_width, room_height, 0.18), Vector3(-((room_size.x + door_width) * 0.25), room_height * 0.5, room_size.y * 0.5), wall_color, "interior/%s/front_wall_left" % wall_asset_prefix)
+	_create_wall_segment("%sFrontWallRight" % wall_prefix, Vector3(front_side_width, room_height, 0.18), Vector3(((room_size.x + door_width) * 0.25), room_height * 0.5, room_size.y * 0.5), wall_color, "interior/%s/front_wall_right" % wall_asset_prefix)
 	for side in [-1.0, 1.0]:
 		_box(room_shell, "DoorPost_%s" % side, Vector3(0.18, 2.18, 0.22), Vector3(side * door_width * 0.5, 1.09, room_size.y * 0.5), timber, false, false, false)
 	_box(room_shell, "DoorLintel", Vector3(door_width + 0.34, 0.20, 0.22), Vector3(0.0, 2.18, room_size.y * 0.5), timber, false, false, false)
@@ -637,6 +651,30 @@ func _create_workshop_stations() -> void:
 		if door_mesh != null:
 			door_mesh.visible = false
 	exit.set_meta("presentation_source", "illustrated_shell_doorway")
+
+func _create_archive_stations() -> void:
+	var exit := _create_station("exit", "Archive Door", Vector3(0.0, 0.0, room_size.y * 0.5 + 0.08), Vector2(door_width, 0.42), "exit", "interior/archive/door")
+	_box(exit, "DoorPanel", Vector3(1.08, 1.88, 0.10), Vector3(0.0, 0.94, -0.04), Color("#704d4b"))
+	_box(exit, "DoorHandle", Vector3(0.07, 0.13, 0.10), Vector3(0.28, 0.92, -0.11), Color("#d7a45e"), false, true)
+	var exit_label := exit.get_node_or_null("StationLabel") as Label3D
+	if exit_label != null:
+		exit_label.text = "EXIT\nE"
+	_sync_station_collision_to_visible_asset(exit)
+	for door_mesh_name in ["DoorPanel", "DoorHandle"]:
+		var door_mesh := exit.get_node_or_null(door_mesh_name) as MeshInstance3D
+		if door_mesh != null:
+			door_mesh.visible = false
+	exit.set_meta("presentation_source", "archive_cutaway_doorway")
+	var desk_position := Vector3(-0.45, 0.0, -0.62)
+	var desk := _create_station("archive_desk", "Research Desk", desk_position, Vector2(1.52, 0.92), "archive", "interior/archive/research_desk", "archive_desk")
+	_box(desk, "DeskTop", Vector3(1.46, 0.16, 0.82), Vector3(0.0, 0.82, 0.0), Color("#9a654c"))
+	for side in [-1.0, 1.0]:
+		_box(desk, "DeskLeg_%s" % side, Vector3(0.12, 0.74, 0.12), Vector3(side * 0.56, 0.38, 0.0), Color("#55404a"))
+	_box(desk, "OpenLedger", Vector3(0.58, 0.035, 0.44), Vector3(-0.20, 0.92, 0.08), Color("#e6d49c"), false, true, false)
+	_box(desk, "AetherLens", Vector3(0.22, 0.12, 0.22), Vector3(0.30, 1.00, 0.04), Color("#9ddbe2"), false, true, false)
+	_sync_station_collision_to_visible_asset(desk)
+	desk.set_meta("installation_state", "operational")
+	desk.set_meta("presentation_source", "procedural_archive_research_desk")
 
 func _create_furnace(station_id: String, label_text: String, position: Vector3, body_color: Color, phase: float, asset_kind := "") -> void:
 	var station := _create_station(station_id, label_text, position, Vector2(1.34, 1.02), "workshop", "interior/workshop/%s" % station_id, asset_kind)
@@ -705,7 +743,8 @@ func _create_storage(station_id: String, label_text: String, position: Vector3, 
 func _clear_dynamic_stations() -> void:
 	var dynamic_ids: Array = []
 	for station_id in stations:
-		if str(station_id) != "exit":
+		var keep_static := str(station_id) == "exit" or (active_kind == "archive" and str(station_id) == "archive_desk")
+		if not keep_static:
 			dynamic_ids.append(str(station_id))
 	for station_id in dynamic_ids:
 		var station := stations.get(station_id) as Node3D
@@ -958,6 +997,9 @@ func _set_construction_frame_tint(frame: Node3D, valid: bool) -> void:
 		mesh.material_override = tinted_material
 
 func _create_dressing() -> void:
+	if active_kind == "archive":
+		_create_archive_dressing()
+		return
 	var shelf := Node3D.new()
 	shelf.name = "WorkshopShelf"
 	shelf.position = Vector3(-room_size.x * 0.44, 0.0, room_size.y * 0.15)
@@ -990,6 +1032,48 @@ func _create_dressing() -> void:
 	door_fill_light.position = Vector3(0.0, 1.18, room_size.y * 0.44)
 	door_fill_light.light_color = Color("#9ed6dc")
 	door_fill_light.light_energy = 0.30
+	door_fill_light.omni_range = maxf(2.0, door_width * 2.0)
+	door_fill_light.shadow_enabled = false
+	door_fill_light.visible = false
+	room_shell.add_child(door_fill_light)
+
+func _create_archive_dressing() -> void:
+	var shelf := Node3D.new()
+	shelf.name = "ArchiveBookShelves"
+	shelf.position = Vector3(room_size.x * 0.34, 0.0, -room_size.y * 0.18)
+	room_shell.add_child(shelf)
+	_box(shelf, "ShelfBack", Vector3(0.16, 2.55, 1.72), Vector3(0.0, 1.28, 0.0), Color("#4d3b4b"), false, false, false)
+	for y in [0.34, 1.08, 1.82, 2.42]:
+		_box(shelf, "ShelfBoard_%s" % y, Vector3(0.28, 0.10, 1.86), Vector3(0.0, y, 0.0), Color("#8b5e4b"), false, false, false)
+	for index in 8:
+		var book_color := Color("#b98b65") if index % 3 == 0 else Color("#77958f") if index % 3 == 1 else Color("#c8ad70")
+		_box(shelf, "Book_%d" % index, Vector3(0.14, 0.28 + float(index % 2) * 0.08, 0.22), Vector3(0.06, 0.48 + float(index / 3) * 0.72, -0.62 + float(index % 3) * 0.55), book_color, false, false, false)
+	var map_table := _box(room_shell, "ArchiveMapTable", Vector3(1.26, 0.16, 0.76), Vector3(-room_size.x * 0.22, 0.82, room_size.y * 0.14), Color("#8d5b4d"))
+	map_table.set_meta("visible_asset_id", "interior/archive/map_table")
+	_box(room_shell, "ArchiveMap", Vector3(0.82, 0.03, 0.52), map_table.position + Vector3(0.0, 0.11, 0.0), Color("#b8d2b1"), false, true, false)
+	var lantern := _sphere(room_shell, "ArchiveHangingLantern", 0.13, Vector3(0.0, room_height * 0.84, -room_size.y * 0.05), Color("#ffd178"), false, true)
+	var lamp_light := OmniLight3D.new()
+	lamp_light.name = "ArchiveLampLight"
+	lamp_light.position = lantern.position
+	lamp_light.light_color = Color("#e7c4ff")
+	lamp_light.light_energy = 0.62
+	lamp_light.omni_range = maxf(2.6, room_size.length() * 0.52)
+	room_shell.add_child(lamp_light)
+	_box(room_shell, "ArchiveLampCord", Vector3(0.025, room_height * 0.20, 0.025), Vector3(0.0, room_height * 0.92, -room_size.y * 0.05), Color("#3d3837"), false, false, false)
+	interior_fill_light = OmniLight3D.new()
+	interior_fill_light.name = "ArchiveInteriorFill"
+	interior_fill_light.position = Vector3(0.0, room_height * 0.66, -room_size.y * 0.05)
+	interior_fill_light.light_color = Color("#c5a8db")
+	interior_fill_light.light_energy = 0.36
+	interior_fill_light.omni_range = maxf(3.0, room_size.length() * 0.58)
+	interior_fill_light.shadow_enabled = false
+	interior_fill_light.visible = false
+	room_shell.add_child(interior_fill_light)
+	door_fill_light = OmniLight3D.new()
+	door_fill_light.name = "ArchiveDoorFill"
+	door_fill_light.position = Vector3(0.0, 1.12, room_size.y * 0.44)
+	door_fill_light.light_color = Color("#9ed6dc")
+	door_fill_light.light_energy = 0.26
 	door_fill_light.omni_range = maxf(2.0, door_width * 2.0)
 	door_fill_light.shadow_enabled = false
 	door_fill_light.visible = false

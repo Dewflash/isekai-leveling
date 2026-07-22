@@ -5844,6 +5844,9 @@ func _workshop_contextual_action() -> void:
 	if get_tree().paused:
 		return
 	if interior_active:
+		if interior_kind != "workshop":
+			_show_toast("This interior has no player fit-out stations.", 1.8)
+			return
 		_toggle_interior_station_placement()
 		return
 	var context_node := _nearest_interactable()
@@ -5874,6 +5877,8 @@ func _contextual_interact() -> void:
 
 func _toggle_build_context() -> void:
 	if interior_active:
+		if interior_kind != "workshop":
+			return
 		_toggle_interior_station_placement()
 	else:
 		_toggle_structure_placement()
@@ -5890,7 +5895,7 @@ func _construction_interact(structure_node: Node3D) -> void:
 			_enter_building_interior(structure_node)
 			return
 		if kind == "archive":
-			_library_interact(structure_node)
+			_enter_building_interior(structure_node)
 			return
 		if kind == "livestock_pen":
 			_livestock_interact(structure_node)
@@ -5944,32 +5949,34 @@ func _construction_interact(structure_node: Node3D) -> void:
 func _enter_building_interior(structure_node: Node3D) -> void:
 	if get_tree().paused or interior_active or interior_transitioning or structure_node == null or building_interior == null or player == null:
 		return
-	if not structure_node.has_meta("construction_id") or str(structure_node.get_meta("structure_kind", "")) != "workshop":
+	var kind := str(structure_node.get_meta("structure_kind", ""))
+	if not structure_node.has_meta("construction_id") or kind not in ["workshop", "archive"]:
 		return
-	var interior_profile: Dictionary = SanctuaryAssetCatalog.structure_definition("workshop").get("interior_profile", {})
+	var interior_profile: Dictionary = SanctuaryAssetCatalog.structure_definition(kind).get("interior_profile", {})
 	var entry_zone_id := str(interior_profile.get("entry_zone_id", ""))
 	var door_zone := _world_access_zone(structure_node, "door", entry_zone_id)
 	var has_door := not door_zone.is_empty() and door_zone.has("world_center")
 	var door_world: Vector3 = door_zone.get("world_center", Vector3.ZERO)
 	var door_outward: Vector3 = door_zone.get("world_facing", Vector3(0.0, 0.0, 1.0))
 	if not has_door or str(door_zone.get("kind", "")) != "door" or door_outward.length_squared() < 0.01:
-		_show_toast("This Workshop has no measured front door.", 2.2)
+		_show_toast("This %s has no measured front door." % _structure_display_name(kind), 2.2)
 		return
 	if _ground_distance(player.global_position, door_world) > _interaction_range(2.35, 0.15):
-		_show_toast("Approach the Workshop's front door to enter.", 2.2)
+		_show_toast("Approach the %s front door to enter." % _structure_display_name(kind), 2.2)
 		return
 	var instance_id := str(structure_node.get_meta("construction_id", ""))
 	var structure: Dictionary = session.get("structures").get(instance_id, {}) if session != null else {}
 	if str(structure.get("state", "")) != "operational":
 		return
 	var measurement: Dictionary = structure_node.get_meta("source_measurement", {})
-	var access_zones: Array = SanctuaryAssetCatalog.structure_access_zones("workshop", 0)
-	if not building_interior.call("configure_for_structure", "workshop", measurement, access_zones, interior_profile):
-		_show_toast("The Workshop interior is unavailable until its measured shell is valid.", 2.6)
+	var rotation := int(structure_node.get_meta("structure_rotation", 0))
+	var access_zones: Array = SanctuaryAssetCatalog.structure_access_zones(kind, rotation)
+	if not building_interior.call("configure_for_structure", kind, measurement, access_zones, interior_profile):
+		_show_toast("The %s interior is unavailable until its measured shell is valid." % _structure_display_name(kind), 2.6)
 		return
 	var measured_interior_layout: Dictionary = building_interior.call("room_layout")
 	if not bool(session.call("set_interior_layout", instance_id, measured_interior_layout)):
-		_show_toast("The measured Workshop layout could not be secured.", 2.6)
+		_show_toast("The measured %s layout could not be secured." % _structure_display_name(kind), 2.6)
 		return
 	var old_interior_kind := interior_kind
 	var old_interior_instance_id := interior_instance_id
@@ -5984,7 +5991,7 @@ func _enter_building_interior(structure_node: Node3D) -> void:
 	utilities_open = false
 	if build_marker != null:
 		build_marker.visible = false
-	interior_kind = "workshop"
+	interior_kind = kind
 	interior_instance_id = instance_id
 	interior_return_position = _measured_door_egress_position(structure_node, measurement, door_zone, interior_profile)
 	interior_return_facing = door_outward
@@ -6056,7 +6063,10 @@ func _finish_enter_building_interior() -> void:
 		var room_dimensions: Vector3 = building_interior.call("room_dimensions")
 		camera.size = maxf(8.8, room_dimensions.z * 1.78)
 	camera_anchor_initialized = false
-	_show_toast("Workshop entered  |  B places fit-out, C cycles stations, X rotates.", 3.0) if persisted_stations.is_empty() else _show_toast("Workshop entered  |  B places fit-out, C cycles stations, X rotates.", 2.8)
+	if interior_kind == "workshop":
+		_show_toast("Workshop entered  |  B places fit-out, C cycles stations, X rotates.", 3.0)
+	else:
+		_show_toast("Archive entered  |  Read the research desk, then return to the Sanctuary.", 3.0)
 
 func _exit_building_interior() -> void:
 	if get_tree().paused or not interior_active or interior_transitioning or building_interior == null:
@@ -6160,7 +6170,7 @@ func _interior_interact() -> void:
 		return
 	var nearest := _nearest_interactable()
 	if nearest == null:
-		_show_toast("Move closer to a workshop station.", 1.8)
+		_show_toast("Move closer to a %s station." % ("research desk" if interior_kind == "archive" else "workshop"), 1.8)
 		return
 	var action := str(nearest.get_meta("interior_action", ""))
 	match action:
@@ -6176,6 +6186,8 @@ func _interior_interact() -> void:
 				_storage_use(nearest)
 			else:
 				_workshop_use(nearest)
+		"archive":
+			_library_interact(nearest)
 		_:
 			_show_toast("This station is not operational yet.", 1.8)
 
@@ -6190,6 +6202,7 @@ func _interior_station_action_text(station_node: Node3D) -> String:
 		"furnace": return "SMELT ORE"
 		"anvil": return "REPAIR TOOLS"
 		"storage": return "OPEN STORAGE"
+		"archive": return "OPEN ARCHIVE"
 	return "INTERACT"
 
 func _interior_station_label(station_kind: String) -> String:
@@ -6231,7 +6244,7 @@ func _toggle_interior_station_placement() -> void:
 		_show_toast("Place %s  |  C cycles stations, X rotates, E confirms." % _interior_station_label(selected_interior_station_kind), 3.0)
 
 func _cycle_interior_station_kind() -> void:
-	if not interior_active or interior_transitioning or interior_station_placement_mode:
+	if not interior_active or interior_kind != "workshop" or interior_transitioning or interior_station_placement_mode:
 		return
 	var options := ["workbench", "furnace_left", "furnace_right", "anvil", "storage"]
 	var current_index := options.find(selected_interior_station_kind)

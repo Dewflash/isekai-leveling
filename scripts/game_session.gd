@@ -2550,7 +2550,7 @@ func place_structure(structure_id: String, cell: Array, rotation_quarter_turns :
 	for material_id in cost:
 		delivered_materials[str(material_id)] = 0
 	var structure_record := {"id": structure_id_instance, "kind": structure_id, "cell": [int(cell[0]), int(cell[1])], "rotation": posmod(rotation_quarter_turns, 4), "state": "blueprint", "remaining_hours": 0.0, "total_hours": float(definition.get("hours", 24.0)), "delivered_materials": delivered_materials}
-	if structure_id == "workshop":
+	if ContentRegistry.INTERIOR_LAYOUTS.has(structure_id):
 		structure_record["interior_layout"] = ContentRegistry.interior_layout(structure_id)
 	structures[structure_id_instance] = structure_record
 	state_changed.emit()
@@ -2561,6 +2561,13 @@ func _workshop_shell_ready(structure_id: String) -> bool:
 		return false
 	var structure: Dictionary = structures.get(structure_id, {})
 	return str(structure.get("kind", "")) == "workshop" and str(structure.get("state", "")) == "operational"
+
+func _interior_shell_ready(structure_id: String) -> bool:
+	if structure_id.is_empty() or not structures.has(structure_id):
+		return false
+	var structure: Dictionary = structures.get(structure_id, {})
+	var kind := str(structure.get("kind", ""))
+	return kind in ["workshop", "archive"] and str(structure.get("state", "")) == "operational"
 
 func can_place_interior_station(structure_id: String, station_kind: String, local_cell: Array, rotation_quarter_turns := 0, player_cell := []) -> bool:
 	if not _workshop_shell_ready(structure_id) or not ContentRegistry.INTERIOR_STATIONS.has(station_kind):
@@ -2607,7 +2614,7 @@ func can_place_interior_station(structure_id: String, station_kind: String, loca
 	return InteriorGrid.can_place(origin, footprint, _layout_room_size(layout), _layout_float(layout, "door_width", 1.45), blocked, requested_player_cell, _layout_door_facing(layout), _layout_float(layout, "cell_size", 1.0), _layout_float(layout, "wall_clearance", 0.45), _layout_float(layout, "door_clearance_depth", 0.85))
 
 func set_interior_layout(structure_id: String, layout: Dictionary) -> bool:
-	if not _workshop_shell_ready(structure_id) or not _interior_layout_is_supported(layout):
+	if not _interior_shell_ready(structure_id) or not _interior_layout_is_supported(layout):
 		return false
 	var structure: Dictionary = structures.get(structure_id, {}).duplicate(true)
 	structure["interior_layout"] = layout.duplicate(true)
@@ -2626,13 +2633,14 @@ func _interior_layout_from_structure(structure: Dictionary) -> Dictionary:
 	var saved_layout: Variant = structure.get("interior_layout", {})
 	if saved_layout is Dictionary and _interior_layout_is_supported(saved_layout):
 		return saved_layout.duplicate(true)
-	return ContentRegistry.interior_layout("workshop")
+	var structure_kind := str(structure.get("kind", "workshop"))
+	return ContentRegistry.interior_layout(structure_kind) if ContentRegistry.INTERIOR_LAYOUTS.has(structure_kind) else ContentRegistry.interior_layout("workshop")
 
 func _interior_layout_is_supported(layout: Dictionary) -> bool:
 	var room_value: Variant = layout.get("room_size", [])
 	if not (room_value is Array) or (room_value as Array).size() < 2:
 		return false
-	return _valid_number(room_value[0], 3.4, 64.0) and _valid_number(room_value[1], 3.0, 64.0) and _valid_number(layout.get("door_width", 1.45), 0.95, 63.0) and _valid_number(layout.get("cell_size", 1.0), 0.1, 4.0) and _valid_number(layout.get("wall_clearance", 0.45), 0.0, 4.0) and _valid_number(layout.get("door_clearance_depth", 0.85), 0.0, 8.0)
+	return _valid_number(room_value[0], 2.80, 64.0) and _valid_number(room_value[1], 2.80, 64.0) and _valid_number(layout.get("door_width", 1.45), 0.95, 63.0) and _valid_number(layout.get("cell_size", 1.0), 0.1, 4.0) and _valid_number(layout.get("wall_clearance", 0.45), 0.0, 4.0) and _valid_number(layout.get("door_clearance_depth", 0.85), 0.0, 8.0)
 
 func _layout_room_size(layout: Dictionary) -> Vector2:
 	var room_value: Array = layout.get("room_size", [8.2, 6.2])

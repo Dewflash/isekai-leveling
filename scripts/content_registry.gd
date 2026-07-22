@@ -381,6 +381,15 @@ const INTERIOR_LAYOUTS := {
 		"wall_clearance": 0.45,
 		"door_clearance_depth": 0.85,
 		"door_facing": [0.0, 0.0, 1.0],
+	},
+	"archive": {
+		"room_size": [6.4, 5.4],
+		"room_height": 3.35,
+		"door_width": 1.35,
+		"cell_size": 1.0,
+		"wall_clearance": 0.40,
+		"door_clearance_depth": 0.80,
+		"door_facing": [0.0, 0.0, 1.0],
 	}
 }
 
