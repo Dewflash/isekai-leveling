@@ -43,6 +43,17 @@ func _capture() -> void:
 		"delivered_materials": {"wood": 12, "stone": 8, "plank": 4},
 	}
 	session.set("structures", {"capture_workshop_001": structure_data})
+	# Capture the real player-built fit-out, not the intentionally empty shell.
+	# A fresh Workshop starts with only its exit; these records represent the
+	# same durable station records created by the in-game interior build flow.
+	session.set("interior_stations", {"capture_workshop_001": {
+		"furnace_left_001": {"id": "furnace_left_001", "structure_id": "capture_workshop_001", "kind": "furnace_left", "cell": [-3, -2], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"stone": 3, "wood": 2}},
+		"furnace_right_001": {"id": "furnace_right_001", "structure_id": "capture_workshop_001", "kind": "furnace_right", "cell": [1, -2], "rotation": 0, "state": "operational", "remaining_hours": 4.0, "total_hours": 12.0, "delivered_materials": {"stone": 3, "wood": 2}},
+		"workbench_001": {"id": "workbench_001", "structure_id": "capture_workshop_001", "kind": "workbench", "cell": [-2, 0], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"wood": 4, "stone": 2}},
+		"anvil_001": {"id": "anvil_001", "structure_id": "capture_workshop_001", "kind": "anvil", "cell": [1, 0], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"stone": 2, "plank": 1}},
+		"storage_001": {"id": "storage_001", "structure_id": "capture_workshop_001", "kind": "storage", "cell": [2, 1], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 8.0, "delivered_materials": {"wood": 3, "stone": 1}},
+	}})
+	session.set("station_job", {"kind": "ingot", "structure_id": "capture_workshop_001", "station_id": "furnace_right_001", "remaining_hours": 4.0, "total_hours": 12.0, "output_id": "ingot", "output": 1, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "capture", "material_refunded": false})
 	world.call("_spawn_structure_visual", "capture_workshop_001", structure_data)
 	await _wait_frames(8)
 	var visuals: Dictionary = world.get("settlement_visuals")

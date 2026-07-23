@@ -434,3 +434,22 @@ verified for both facilities at blueprint and mid-build states. This closes a
 construction presentation gap, not the final Sanctuary gate: the reference
 density, broader interiors, character/NPC action art, audio depth, and device
 acceptance are still open.
+
+## 2026-07-23 Workshop first-entry fit-out checkpoint
+
+- Fixed the real transition ordering bug that left persisted Workshop stations
+  invisible on first entry. The fade midpoint activates the room before the
+  durable station sync, so the sync is now accepted while the room is active;
+  late exit-time syncs remain rejected.
+- The runtime regression now passes with a persisted furnace mounted during the
+  entry transition (`WORKSHOP_INTERIOR_RUNTIME_PASS checks=67`). The complete
+  fit-out capture also shows both furnace silhouettes, a workbench, anvil,
+  storage, fire/smoke, and the production-status presentation.
+- The capture is evidence of the real game path, not a second mock interior:
+  `tests/capture_workshop_interior.gd` enters through Main's measured door and
+  supplies durable station records.
+
+This is a player-facing reliability checkpoint, not a final interior-art or
+full-game claim. Station art, lighting, audio depth, Sanctuary density, richer
+character/NPC action animation, device acceptance, and the frozen expedition
+presentation pass remain open.

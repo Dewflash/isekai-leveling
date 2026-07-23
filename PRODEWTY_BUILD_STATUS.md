@@ -849,3 +849,33 @@ capture, deeper audio, and the complete content pass remain open.
   or full-game claim. Density, broader authored interiors, richer directional
   character/NPC animation, audio depth, expedition production art, and device
   acceptance remain open.
+
+## 2026-07-23 Workshop first-entry fit-out sync checkpoint
+
+- Fixed a real runtime ordering defect: the Workshop entry callback attempted to
+  mirror persisted interior stations while the fade controller still rejected
+  all syncs marked `transitioning`. A room could therefore enter successfully
+  while showing only its exit until a later session update.
+- `sync_persisted_stations()` now accepts the midpoint sync once the room is
+  active, while still failing closed for late exit-time syncs. The runtime
+  regression now verifies a persisted furnace appears during first entry.
+- Verification: `WORKSHOP_INTERIOR_RUNTIME_PASS checks=67`,
+  `WORKSHOP_INTERIOR_CONTRACT_PASS checks=312`,
+  `ARCHIVE_INTERIOR_RUNTIME_PASS checks=95`,
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5569`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=206`, and
+  `ASSET_HITBOX_TESTS_PASS checks=612`. A display-backed fit-out capture also
+  shows two furnaces, workbench, anvil, storage, fire/smoke, and the active job
+  presentation through the real entry path.
+
+This is a player-facing interior reliability fix, not a final Sanctuary or
+full-game claim. The density, final interior art/audio, richer character/NPC
+animation, touch-device acceptance, expedition production visuals, and complete
+content pass remain open.
+
+Verification note: `tests/test_world_loop.gd` still fails on this machine before
+its world assertions because the fresh QA save probe cannot open a new
+`user://qa_world_loop.tmp.json` file; the test leaves its process alive after
+that assertion. The focused interior, Sanctuary, shader, hitbox, animation,
+camera, and input suites above pass. This runner/storage failure is separate
+from the Workshop sync change and was left visible rather than counted as green.

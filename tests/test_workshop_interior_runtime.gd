@@ -31,6 +31,11 @@ func _run() -> void:
 		_finish(world)
 		return
 	var session := world.get("session") as Node
+	if session != null:
+		session.set("interior_stations", {"workshop_qa_001": {
+			"furnace_left_001": {"id": "furnace_left_001", "structure_id": "workshop_qa_001", "kind": "furnace_left", "cell": [-2, -2], "rotation": 0, "state": "operational", "remaining_hours": 0.0, "total_hours": 12.0, "delivered_materials": {"stone": 3, "wood": 2}},
+		}})
+		session.set("station_job", {"kind": "ingot", "structure_id": "workshop_qa_001", "station_id": "furnace_left_001", "remaining_hours": 4.0, "total_hours": 12.0, "output_id": "ingot", "output": 1, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "qa", "material_refunded": false})
 	var structure_data := {
 		"id": "workshop_qa_001",
 		"kind": "workshop",
@@ -85,7 +90,7 @@ func _run() -> void:
 	_check(not bool(world.get("placement_mode")), "Sanctuary placement must be forbidden while inside a building")
 	world.call("_toggle_utilities")
 	_check(not bool(world.get("utilities_open")), "Sanctuary ledger toggle must be forbidden while inside a building")
-	_check(int(interior.call("active_station_count")) == 1, "entered shell must expose only its exit until the player fits it out")
+	_check(int(interior.call("active_station_count")) == 2, "entered workshop must mount its persisted fit-out during the entry transition")
 	var entry_facing: Vector3 = player.get("last_direction")
 	var expected_entry_facing: Vector3 = interior.call("entry_facing")
 	_check(entry_facing.dot(expected_entry_facing) > 0.94, "interior spawn must face inward through the door")
@@ -106,21 +111,6 @@ func _run() -> void:
 		_check(active_collision != null and not active_collision.disabled, "entered workshop must enable measured station collision")
 	# The room must mirror the durable station job rather than leaving a static
 	# workstation visually indistinguishable from an active production order.
-	var furnace_record := {
-		"id": "furnace_left_001",
-		"structure_id": "workshop_qa_001",
-		"kind": "furnace_left",
-		"cell": [-2, -2],
-		"rotation": 0,
-		"state": "operational",
-		"remaining_hours": 0.0,
-		"total_hours": 12.0,
-		"delivered_materials": {"stone": 3, "wood": 2},
-	}
-	if session != null:
-		session.set("interior_stations", {"workshop_qa_001": {"furnace_left_001": furnace_record}})
-		session.set("station_job", {"kind": "ingot", "structure_id": "workshop_qa_001", "station_id": "furnace_left_001", "remaining_hours": 4.0, "total_hours": 12.0, "output_id": "ingot", "output": 1, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "qa", "material_refunded": false})
-		interior.call("sync_persisted_stations", session.get("interior_stations").get("workshop_qa_001", {}))
 	await _wait_frames(3)
 	var furnace_station := room.find_child("InteriorStation_furnace_left_001", true, false) as Node3D if room != null else null
 	var furnace_label := furnace_station.get_node_or_null("StationLabel") as Label3D if furnace_station != null else null

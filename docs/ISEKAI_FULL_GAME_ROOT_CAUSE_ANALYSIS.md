@@ -290,3 +290,20 @@ finding: the Sanctuary still needs a denser authored world, broader authored
 interiors, richer character/NPC animation and audio, and final device evidence
 before the A+C graphics gate is accepted. The five expedition maps and the
 full-game content pass remain outside the completed scope.
+
+## Update after the 2026-07-23 Workshop fit-out sync checkpoint
+
+The first-entry Workshop transition had a real state-ordering defect: Main
+requested the durable interior station sync at the fade midpoint, while the
+interior controller still rejected all syncs during its transition lock. The
+result was a valid, operational room that showed only its exit until another
+session signal or manual sync occurred. `sync_persisted_stations()` now accepts
+the entry-midpoint sync only after the room is active; exit-time late syncs
+still fail closed. The runtime regression now proves a persisted furnace is
+mounted during first entry, and the pixel-backed fit-out capture shows both
+furnaces, workbench, anvil, storage, fire/smoke, and the active production
+context.
+
+This closes a player-facing interior state bug. It does not make the Workshop
+art/audio final, nor does it close the broader Sanctuary density, character
+animation, device, expedition, or full-game content gates.

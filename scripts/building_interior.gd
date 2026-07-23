@@ -239,7 +239,13 @@ func world_to_room_local(world_position: Vector3) -> Vector3:
 	return room_root.to_local(world_position) if room_root != null else world_position
 
 func sync_persisted_stations(persisted_stations: Dictionary) -> void:
-	if room_root == null or transitioning:
+	# Entry activates the room at the fade midpoint, then lets Main mirror the
+	# durable fit-out before the fade has fully released its transition lock.
+	# The room is already active at that point, so rejecting the sync here leaves
+	# a valid Workshop visually empty until a later session signal. During exit
+	# `active` is false, so a late signal still fails closed and cannot rebuild
+	# stations behind the outgoing fade.
+	if room_root == null or (transitioning and not active):
 		return
 	clear_station_preview()
 	var was_active := active
