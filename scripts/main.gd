@@ -36,6 +36,7 @@ const SOURCED_MUSHROOM_ASSET := "res://assets/quaternius-stylized-nature/glTF/Mu
 const KENNEY_PANEL_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Default/panel_brown_dark.png"
 const KENNEY_BUTTON_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Default/button_brown.png"
 const KENNEY_BUTTON_HOVER_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Default/button_grey.png"
+const KENNEY_ICON_ROOT := "res://assets/sourced/kenney-mobile-controls/Sprites/Icons/Default/"
 const SANCTUARY_PACK_ROOT := "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/"
 const PLAYER_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/player-direction-sheet.png"
 const PLAYER_WALK_SHEET_PATH := "res://assets/generated/sanctuary/player-walk-sheet.png"
@@ -2782,13 +2783,27 @@ func _reference_objective_text() -> String:
 
 func _reference_icon_button(icon: String, tooltip: String, callback: Callable) -> Button:
 	var button := Button.new()
-	button.text = icon
+	button.text = ""
 	button.tooltip_text = tooltip
 	button.custom_minimum_size = Vector2(42, 54)
 	button.add_theme_font_size_override("font_size", 25)
 	_apply_reference_button_texture(button, Color(0.53, 0.34, 0.18, 0.96), Color(0.78, 0.55, 0.28, 1.0))
 	button.add_theme_color_override("font_color", Color("#f8ddb0"))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	var icon_path := _reference_ui_icon_path(tooltip)
+	var icon_texture := _load_sourced_texture(icon_path) if not icon_path.is_empty() else null
+	if icon_texture != null:
+		var icon_view := TextureRect.new()
+		icon_view.name = "ReferenceIcon"
+		icon_view.texture = icon_texture
+		icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_view.position = Vector2(8, 12)
+		icon_view.size = Vector2(26, 26)
+		icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(icon_view)
+	else:
+		button.text = icon
 	button.pressed.connect(callback)
 	return button
 
@@ -2813,13 +2828,26 @@ func _reference_slot_button(key_text: String, label_text: String, callback: Call
 	_apply_reference_button_texture(button, Color(0.41, 0.24, 0.12, 1.0), Color(0.72, 0.46, 0.21, 1.0))
 	button.add_theme_color_override("font_color", Color("#f4dfb0"))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	var icon_label := _label(key_text, 22, Color("#f6d891"))
-	icon_label.name = "SlotIcon"
-	icon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon_label.position = Vector2(4, 3)
-	icon_label.size = Vector2(70, 25)
-	icon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(icon_label)
+	var icon_path := _reference_ui_icon_path(label_text)
+	var icon_texture := _load_sourced_texture(icon_path) if not icon_path.is_empty() else null
+	if icon_texture != null:
+		var icon_view := TextureRect.new()
+		icon_view.name = "SlotIcon"
+		icon_view.texture = icon_texture
+		icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_view.position = Vector2(25, 3)
+		icon_view.size = Vector2(28, 26)
+		icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(icon_view)
+	else:
+		var icon_label := _label(key_text, 22, Color("#f6d891"))
+		icon_label.name = "SlotIcon"
+		icon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		icon_label.position = Vector2(4, 3)
+		icon_label.size = Vector2(70, 25)
+		icon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(icon_label)
 	var caption := _label(label_text, 8, Color("#ead1a0"))
 	caption.name = "SlotCaption"
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2829,6 +2857,27 @@ func _reference_slot_button(key_text: String, label_text: String, callback: Call
 	button.add_child(caption)
 	button.pressed.connect(callback)
 	return button
+
+func _reference_ui_icon_path(label: String) -> String:
+	var icon_name := ""
+	match label:
+		"Ledger": icon_name = "icon_save.png"
+		"Map / routes": icon_name = "icon_search.png"
+		"Pause": icon_name = "icon_pause.png"
+		"Settings": icon_name = "icon_cog.png"
+		"USE": icon_name = "icon_hand.png"
+		"ATTACK": icon_name = "icon_sword.png"
+		"DODGE": icon_name = "icon_arrow_curved.png"
+		"FOOD": icon_name = "icon_fire.png"
+		"WATER": icon_name = "icon_drop.png"
+		"FARM": icon_name = "icon_leaf.png"
+		"BUILD": icon_name = "icon_wrench.png"
+		"EXTRACT": icon_name = "icon_arrow.png"
+		"LEDGER": icon_name = "icon_save.png"
+		_:
+			return ""
+	var path := KENNEY_ICON_ROOT + icon_name
+	return path if FileAccess.file_exists(path) else ""
 
 func _apply_reference_button_texture(button: Button, normal_tint: Color, hover_tint: Color) -> void:
 	var normal_texture := _load_sourced_texture(KENNEY_BUTTON_TEXTURE)
@@ -6159,7 +6208,12 @@ func _update_world_label_visibility(focus: Node) -> void:
 						stage.text = "%s\nDEEP SEAM" % base_label
 					else:
 						stage.text = base_label
-		var nearby := distance <= label_radius
+		# World labels are a contextual affordance, not permanent debug text. The
+		# old guidance radius could expose several labels at once and, because the
+		# labels are no-depth-test billboards, they floated over unrelated art. Keep
+		# the focused label available while limiting passive labels to the measured
+		# interaction envelope.
+		var nearby := distance <= minf(label_radius, _interaction_range(1.85, 0.05))
 		label.visible = anchor == focus or nearby
 
 func _interact() -> void:

@@ -984,3 +984,29 @@ claim. The route silhouette still needs a final authored art pass, and the
 accepted A+C bar remains open for final UI polish, broader facility interiors,
 character/NPC action coverage, audio depth, device acceptance, and the frozen
 expedition presentation pass.
+
+## 2026-07-24 Sanctuary route and HUD readability checkpoint
+
+- Re-authored the open Sanctuary route network to bend around the shared hearth
+  instead of reading as a procedural X through the free-build reserve. Route
+  ribbons remain measured presentation meshes with no collision or occupancy
+  authority; the shader now uses smooth multi-scale dapple rather than hard
+  tiled grain.
+- Tightened passive world-label visibility to the measured interaction envelope.
+  Focused labels remain available, but no-depth-test labels no longer appear
+  across the courtyard as ambient debug text.
+- Replaced the reference HUD's core text glyphs with sourced gameplay icons for
+  ledger, map, pause, settings, use, attack, dodge, food, build, extract, and
+  ledger actions while preserving the existing callbacks, keyboard bindings,
+  controller paths, and HUD test contract.
+- Display-backed evidence: `/private/tmp/isekai-sanctuary-next-ui.png` at
+  1280x720 and `/private/tmp/isekai-sanctuary-stages-next/`. The full stage run
+  passed placement preview, all construction phases, rotated previews, motion
+  occlusion, and both player-authored layouts; the layout difference was
+  `occupied_cell_symmetric_difference=78` and `changed_ratio=0.6824`.
+
+This is a visible readability and continuity increment, not a final-game claim.
+The route still needs a final hand-authored texture treatment, hitbox QA still
+needs physical play-through on device, and final UI polish, interiors,
+character/NPC action coverage, audio depth, device acceptance, expedition
+presentation, and broader content remain open.

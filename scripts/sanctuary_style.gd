@@ -483,22 +483,24 @@ func _build_open_ground_plate() -> void:
 	add_child(open_ground_plate)
 
 func _build_paths() -> void:
-	# Two-to-three-metre traversal lanes use a dark packed-earth shoulder, a
-	# desaturated core, and small deterministic wear patches. This produces an
-	# irregular boundary without adding collision or claiming settlement cells.
+	# The route network is a hand-authored traversal layer, not a tile grid. It
+	# deliberately bends around the shared hearth so the open building reserve
+	# remains legible and the player reads a lived-in courtyard instead of a
+	# procedural X. The measured world cells remain untouched by this artwork.
 	_add_curved_worn_path([
-		Vector2(-0.70, -4.8), Vector2(-0.48, -3.3), Vector2(-0.12, -1.7),
-		Vector2(0.08, 0.05), Vector2(0.20, 1.80), Vector2(-0.02, 3.45),
-		Vector2(0.75, 5.0),
-	], 0.82)
+		Vector2(-1.15, -4.8), Vector2(-1.28, -3.35), Vector2(-1.42, -1.85),
+		Vector2(-1.26, -0.55), Vector2(-1.02, 0.80), Vector2(-0.62, 2.35),
+		Vector2(0.20, 3.70), Vector2(0.74, 5.0),
+	], 0.76)
 	_add_curved_worn_path([
-		Vector2(-0.05, -0.05), Vector2(-1.40, -0.30), Vector2(-2.80, -0.68),
-		Vector2(-4.35, -1.05), Vector2(-5.70, -1.38), Vector2(-7.25, -1.52),
-	], 0.72)
+		Vector2(-1.26, -0.55), Vector2(-2.05, -0.52), Vector2(-3.05, -0.73),
+		Vector2(-4.40, -1.04), Vector2(-5.75, -1.32), Vector2(-7.25, -1.52),
+	], 0.70)
 	_add_curved_worn_path([
-		Vector2(0.16, 0.72), Vector2(1.65, 0.78), Vector2(3.20, 0.60),
-		Vector2(4.85, 0.48), Vector2(6.55, 0.70), Vector2(8.55, 0.38),
-	], 0.72)
+		Vector2(0.84, 1.02), Vector2(1.82, 1.18), Vector2(2.92, 1.00),
+		Vector2(4.25, 0.78), Vector2(5.65, 0.82), Vector2(7.05, 0.60),
+		Vector2(8.55, 0.38),
+	], 0.70)
 	# Boundary variation belongs to the ribbon mesh and its feathered shader.
 	# Do not scatter independent quad decals across the meadow: their fixed
 	# rectangles survive camera movement and read as render artifacts rather
@@ -2154,9 +2156,9 @@ func _add_curved_worn_path(points: Array, width: float, darker := false) -> void
 	normalized_points = _resample_curved_points(normalized_points, 6)
 	var edge_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path_edge"]
 	var core_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path"]
-	var edge := _add_curved_ribbon(normalized_points, width + 0.18, edge_color, 0.046)
+	var edge := _add_curved_ribbon(normalized_points, width + 0.14, edge_color, 0.046)
 	edge.name = "PackedEarthPathEdge"
-	var core := _add_curved_ribbon(normalized_points, width, core_color, 0.056)
+	var core := _add_curved_ribbon(normalized_points, width, core_color, 0.058)
 	core.name = "PackedEarthPath"
 
 func _resample_curved_points(points: Array[Vector2], subdivisions: int) -> Array[Vector2]:
