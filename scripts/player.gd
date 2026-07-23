@@ -21,11 +21,18 @@ var walk_frame_time := 0.0
 var hurt_time := 0.0
 var gather_active := false
 var action_pose_time := 0.0
+var action_animation_state := "idle"
+var action_animation_elapsed := 0.0
+var action_animation_frame := 0
+var action_animation_marker := "idle"
+var action_animation_resource := ""
+const ACTION_ANIMATION_SOURCE := "authored_action_timeline_v1"
 const WORLD_LIMIT_X := 20.0
 const WORLD_LIMIT_Z := 15.0
 
 func _ready() -> void:
 	visual = get_node_or_null("Visual")
+	_update_action_metadata()
 
 func _physics_process(delta: float) -> void:
 	var previous_position := global_position
@@ -116,6 +123,7 @@ func _physics_process(delta: float) -> void:
 					var limb := visual.get_node_or_null(limb_name) as Node3D
 					if limb != null:
 						limb.rotation.x = move_toward(limb.rotation.x, 0.0, delta * 4.0)
+	_update_action_timeline(delta)
 	move_and_slide()
 	global_position.x = clampf(global_position.x, -WORLD_LIMIT_X, WORLD_LIMIT_X)
 	global_position.z = clampf(global_position.z, -WORLD_LIMIT_Z, WORLD_LIMIT_Z)
@@ -240,11 +248,7 @@ func start_dodge() -> bool:
 	move_and_collide(travel)
 	global_position.x = clampf(global_position.x, -WORLD_LIMIT_X, WORLD_LIMIT_X)
 	global_position.z = clampf(global_position.z, -WORLD_LIMIT_Z, WORLD_LIMIT_Z)
-	if visual != null:
-		var original := visual.scale
-		var tween := create_tween()
-		tween.tween_property(visual, "scale", Vector3(1.28, 0.72, 1.28), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tween.tween_property(visual, "scale", original, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_start_action_timeline("dodge")
 	if world != null and world.has_method("player_moved"):
 		world.player_moved(true)
 	return true
@@ -253,61 +257,24 @@ func take_damage(amount: int) -> void:
 	if hurt_time > 0.0 or invulnerable_time > 0.0:
 		return
 	hurt_time = 0.4
+	_start_action_timeline("hurt")
 	if world != null and world.has_method("player_took_damage"):
 		world.player_took_damage(amount)
 	else:
 		health = maxi(0, health - amount)
 
 func play_attack_feedback() -> void:
-	if visual == null:
-		return
-	action_pose_time = 0.42
-	var original := visual.scale
-	var tween := create_tween()
-	tween.tween_property(visual, "scale", Vector3(1.12, 0.9, 1.12), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(visual, "scale", original, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	var weapon_rig := visual.get_node_or_null("WeaponRig") as Node3D
-	if weapon_rig != null:
-		var weapon_tween := weapon_rig.create_tween()
-		weapon_tween.tween_property(weapon_rig, "rotation", Vector3(0.0, 0.0, -1.25), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		weapon_tween.tween_property(weapon_rig, "rotation", Vector3(0.0, 0.0, 0.25), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		weapon_tween.tween_property(weapon_rig, "rotation", Vector3.ZERO, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
-	var arm_right := visual.get_node_or_null("ArmRight") as Node3D
-	if arm_right != null:
-		var arm_tween := arm_right.create_tween()
-		arm_tween.tween_property(arm_right, "rotation:x", -0.65, 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		arm_tween.tween_property(arm_right, "rotation:x", 0.18, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		arm_tween.tween_property(arm_right, "rotation:x", 0.0, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
-	var slash := visual.get_node_or_null("CombatSlash") as MeshInstance3D
-	if slash != null:
-		slash.visible = true
-		slash.scale = Vector3(0.35, 0.35, 0.35)
-		slash.rotation = Vector3(-0.30, -0.65, -0.45)
-		var slash_tween := slash.create_tween()
-		slash_tween.tween_property(slash, "scale", Vector3.ONE, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		slash_tween.tween_property(slash, "rotation", Vector3(-0.18, 0.72, 0.42), 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		slash_tween.tween_property(slash, "scale", Vector3(0.25, 0.25, 0.25), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		slash_tween.tween_callback(func() -> void:
-			slash.visible = false
-		)
+	_start_action_timeline("attack")
 
 func cancel_attack_feedback() -> void:
-	if visual == null:
-		return
-	var slash := visual.get_node_or_null("CombatSlash") as MeshInstance3D
-	if slash != null:
-		slash.visible = false
-		slash.scale = Vector3.ONE
-	action_pose_time = 0.0
+	_cancel_action_timeline("attack")
 
 func play_gather_feedback(resource_id := "wood") -> void:
 	if visual == null or gather_active:
 		return
 	gather_active = true
-	action_pose_time = 0.45
 	var gather_tool := visual.get_node_or_null("GatherTool") as MeshInstance3D
 	if gather_tool != null:
-		gather_tool.visible = true
 		var tool_color := Color("#a9784e")
 		if resource_id in ["stone", "ore", "sunstone"]:
 			tool_color = Color("#a9bbc0")
@@ -316,46 +283,182 @@ func play_gather_feedback(resource_id := "wood") -> void:
 		var tool_material := gather_tool.material_override as StandardMaterial3D
 		if tool_material != null:
 			tool_material.albedo_color = tool_color
-	var weapon_rig := visual.get_node_or_null("WeaponRig") as Node3D
-	if weapon_rig != null:
-		var tween := weapon_rig.create_tween()
-		tween.tween_property(weapon_rig, "rotation", Vector3(-0.28, 0.0, -0.48), 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	var arm_left := visual.get_node_or_null("ArmLeft") as Node3D
-	if arm_left != null:
-		arm_left.rotation.x = -0.34
+	_start_action_timeline("gather_prepare", resource_id)
 
 func finish_gather_feedback() -> void:
-	if visual == null:
-		return
 	gather_active = false
-	action_pose_time = 0.34
-	var weapon_rig := visual.get_node_or_null("WeaponRig") as Node3D
-	if weapon_rig != null:
-		var tween := weapon_rig.create_tween()
-		tween.tween_property(weapon_rig, "rotation", Vector3(0.92, 0.0, -1.02), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tween.tween_property(weapon_rig, "rotation", Vector3.ZERO, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	var arm_left := visual.get_node_or_null("ArmLeft") as Node3D
-	if arm_left != null:
-		var arm_tween := arm_left.create_tween()
-		arm_tween.tween_property(arm_left, "rotation:x", 0.78, 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		arm_tween.tween_property(arm_left, "rotation:x", 0.0, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	var gather_tool := visual.get_node_or_null("GatherTool") as MeshInstance3D
-	if gather_tool != null:
-		var tool_tween := gather_tool.create_tween()
-		tool_tween.tween_property(gather_tool, "rotation", Vector3(-1.12, 0.0, -0.72), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tool_tween.tween_property(gather_tool, "rotation", Vector3(-0.48, 0.0, -0.52), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tool_tween.tween_callback(func() -> void: gather_tool.visible = false)
+	_start_action_timeline("gather_contact", action_animation_resource)
 
 func cancel_gather_feedback() -> void:
 	gather_active = false
-	action_pose_time = 0.0
+	_cancel_action_timeline("gather")
+
+func _timeline_definition(state: String) -> Dictionary:
+	match state:
+		"attack":
+			return {
+				"duration": 0.42,
+				"frames": [
+					{"at": 0.00, "marker": "windup", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00, "slash_scale": 0.00, "slash_pitch": -0.30, "slash_yaw": -0.65, "slash_roll": -0.45, "slash_visible": false},
+					{"at": 0.12, "marker": "contact", "scale_x": 1.10, "scale_y": 0.90, "lift": 0.02, "tilt": -0.06, "slash_scale": 0.78, "slash_pitch": -0.24, "slash_yaw": 0.15, "slash_roll": 0.18, "slash_visible": true},
+					{"at": 0.24, "marker": "followthrough", "scale_x": 1.03, "scale_y": 0.97, "lift": 0.01, "tilt": 0.04, "slash_scale": 1.00, "slash_pitch": -0.18, "slash_yaw": 0.72, "slash_roll": 0.42, "slash_visible": true},
+					{"at": 0.42, "marker": "recovery", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00, "slash_scale": 0.15, "slash_pitch": -0.18, "slash_yaw": 0.72, "slash_roll": 0.42, "slash_visible": false},
+				]
+			}
+		"gather_prepare":
+			return {
+				"duration": 0.20,
+				"frames": [
+					{"at": 0.00, "marker": "prepare", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00, "tool_scale": 0.35, "tool_pitch": -0.48, "tool_roll": -0.52, "tool_visible": true},
+					{"at": 0.20, "marker": "ready", "scale_x": 1.02, "scale_y": 0.96, "lift": 0.03, "tilt": -0.04, "tool_scale": 0.80, "tool_pitch": -0.68, "tool_roll": -0.64, "tool_visible": true},
+				]
+			}
+		"gather_contact":
+			return {
+				"duration": 0.34,
+				"frames": [
+					{"at": 0.00, "marker": "contact", "scale_x": 1.02, "scale_y": 0.96, "lift": 0.03, "tilt": -0.04, "tool_scale": 0.80, "tool_pitch": -0.68, "tool_roll": -0.64, "tool_visible": true},
+					{"at": 0.10, "marker": "strike", "scale_x": 1.08, "scale_y": 0.90, "lift": 0.03, "tilt": -0.08, "tool_scale": 1.15, "tool_pitch": -1.12, "tool_roll": -0.72, "tool_visible": true},
+					{"at": 0.20, "marker": "return", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.03, "tool_scale": 0.78, "tool_pitch": -0.48, "tool_roll": -0.52, "tool_visible": true},
+					{"at": 0.34, "marker": "done", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00, "tool_scale": 0.10, "tool_pitch": -0.48, "tool_roll": -0.52, "tool_visible": false},
+				]
+			}
+		"dodge":
+			return {
+				"duration": 0.30,
+				"frames": [
+					{"at": 0.00, "marker": "launch", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00},
+					{"at": 0.08, "marker": "stride", "scale_x": 1.28, "scale_y": 0.72, "lift": 0.08, "tilt": -0.14},
+					{"at": 0.30, "marker": "recover", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00},
+				]
+			}
+		"hurt":
+			return {
+				"duration": 0.40,
+				"frames": [
+					{"at": 0.00, "marker": "impact", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00},
+					{"at": 0.05, "marker": "flinch", "scale_x": 0.85, "scale_y": 1.12, "lift": 0.00, "tilt": 0.12},
+					{"at": 0.18, "marker": "rebound", "scale_x": 1.08, "scale_y": 0.92, "lift": 0.00, "tilt": -0.08},
+					{"at": 0.40, "marker": "recover", "scale_x": 1.00, "scale_y": 1.00, "lift": 0.00, "tilt": 0.00},
+				]
+			}
+	return {"duration": 0.0, "frames": []}
+
+func _start_action_timeline(state: String, resource_id := "") -> void:
+	var definition := _timeline_definition(state)
+	var frames: Array = definition.get("frames", [])
+	if frames.is_empty():
+		return
+	_reset_action_presentation()
+	action_animation_state = state
+	action_animation_elapsed = 0.0
+	action_animation_frame = 0
+	action_animation_marker = str(frames[0].get("marker", state))
+	action_animation_resource = resource_id
+	action_pose_time = float(definition.get("duration", 0.0))
+	_apply_action_timeline_frame(definition)
+
+func _update_action_timeline(delta: float) -> void:
+	if action_animation_state == "idle":
+		return
+	var definition := _timeline_definition(action_animation_state)
+	var duration := float(definition.get("duration", 0.0))
+	action_animation_elapsed = minf(duration, action_animation_elapsed + delta)
+	_apply_action_timeline_frame(definition)
+	if action_animation_state == "gather_prepare":
+		return
+	if action_animation_elapsed >= duration:
+		_finish_action_timeline()
+
+func _apply_action_timeline_frame(definition: Dictionary) -> void:
+	var frames: Array = definition.get("frames", [])
+	if frames.is_empty():
+		return
+	var frame_index := 0
+	for index in frames.size():
+		if action_animation_elapsed >= float(frames[index].get("at", 0.0)):
+			frame_index = index
+	var next_index := mini(frame_index + 1, frames.size() - 1)
+	var first: Dictionary = frames[frame_index]
+	var second: Dictionary = frames[next_index]
+	var first_at := float(first.get("at", 0.0))
+	var second_at := float(second.get("at", first_at))
+	var blend := 0.0 if next_index == frame_index else clampf((action_animation_elapsed - first_at) / maxf(0.001, second_at - first_at), 0.0, 1.0)
+	action_animation_frame = frame_index
+	action_animation_marker = str(first.get("marker", action_animation_state))
 	if visual != null:
-		var weapon_rig := visual.get_node_or_null("WeaponRig") as Node3D
-		if weapon_rig != null:
-			weapon_rig.rotation = Vector3.ZERO
-		var arm_left := visual.get_node_or_null("ArmLeft") as Node3D
-		if arm_left != null:
-			arm_left.rotation = Vector3.ZERO
+		var scale_x := lerpf(float(first.get("scale_x", 1.0)), float(second.get("scale_x", 1.0)), blend)
+		var scale_y := lerpf(float(first.get("scale_y", 1.0)), float(second.get("scale_y", 1.0)), blend)
+		visual.scale = Vector3(scale_x, scale_y, scale_x)
+		visual.position.y = lerpf(float(first.get("lift", 0.0)), float(second.get("lift", 0.0)), blend)
+		visual.rotation.z = lerpf(float(first.get("tilt", 0.0)), float(second.get("tilt", 0.0)), blend)
+		var slash := visual.get_node_or_null("CombatSlash") as MeshInstance3D
+		if slash != null:
+			slash.visible = bool(first.get("slash_visible", false))
+			slash.scale = Vector3.ONE * lerpf(float(first.get("slash_scale", 0.0)), float(second.get("slash_scale", 0.0)), blend)
+			slash.rotation = Vector3(
+				lerpf(float(first.get("slash_pitch", -0.30)), float(second.get("slash_pitch", -0.30)), blend),
+				lerpf(float(first.get("slash_yaw", -0.65)), float(second.get("slash_yaw", -0.65)), blend),
+				lerpf(float(first.get("slash_roll", -0.45)), float(second.get("slash_roll", -0.45)), blend)
+			)
 		var gather_tool := visual.get_node_or_null("GatherTool") as MeshInstance3D
 		if gather_tool != null:
-			gather_tool.visible = false
+			gather_tool.visible = bool(first.get("tool_visible", false))
+			gather_tool.scale = Vector3.ONE * lerpf(float(first.get("tool_scale", 0.0)), float(second.get("tool_scale", 0.0)), blend)
+			gather_tool.rotation = Vector3(
+				lerpf(float(first.get("tool_pitch", -0.48)), float(second.get("tool_pitch", -0.48)), blend),
+				0.0,
+				lerpf(float(first.get("tool_roll", -0.52)), float(second.get("tool_roll", -0.52)), blend)
+			)
+	_update_action_metadata()
+
+func _finish_action_timeline() -> void:
+	_reset_action_presentation()
+	action_animation_state = "idle"
+	action_animation_elapsed = 0.0
+	action_animation_frame = 0
+	action_animation_marker = "idle"
+	action_animation_resource = ""
+	_update_action_metadata()
+
+func _cancel_action_timeline(expected_state: String) -> void:
+	if expected_state == "attack" and action_animation_state != "attack":
+		return
+	if expected_state == "gather" and not action_animation_state.begins_with("gather"):
+		return
+	_finish_action_timeline()
+
+func _reset_action_presentation() -> void:
+	action_pose_time = 0.0
+	if visual == null:
+		return
+	visual.scale = Vector3.ONE
+	visual.position.y = 0.0
+	visual.rotation.z = 0.0
+	var slash := visual.get_node_or_null("CombatSlash") as MeshInstance3D
+	if slash != null:
+		slash.visible = false
+		slash.scale = Vector3.ONE
+	var gather_tool := visual.get_node_or_null("GatherTool") as MeshInstance3D
+	if gather_tool != null:
+		gather_tool.visible = false
+		gather_tool.scale = Vector3.ONE
+		gather_tool.rotation = Vector3(-0.48, 0.0, -0.52)
+
+func _update_action_metadata() -> void:
+	if visual == null:
+		return
+	visual.set_meta("action_animation_state", action_animation_state)
+	visual.set_meta("action_animation_elapsed", action_animation_elapsed)
+	visual.set_meta("action_animation_frame", action_animation_frame)
+	visual.set_meta("action_animation_marker", action_animation_marker)
+	visual.set_meta("action_animation_resource", action_animation_resource)
+	visual.set_meta("action_animation_source", ACTION_ANIMATION_SOURCE)
+	var sprite := visual.get_node_or_null("IllustratedCharacter") as Sprite3D
+	if sprite != null:
+		sprite.set_meta("action_animation_state", action_animation_state)
+		sprite.set_meta("action_animation_elapsed", action_animation_elapsed)
+		sprite.set_meta("action_animation_frame", action_animation_frame)
+		sprite.set_meta("action_animation_marker", action_animation_marker)
+		sprite.set_meta("action_animation_resource", action_animation_resource)
+		sprite.set_meta("action_animation_source", ACTION_ANIMATION_SOURCE)

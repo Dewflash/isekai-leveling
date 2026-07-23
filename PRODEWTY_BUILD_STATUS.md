@@ -777,6 +777,28 @@ capture, deeper audio, and the complete content pass remain open.
 6. Replace the temporary manual effort logger with the chosen Prodewty data
    bridge without changing the receipt contract.
 
+## 2026-07-23 authored player action timeline checkpoint
+
+- Attack, gather preparation/contact, dodge, and hurt presentation now run
+  through one explicit `authored_action_timeline_v1` contract. Each timeline
+  publishes its state, frame, marker, elapsed time, resource id, and source on
+  the visible illustrated character, while the visible slash/tool overlays
+  follow the same measured presentation state.
+- Gathering preparation deliberately holds on its ready frame until the
+  authoritative resource transaction finishes. Cancellation resets the
+  overlays and character transform, so the action layer cannot leave a stale
+  slash, tool, squash, or tilt in the Sanctuary.
+- Verification: `PLAYER_ACTION_TIMELINE_PASS checks=36`,
+  `PLAYER_ANIMATION_CONTRACT_PASS checks=31`,
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5569`,
+  `ASSET_HITBOX_TESTS_PASS checks=612`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=206`, and the structure,
+  build-catalog, and audio/input contracts pass.
+- This is a visible action-feedback milestone, not the final graphics gate.
+  The authored action layer still needs richer directional character sheets,
+  deeper combat/harvest audio, broader facility interiors, denser Sanctuary
+  activity, production expedition visuals, and renderer-backed device evidence.
+
 ## 2026-07-23 authored Workshop hero wiring checkpoint
 
 - The visible quarter-turn-zero Workshop hero now resolves to the authored

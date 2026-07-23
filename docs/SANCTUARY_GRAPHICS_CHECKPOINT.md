@@ -408,3 +408,15 @@ accepted.
   mipmap sampler correction, depth-prepass policy, and explicit Sprite3D
   billboard transform. The Workshop interior specialist independently measured
   the skewed-card failure and verified the corrected room-centered cutaway.
+
+## 2026-07-23 action-motion checkpoint
+
+The visible player now has a data-driven action presentation layer in addition
+to the authored idle/walk directional sheets. Attack slash, gathering tool,
+dodge squash, and hurt flinch are driven by explicit timeline frames and
+markers. The timeline state is published on the illustrated character so
+runtime checks can distinguish windup/contact/recovery rather than inferring
+motion from hidden procedural rig nodes. The Sanctuary gate remains open:
+this improves game feel and observability, but does not replace the remaining
+directional action art, facility interiors, density, audio depth, and device
+capture work required to match the accepted A+C visual target.
