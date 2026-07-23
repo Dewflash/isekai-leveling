@@ -35,6 +35,12 @@ void fragment() {
 	float grain = hash21(floor(UV * 18.0));
 	float edge_wobble = (grain - 0.5) * (shape_mode == 1 ? 0.065 : 0.10);
 	float edge_alpha = 1.0 - smoothstep(-edge_softness, edge_softness, distance_to_edge + edge_wobble);
+	if (shape_mode == 2) {
+		// Keep the side boundary owned by the measured ribbon mesh. The mesh's
+		// sampled points provide the organic curve; the shader adds only subtle
+		// world-facing variation so the path does not read as a flat editor strip.
+		grain = hash21(floor(UV * vec2(7.0, 34.0)));
+	}
 	ALBEDO = base_color.rgb * mix(0.94, 1.035, grain);
 	ALPHA = base_color.a * edge_alpha;
 	ROUGHNESS = 1.0;

@@ -340,3 +340,23 @@ The result is verified by a display-backed capture and the updated hitbox,
 shader, visual, camera, HUD, activity, directional-family, and world-loop
 contracts. This is evidence that the representation is becoming more coherent,
 not evidence that the complete game or accepted A+C graphics bar is finished.
+
+## Update after the 2026-07-23 Sanctuary density checkpoint
+
+The next visible gap after the render/hitbox correction was not another hidden
+contract: a fresh save still read as a sparse editor reserve. The Sanctuary
+now adds four catalog-owned communal activity sockets, bringing the visible
+life/work ring to eight presentation-only anchors. The sockets do not create
+StaticBody3D nodes, occupancy claims, interaction authority, or fixed player
+buildings. A new regression derives their measured visual rectangles at
+runtime and rejects overlap with the player build field, framing obstacles,
+route reservations, or another socket.
+
+The same pass softened the detached path-wear and grass-intrusion decals and
+verified the dedicated ground shader compiles on the actual display capture.
+The result is a real, player-visible increment, but the capture still shows
+the route language as an intermediate procedural treatment rather than the
+finished A+C art direction. The full-game objective therefore remains open:
+final route/ground art, UI polish, authored interiors, touch-device evidence,
+character/NPC action coverage, audio depth, expedition production maps, and
+the broader content loop still require implementation and verification.

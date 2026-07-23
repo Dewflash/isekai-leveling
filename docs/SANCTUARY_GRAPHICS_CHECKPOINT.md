@@ -493,3 +493,28 @@ Evidence: the 1280x720 display capture
 `WORLD_LOOP_TESTS_PASS`. The visual gate is still open for final density,
 device capture, broader facility/interior production art, and full-game
 content; this checkpoint only closes the render/scale/hitbox defect class.
+
+## 2026-07-23 lived-in density and decal cleanup
+
+The fresh-save Sanctuary now presents eight communal activity anchors from the
+content catalog: shared food and seed gardens, timber work yards, a well, a
+trade cart, and temporary wayfarer tents. They are presentation-only and stay
+outside the player-directed build reserve, so the player still owns the final
+building layout. The activity test now derives each visible footprint from the
+Sprite3D metadata and rejects collisions with the build field, framing props,
+route reservations, or another activity footprint.
+
+The ground-decal shader also received a small visual cleanup: loose path-wear
+and grass-intrusion marks use soft organic envelopes rather than detached
+rounded rectangles, while the route ribbon remains a measured presentation
+mesh with no collision or occupancy authority. A display-backed review found
+and corrected a shader compilation mistake before acceptance.
+
+Evidence: `/private/tmp/isekai-sanctuary-density-v5.png`,
+`SANCTUARY_ACTIVITY_LAYER_PASS checks=361 sockets=8`,
+`SANCTUARY_SHADER_INTEGRATION_PASS checks=216`, and
+`SANCTUARY_VISUAL_CONTRACT_PASS checks=5653`.
+
+This is not the final visual gate. The route material still reads too
+procedural in places, and the Sanctuary remains short of the accepted A+C
+density, final UI, interior, animation, audio, and device bar.

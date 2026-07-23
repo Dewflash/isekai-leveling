@@ -55,6 +55,7 @@ func _run() -> void:
 	if activity != null:
 		var art_count := 0
 		var shadow_count := 0
+		var activity_rects: Array[Dictionary] = []
 		for child_value in activity.get_children():
 			var child := child_value as Node3D
 			if child == null:
@@ -74,6 +75,7 @@ func _run() -> void:
 						Vector2(child.global_position.x - float(footprint[0]) * 0.5, child.global_position.z - float(footprint[1]) * 0.5),
 						Vector2(float(footprint[0]), float(footprint[1]))
 					)
+					activity_rects.append({"id": str(child.get_meta("activity_socket_id", child.name)), "rect": activity_rect})
 					_check(not field_rect.grow(0.02).intersects(activity_rect), "%s must not overlap the player-directed build field" % child.name)
 					for framing_value in framing_rects:
 						if framing_value is Dictionary:
@@ -89,6 +91,14 @@ func _run() -> void:
 							_check(not route_rect.grow(0.02).intersects(activity_rect), "%s must clear route reservation %s" % [child.name, str(route_rect)])
 			if str(child.name).begins_with("ActivitySocketShadow_"):
 				shadow_count += 1
+		for first_index in range(activity_rects.size()):
+			var first: Dictionary = activity_rects[first_index]
+			for second_index in range(first_index + 1, activity_rects.size()):
+				var second: Dictionary = activity_rects[second_index]
+				_check(
+					not (first["rect"] as Rect2).grow(0.02).intersects((second["rect"] as Rect2).grow(0.02)),
+					"activity sockets %s and %s must not overlap their measured visual footprints" % [str(first["id"]), str(second["id"])]
+				)
 		_check(art_count == AssetCatalog.LIVED_IN_ACTIVITY_SOCKETS.size(), "every activity socket must produce one visible art root")
 		_check(shadow_count == art_count, "every activity socket art root must have one contact shadow")
 

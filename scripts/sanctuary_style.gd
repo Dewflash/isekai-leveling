@@ -524,7 +524,7 @@ func _build_paths() -> void:
 		[Vector3(4.8, 0.059, -0.93), Vector2(1.20, 0.48), -11.0],
 		[Vector3(8.1, 0.059, 1.53), Vector2(1.05, 0.45), 6.0],
 	]:
-		var wear := _add_rounded_patch(wear_data[0], wear_data[1], PALETTE["path_light"], float(wear_data[2]))
+		var wear := _add_rounded_patch(wear_data[0], wear_data[1], PALETTE["path_light"], float(wear_data[2]), false, 0)
 		wear.name = "IrregularPathWear"
 	for intrusion_data in [
 		[Vector3(-1.42, 0.061, -5.0), Vector2(0.78, 1.10), -8.0],
@@ -534,7 +534,7 @@ func _build_paths() -> void:
 		[Vector3(7.2, 0.064, -0.75), Vector2(1.10, 0.52), 9.0],
 		[Vector3(8.6, 0.064, 1.44), Vector2(0.92, 0.48), -7.0],
 	]:
-		var intrusion := _add_rounded_patch(intrusion_data[0], intrusion_data[1], PALETTE["meadow"], float(intrusion_data[2]))
+		var intrusion := _add_rounded_patch(intrusion_data[0], intrusion_data[1], PALETTE["meadow"], float(intrusion_data[2]), false, 0)
 		intrusion.name = "IrregularGrassIntrusion"
 	for stone_data in [
 		[Vector3(-1.8, 0.075, 5.8), 0.22], [Vector3(1.9, 0.075, 5.9), 0.25],
@@ -2257,10 +2257,10 @@ func _add_contact_shadow(parent: Node3D, position: Vector3, size: Vector2, rotat
 	# adding bodies or participating in placement/occupancy calculations.
 	return _create_rounded_patch(parent, "IllustratedContactShadow", position, size, PALETTE["contact_shadow"], rotation_degrees)
 
-func _add_rounded_patch(position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false) -> MeshInstance3D:
-	return _create_rounded_patch(self, "SoftGroundPatch", position, size, color, rotation_degrees, path_material)
+func _add_rounded_patch(position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false, decal_shape_mode := 1) -> MeshInstance3D:
+	return _create_rounded_patch(self, "SoftGroundPatch", position, size, color, rotation_degrees, path_material, decal_shape_mode)
 
-func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false) -> MeshInstance3D:
+func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false, decal_shape_mode := 1) -> MeshInstance3D:
 	var patch := MeshInstance3D.new()
 	patch.name = node_name
 	var mesh := QuadMesh.new()
@@ -2274,7 +2274,7 @@ func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3,
 		decal_material.shader = ground_decal_shader
 		var is_shadow := node_name.contains("ContactShadow")
 		decal_material.set_shader_parameter("base_color", color)
-		decal_material.set_shader_parameter("shape_mode", 0 if is_shadow else 1)
+		decal_material.set_shader_parameter("shape_mode", 0 if is_shadow else decal_shape_mode)
 		decal_material.set_shader_parameter("corner_radius", 0.18 if path_material else 0.24)
 		decal_material.set_shader_parameter("edge_softness", 0.055 if is_shadow else 0.028)
 		decal_material.set_shader_parameter("ellipse_radius", 0.92)

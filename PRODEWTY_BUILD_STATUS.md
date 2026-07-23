@@ -926,3 +926,29 @@ This is a concrete render/physics correction, not a final-game claim. The
 Sanctuary remains below the accepted A+C production bar in density, final UI
 polish, broader authored interiors, character/NPC action coverage, device
 acceptance, and expedition production visuals; other biomes remain frozen.
+
+## 2026-07-23 Sanctuary lived-in density and decal-shader checkpoint
+
+- Added four catalog-owned communal activity sockets around the open reserve:
+  a trade cart, seed bed, timber stacks, and a second wayfarer tent. Together
+  with the existing garden, tent, timber yard, and well, a fresh Sanctuary now
+  has eight visible life/work anchors without pre-placing player-owned
+  buildings or claiming build cells.
+- Added a measured mutual-footprint assertion for activity art. The new
+  sockets must clear the player-directed build field, measured framing
+  obstacles, route reservations, and one another; activity roots remain
+  presentation-only with collision layer 0 and no occupancy authority.
+- Softened path wear and grass intrusions into shader-backed organic decals,
+  and kept route ribbons on the dedicated decal shader. The display capture
+  also caught and corrected a shader-comment compilation error before this
+  checkpoint was accepted.
+- Evidence: `/private/tmp/isekai-sanctuary-density-v5.png` at 1280x720;
+  `SANCTUARY_ACTIVITY_LAYER_PASS checks=361 sockets=8`,
+  `ASSET_HITBOX_TESTS_PASS checks=633`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=216`, and
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5653`.
+
+This is a visible Sanctuary density increment, not the finished A+C game.
+The route language still needs final authored treatment, and final UI polish,
+interiors, touch-device evidence, character/NPC action coverage, audio depth,
+the five expedition maps, and broader full-game content remain open.
