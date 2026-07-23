@@ -178,6 +178,7 @@ var reference_stat_labels: Dictionary = {}
 var reference_bottom_panel: Panel
 var reference_slot_box: HBoxContainer
 var reference_context_button: Button
+var reference_move_button: Button
 var reference_cargo_bar: ProgressBar
 var reference_cargo_label: Label
 var reference_cargo_text: Label
@@ -209,6 +210,7 @@ var water_button: Button
 var livestock_button: Button
 var repair_button: Button
 var structure_button: Button
+var move_structure_button: Button
 var blueprint_button: Button
 var rotate_button: Button
 var stat_button: Button
@@ -259,6 +261,8 @@ const PLAYER_ATTACK_RECOVERY_SECONDS := 0.22
 var placement_mode := false
 var placement_structure_id := "rain_cistern"
 var placement_rotation_quarter_turns := 0
+var moving_structure_id := ""
+var moving_structure_original: Dictionary = {}
 var settlement_visuals := {}
 
 const BUILD_CATALOG_ORDER := ["workshop", "archive", "storage_shed", "livestock_pen", "rain_cistern"]
@@ -471,6 +475,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_cycle_recipe_selection()
 	elif event.is_action_pressed("repair"):
 		_repair_tools()
+	elif event.is_action_pressed("move_structure"):
+		_toggle_structure_move()
 	elif event.is_action_pressed("build"):
 		_toggle_structure_placement()
 	elif event.is_action_pressed("rotate_build"):
@@ -526,6 +532,7 @@ func _ensure_input_actions() -> void:
 		"cycle_recipe": [KEY_Q],
 		"repair": [KEY_V],
 		"build": [KEY_B],
+		"move_structure": [KEY_M],
 		"rotate_build": [KEY_X],
 		"cycle_structure": [KEY_N],
 		"station": [KEY_C],
@@ -2270,6 +2277,8 @@ func _build_hud() -> void:
 	hud_action_box.add_child(recipe_button)
 	structure_button = _button("Place Rain Cistern  [B]", _toggle_structure_placement)
 	hud_action_box.add_child(structure_button)
+	move_structure_button = _button("Move Nearby Building  [M]", _toggle_structure_move)
+	hud_action_box.add_child(move_structure_button)
 	blueprint_button = _button("Blueprint: Rain Cistern  [N]", _cycle_structure_selection)
 	hud_action_box.add_child(blueprint_button)
 	rotate_button = _button("Rotate Blueprint  [X]", _rotate_structure_placement)
@@ -2405,6 +2414,10 @@ func _build_reference_hud(root: Control) -> void:
 	reference_context_button = _reference_action_button("INTERACT  [E]", Callable(self, "_contextual_interact"), 178)
 	reference_context_button.name = "ReferenceContextButton"
 	quick_row.add_child(reference_context_button)
+	reference_move_button = _reference_action_button("MOVE  [M]", Callable(self, "_toggle_structure_move"), 112)
+	reference_move_button.name = "ReferenceMoveButton"
+	reference_move_button.visible = false
+	quick_row.add_child(reference_move_button)
 	for quick_data in [["wood", "WOOD"], ["fiber", "FIBER"], ["stone", "STONE"], ["slime_gel", "GEL"]]:
 		var quick_label := _label("%s  0" % str(quick_data[1]), 11, Color("#e7d3a3"))
 		quick_label.custom_minimum_size = Vector2(78, 22)
@@ -5645,7 +5658,7 @@ func _update_hud() -> void:
 	var fishing_active := session != null and session.has_method("has_active_fishing") and bool(session.call("has_active_fishing"))
 	if interact_button != null:
 		var fishing_phase := str(session.get("fishing_attempt").get("phase", "idle")) if fishing_active and session != null else ""
-		interact_button.text = ("Hook / Reel" if fishing_phase in ["bite", "reeling"] else "Wait for Bite") if fishing_active else ("Confirm placement" if placement_mode else "Interact")
+		interact_button.text = ("Hook / Reel" if fishing_phase in ["bite", "reeling"] else "Wait for Bite") if fishing_active else (("Confirm move" if not moving_structure_id.is_empty() else "Confirm placement") if placement_mode else "Interact")
 		interact_button.disabled = get_tree().paused or interior_transitioning
 	if pause_button != null:
 		pause_button.text = "Resume" if get_tree().paused else "Pause"
@@ -5666,6 +5679,11 @@ func _update_hud() -> void:
 			reference_action_text = str(interact_button.text).replace("  [E]", "")
 		reference_context_button.text = "%s  [E]" % reference_action_text
 		reference_context_button.disabled = get_tree().paused or interior_transitioning or build_catalog_open
+	if reference_move_button != null:
+		var movable_context := context_node != null and context_node.has_meta("construction_id")
+		reference_move_button.visible = current_zone == "Sanctuary" and not interior_active and (movable_context or not moving_structure_id.is_empty())
+		reference_move_button.text = "CANCEL MOVE  [M]" if not moving_structure_id.is_empty() else "MOVE  [M]"
+		reference_move_button.disabled = get_tree().paused or interior_transitioning or build_catalog_open
 	# Management controls remain top-right. Context-sensitive gameplay buttons
 	# occupy their own bottom-right dock so touch movement and actions stay on
 	# opposite thumbs without covering the Sanctuary composition.
@@ -5724,7 +5742,11 @@ func _update_hud() -> void:
 		recipe_button.text = "Recipe: %s  [Q]" % selected_recipe.capitalize()
 	if structure_button != null:
 		structure_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (utilities_open or context_node != null)
-		structure_button.text = "Cancel Placement  [B]" if placement_mode else "Place %s  [B]" % _structure_display_name(placement_structure_id)
+		structure_button.text = ("Cancel Move  [B]" if not moving_structure_id.is_empty() else "Cancel Placement  [B]") if placement_mode else "Place %s  [B]" % _structure_display_name(placement_structure_id)
+	if move_structure_button != null:
+		var movable_context := context_node != null and context_node.has_meta("construction_id")
+		move_structure_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (not placement_mode and movable_context or not moving_structure_id.is_empty())
+		move_structure_button.text = "Cancel Move  [M]" if not moving_structure_id.is_empty() else "Move Nearby Building  [M]"
 	if blueprint_button != null:
 		blueprint_button.visible = not fishing_locked and not interior_active and current_zone == "Sanctuary" and (utilities_open or context_node != null)
 		blueprint_button.text = "Blueprint: %s  [N]" % _structure_display_name(placement_structure_id)
@@ -5782,9 +5804,9 @@ func _update_hud() -> void:
 		if interior_active:
 			action_hint.text = "Workshop interior  |  Move between stations  |  Interact at the door to leave"
 		elif placement_mode:
-			action_hint.text = "Blueprint mode  |  Move to a clear footprint  |  Rotate [X]  |  Confirm placement or cancel"
+			action_hint.text = ("Move mode  |  Relocate the measured building footprint  |  Rotate [X]  |  Confirm [E] or cancel [B/M]" if not moving_structure_id.is_empty() else "Blueprint mode  |  Move to a clear footprint  |  Rotate [X]  |  Confirm placement or cancel")
 		elif current_zone == "Sanctuary":
-			action_hint.text = "WASD / joystick to move  |  Walk to a route gate, resource, villager, or build site to reveal the next action"
+			action_hint.text = "WASD / joystick to move  |  Walk to a route gate, resource, villager, or building to reveal the next action"
 		else:
 			var expedition_hint := "Follow the beacon  |  Cargo is at risk until extraction  |  Gather, camp once, and choose your fights"
 			if session != null and session.has_method("expedition_route_snapshot") and bool(session.call("has_active_expedition")):
@@ -6235,6 +6257,77 @@ func _toggle_build_context() -> void:
 			_toggle_structure_placement()
 		else:
 			_set_build_catalog_open(true)
+
+func _set_structure_move_preview_state(instance_id: String, active: bool) -> void:
+	var structure := settlement_visuals.get(instance_id) as Node3D
+	if structure == null or not is_instance_valid(structure):
+		return
+	structure.visible = not active
+	var body := structure.get_node_or_null("StructureCollisionBody") as StaticBody3D
+	if body == null:
+		return
+	if active:
+		if not body.has_meta("move_original_collision_layer"):
+			body.set_meta("move_original_collision_layer", body.collision_layer)
+			body.set_meta("move_original_collision_mask", body.collision_mask)
+		body.collision_layer = 0
+		body.collision_mask = 0
+	else:
+		body.collision_layer = int(body.get_meta("move_original_collision_layer", 1))
+		body.collision_mask = int(body.get_meta("move_original_collision_mask", 1))
+	for collision_value in body.find_children("*", "CollisionShape3D", true, false):
+		var collision_shape := collision_value as CollisionShape3D
+		if collision_shape != null:
+			collision_shape.disabled = active
+	if not active and session != null and session.get("structures").has(instance_id):
+		_refresh_structure_visual(instance_id, session.get("structures").get(instance_id, {}))
+
+func _cancel_structure_placement(message := "Placement cancelled.") -> void:
+	if not moving_structure_id.is_empty():
+		_set_structure_move_preview_state(moving_structure_id, false)
+	moving_structure_id = ""
+	moving_structure_original = {}
+	placement_mode = false
+	placement_rotation_quarter_turns = 0
+	if build_marker != null:
+		build_marker.visible = false
+	_update_structure_preview()
+	_show_toast(message, 1.4)
+
+func _begin_structure_move(structure_node: Node3D) -> void:
+	if structure_node == null or session == null or not structure_node.has_meta("construction_id"):
+		return
+	var instance_id := str(structure_node.get_meta("construction_id", ""))
+	var structure: Dictionary = session.get("structures").get(instance_id, {})
+	var kind := str(structure.get("kind", ""))
+	if instance_id.is_empty() or kind.is_empty() or str(structure.get("state", "removed")) == "removed":
+		_show_toast("That building is not available to move.", 2.0)
+		return
+	moving_structure_id = instance_id
+	moving_structure_original = structure.duplicate(true)
+	placement_structure_id = kind
+	placement_rotation_quarter_turns = posmod(int(structure.get("rotation", 0)), 4)
+	placement_mode = true
+	_set_structure_move_preview_state(instance_id, true)
+	if player != null and player.has_method("cancel_navigation"):
+		player.call("cancel_navigation", true)
+	_update_structure_preview()
+	_show_toast("Move %s to a clear footprint. Press E to confirm or B/M to cancel." % _structure_display_name(kind), 3.0)
+
+func _toggle_structure_move() -> void:
+	if get_tree().paused or is_player_input_locked() or interior_active or current_zone != "Sanctuary" or session == null:
+		return
+	if placement_mode:
+		if not moving_structure_id.is_empty():
+			_cancel_structure_placement("Building move cancelled.")
+		else:
+			_show_toast("Finish or cancel the current blueprint placement first.", 2.0)
+		return
+	var context_node := _nearest_interactable()
+	if context_node == null or not context_node.has_meta("construction_id"):
+		_show_toast("Move closer to a player building first.", 2.0)
+		return
+	_begin_structure_move(context_node as Node3D)
 
 func _construction_interact(structure_node: Node3D) -> void:
 	if structure_node == null or session == null or not structure_node.has_meta("construction_id"):
@@ -7977,11 +8070,7 @@ func _toggle_structure_placement() -> void:
 	if get_tree().paused or is_player_input_locked() or interior_active or current_zone != "Sanctuary" or session == null:
 		return
 	if placement_mode:
-		placement_mode = false
-		placement_rotation_quarter_turns = 0
-		if build_marker != null:
-			build_marker.visible = false
-		_show_toast("Placement cancelled.", 1.4)
+		_cancel_structure_placement("Building move cancelled." if not moving_structure_id.is_empty() else "Placement cancelled.")
 		return
 	if not session.has_method("has_structure_blueprint") or not bool(session.call("has_structure_blueprint", placement_structure_id)):
 		var requirement := str(session.call("structure_blueprint_requirement", placement_structure_id)) if session.has_method("structure_blueprint_requirement") else "a new discovery"
@@ -8032,7 +8121,7 @@ func _unrotated_structure_footprint(structure_id: String) -> Vector2i:
 	return Vector2i(int(footprint_data[0]), int(footprint_data[1]))
 
 func _structure_preview_valid(cell: Vector2i) -> bool:
-	if session == null or not session.call("can_place_structure", placement_structure_id, [cell.x, cell.y], placement_rotation_quarter_turns):
+	if session == null or not session.call("can_place_structure", placement_structure_id, [cell.x, cell.y], placement_rotation_quarter_turns, moving_structure_id):
 		return false
 	var footprint := _preview_structure_footprint()
 	for occupied_cell in SettlementGrid.cells_for(cell, footprint):
@@ -8078,7 +8167,7 @@ func _update_structure_preview() -> void:
 		ghost_mesh.material_override = _material(palette["leaf"] if valid else palette["danger"], 0.3, true, true)
 	var ghost_label := build_marker.get_node_or_null("GhostLabel") as Label3D
 	if ghost_label != null:
-		ghost_label.text = "PLACE" if valid else "BLOCKED"
+		ghost_label.text = ("MOVE" if not moving_structure_id.is_empty() else "PLACE") if valid else "BLOCKED"
 	if sanctuary_style != null and sanctuary_style.has_method("set_placement_preview"):
 		sanctuary_style.call("set_placement_preview", build_marker.global_position, footprint, valid, placement_rotation_quarter_turns, true, placement_structure_id)
 
@@ -8090,16 +8179,20 @@ func _place_structure() -> void:
 		_show_toast("That footprint is blocked. Find a clear patch of Sanctuary.", 2.0)
 		return
 	var before_placement: Dictionary = session.call("snapshot_state") if session.has_method("snapshot_state") else {}
-	var placed: Dictionary = session.call("place_structure", placement_structure_id, [cell.x, cell.y], placement_rotation_quarter_turns)
+	var was_move := not moving_structure_id.is_empty()
+	var moving_id := moving_structure_id
+	var original_move_record := moving_structure_original.duplicate(true)
+	var placed: Dictionary = session.call("move_structure", moving_id, [cell.x, cell.y], placement_rotation_quarter_turns) if was_move else session.call("place_structure", placement_structure_id, [cell.x, cell.y], placement_rotation_quarter_turns)
 	if placed.is_empty():
-		_show_toast("That blueprint cannot be placed on this footprint.", 2.5)
+		_show_toast("That footprint cannot accept this building.", 2.5)
 		return
-	var instance_id := str(placed.get("id", ""))
+	var instance_id := moving_id if was_move else str(placed.get("id", ""))
 	if not instance_id.is_empty():
 		_spawn_structure_visual(instance_id, placed)
-	placement_mode = false
+		placement_mode = false
 	if build_marker != null:
 		build_marker.visible = false
+	_update_structure_preview()
 	var definition := ContentRegistry.structure_definition(placement_structure_id)
 	var cost_parts: Array[String] = []
 	for material_id in definition.get("cost", {}):
@@ -8107,17 +8200,27 @@ func _place_structure() -> void:
 	if not bool(session.call("save_game")):
 		if not before_placement.is_empty():
 			session.call("restore_state", before_placement)
-		if not instance_id.is_empty() and settlement_visuals.has(instance_id):
-			var failed_visual := settlement_visuals.get(instance_id) as Node3D
-			if failed_visual != null:
-				failed_visual.queue_free()
-			settlement_visuals.erase(instance_id)
+		if was_move and not moving_id.is_empty() and not original_move_record.is_empty():
+			_spawn_structure_visual(moving_id, original_move_record)
+		else:
+			if not instance_id.is_empty() and settlement_visuals.has(instance_id):
+				var failed_visual := settlement_visuals.get(instance_id) as Node3D
+				if failed_visual != null:
+					failed_visual.queue_free()
+				settlement_visuals.erase(instance_id)
 		_copy_session_to_runtime()
 		placement_mode = true
+		if was_move:
+			_set_structure_move_preview_state(moving_id, true)
 		_update_structure_preview()
-		_show_toast("The blueprint could not be secured. Try placing it again.", 3.0)
+		_show_toast("The building move could not be secured. Choose its new footprint again.", 3.0)
 		return
-	_show_toast("%s blueprint placed. Deliver %s at the site, then sleep to finish the frame." % [_structure_display_name(placement_structure_id), " + ".join(cost_parts)], 3.4)
+	if was_move:
+		moving_structure_id = ""
+		moving_structure_original = {}
+		_show_toast("%s moved. Its measured access zone and collision moved with it." % _structure_display_name(placement_structure_id), 3.0)
+	else:
+		_show_toast("%s blueprint placed. Deliver %s at the site, then sleep to finish the frame." % [_structure_display_name(placement_structure_id), " + ".join(cost_parts)], 3.4)
 
 func _spawn_structure_visual(instance_id: String, data: Dictionary) -> void:
 	if instance_id.is_empty() or sanctuary_zone == null:

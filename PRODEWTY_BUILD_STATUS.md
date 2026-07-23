@@ -26,6 +26,14 @@ Updated: 2026-07-23, Asia/Singapore
 
 ## 2026-07-23 visual contract checkpoint
 
+- Existing player structures now have a real relocation transaction. `M` and
+  the touch-visible `Move Nearby Building` controls enter a measured move
+  preview; the old visual/collision shell is removed from play temporarily,
+  and confirm/cancel keep the saved cell, quarter-turn, access zone, visual
+  base, and measured collider synchronized. Focused proof passes
+  `STRUCTURE_MOVE_TESTS_PASS checks=11` and
+  `STRUCTURE_MOVE_VISUAL_TESTS_PASS checks=32`.
+
 - Placement mode now binds the selected structure's authored blueprint silhouette
   to the same measured grid footprint used by GameSession. The preview child
   stays in canonical local dimensions while the preview root applies the saved

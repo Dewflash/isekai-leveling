@@ -2457,7 +2457,7 @@ func has_structure_blueprint(structure_id: String) -> bool:
 	var requirement := structure_blueprint_requirement(structure_id)
 	return requirement.is_empty() or blueprints.has(requirement)
 
-func can_place_structure(structure_id: String, cell: Array, rotation_quarter_turns := 0) -> bool:
+func can_place_structure(structure_id: String, cell: Array, rotation_quarter_turns := 0, ignored_instance_id := "") -> bool:
 	if not ContentRegistry.STRUCTURES.has(structure_id) or cell.size() < 2:
 		return false
 	if not _valid_integer(cell[0], SettlementGrid.MIN_X, SettlementGrid.MAX_X) or not _valid_integer(cell[1], SettlementGrid.MIN_Z, SettlementGrid.MAX_Z):
@@ -2477,6 +2477,8 @@ func can_place_structure(structure_id: String, cell: Array, rotation_quarter_tur
 		if _fixed_cell_occupied(candidate_cell):
 			return false
 	for existing_id in structures:
+		if not ignored_instance_id.is_empty() and str(existing_id) == ignored_instance_id:
+			continue
 		var existing: Dictionary = structures.get(existing_id, {})
 		if str(existing.get("state", "removed")) == "removed":
 			continue
@@ -2555,6 +2557,32 @@ func place_structure(structure_id: String, cell: Array, rotation_quarter_turns :
 	structures[structure_id_instance] = structure_record
 	state_changed.emit()
 	return structures[structure_id_instance].duplicate(true)
+
+func move_structure(instance_id: String, cell: Array, rotation_quarter_turns := -1) -> Dictionary:
+	# Relocation is a transaction over the same authoritative record used by
+	# placement. The instance is ignored only for its own old occupancy; every
+	# other structure, access cell, reserved route cell, and authored obstacle
+	# remains part of validation.
+	if instance_id.is_empty() or not structures.has(instance_id) or cell.size() < 2:
+		return {}
+	var current: Dictionary = structures.get(instance_id, {})
+	var state := str(current.get("state", "removed"))
+	if state == "removed":
+		return {}
+	var structure_kind := str(current.get("kind", ""))
+	if not ContentRegistry.STRUCTURES.has(structure_kind):
+		return {}
+	var next_rotation := int(current.get("rotation", 0))
+	if rotation_quarter_turns >= 0:
+		next_rotation = posmod(rotation_quarter_turns, 4)
+	if not can_place_structure(structure_kind, cell, next_rotation, instance_id):
+		return {}
+	var moved := current.duplicate(true)
+	moved["cell"] = [int(cell[0]), int(cell[1])]
+	moved["rotation"] = next_rotation
+	structures[instance_id] = moved
+	state_changed.emit()
+	return moved.duplicate(true)
 
 func _workshop_shell_ready(structure_id: String) -> bool:
 	if structure_id.is_empty() or not structures.has(structure_id):

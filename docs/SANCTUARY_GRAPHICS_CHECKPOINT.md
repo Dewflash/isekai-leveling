@@ -28,6 +28,24 @@ placement, and the surrounding construction/operational captures. This is a
 placement-contract improvement, not a claim that Sanctuary has reached the
 final A+C density or that the full game is complete.
 
+## 2026-07-23 current gameplay checkpoint: measured building relocation
+
+Existing player structures can now be selected from either HUD mode with
+`Move Nearby Building [M]` (or the reference belt's `MOVE [M]`). The building
+is hidden and its measured collision shell is disabled while the player moves
+the same authored footprint; confirm commits the new cell and quarter-turn
+through `GameSession.move_structure`, while cancel restores the original visual,
+collision, and saved record. The session validator ignores only the moving
+instance's old occupancy; other structures, access cells, reserved areas, and
+authored obstacles still block the move.
+
+Focused proof: `STRUCTURE_MOVE_TESTS_PASS checks=11` and
+`STRUCTURE_MOVE_VISUAL_TESTS_PASS checks=32`. This closes the relocation
+correctness gap, but it is not a final graphics or full-game claim. Durable
+save verification remains environment-sensitive in the current sandbox, and
+the Sanctuary density, production audio, authored action animation, device
+capture, and broader content gates remain open.
+
 ## Current visible checkpoint: authored Sanctuary ground
 
 The live scene now mounts
