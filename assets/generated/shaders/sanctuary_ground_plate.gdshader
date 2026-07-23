@@ -8,6 +8,8 @@ uniform sampler2D ground_texture : source_color, filter_linear;
 uniform vec2 authored_size = vec2(80.0, 60.0);
 uniform vec2 plate_size = vec2(80.0, 60.0);
 uniform vec3 forest_skirt_color : source_color = vec3(0.08, 0.16, 0.11);
+uniform vec4 lighting_tint : source_color = vec4(1.0);
+uniform float lighting_value : hint_range(0.50, 1.20, 0.01) = 1.0;
 
 void fragment() {
 	vec2 authored_uv = (UV - vec2(0.5)) * plate_size / authored_size + vec2(0.5);
@@ -19,6 +21,6 @@ void fragment() {
 	// leak into the camera coverage area.
 	float outside_distance = max(max(-authored_uv.x, authored_uv.x - 1.0), max(-authored_uv.y, authored_uv.y - 1.0));
 	float skirt_mix = step(0.0, outside_distance);
-	ALBEDO = mix(authored_color, forest_skirt_color, skirt_mix);
+	ALBEDO = clamp(mix(authored_color, forest_skirt_color, skirt_mix) * lighting_tint.rgb * lighting_value, vec3(0.0), vec3(1.0));
 	ROUGHNESS = 1.0;
 }

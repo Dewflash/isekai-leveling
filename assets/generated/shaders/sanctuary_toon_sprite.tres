@@ -12,3 +12,5 @@ shader_parameter/step_center = 0.52
 shader_parameter/step_softness = 0.12
 shader_parameter/shadow_value = 0.72
 shader_parameter/light_value = 1.04
+shader_parameter/world_lighting_tint = Color(1, 1, 1, 1)
+shader_parameter/world_lighting_value = 1.0

@@ -5436,6 +5436,8 @@ func _update_lighting() -> void:
 	var key_direction := (-sun_light.global_basis.z).normalized()
 	if sanctuary_style != null and sanctuary_style.has_method("set_key_light_direction"):
 		sanctuary_style.call("set_key_light_direction", key_direction)
+	if sanctuary_style != null and sanctuary_style.has_method("set_sanctuary_daylight"):
+		sanctuary_style.call("set_sanctuary_daylight", daylight)
 	if building_interior != null and building_interior.has_method("set_key_light_direction"):
 		building_interior.call("set_key_light_direction", key_direction)
 	if hearth_fill != null:

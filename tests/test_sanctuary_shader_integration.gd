@@ -22,6 +22,7 @@ func _run() -> void:
 	_check(shader_source.contains("MODELVIEW_MATRIX") and shader_source.contains("INV_VIEW_MATRIX"), "toon sprite shader must preserve Sprite3D billboarding when used as a material override")
 	_check(shader_source.contains("depth_prepass_alpha"), "toon sprite shader must depth-prepass alpha silhouettes for scalable 2.5D overlap")
 	_check(shader_source.contains("filter_linear") and not shader_source.contains("filter_linear_mipmap"), "toon sprite shader sampler must match runtime art without mipmaps")
+	_check(shader_source.contains("world_lighting_tint") and shader_source.contains("world_lighting_value"), "toon sprite shader must expose the authoritative clock lighting grade")
 	_check(ground_shader_source.contains("detail_scale") and ground_shader_source.contains("detail_variation"), "ground shader must expose deterministic dapple controls")
 	_check(ground_shader_source.contains("world_position.x * detail_scale") and not ground_shader_source.contains("TIME"), "ground dapple must remain world-anchored and pause-stable")
 	var world := MainScene.instantiate()
@@ -43,6 +44,30 @@ func _run() -> void:
 		_check(ground_plate != null and bool(ground_plate.get_meta("presentation_only", false)), "open-ground plate must be presentation-only")
 		_check(ground_plate != null and str(ground_plate.get_meta("collision_authority", "")) == "none", "open-ground plate must not own collision")
 		_check(ground_plate != null and not bool(ground_plate.get_meta("occupies_build_cells", true)), "open-ground plate must not claim build cells")
+		_check(ground_material != null and ground_material.get_shader_parameter("lighting_value") != null, "open-ground plate must expose the authoritative clock lighting grade")
+		var daylight_grade := float(ground_material.get_shader_parameter("lighting_value")) if ground_material != null else 0.0
+		world.set("hour", 22.0)
+		world.call("_update_lighting")
+		var night_grade := float(ground_material.get_shader_parameter("lighting_value")) if ground_material != null else 0.0
+		_check(absf(daylight_grade - night_grade) > 0.01, "Sanctuary ground grade must respond to the authoritative clock")
+		world.set("hour", 10.0)
+		world.call("_update_lighting")
+		var graded_sprite_count := 0
+		for sprite_value in style.find_children("*", "Sprite3D", true, false):
+			var sprite := sprite_value as Sprite3D
+			var sprite_material := sprite.material_override as ShaderMaterial if sprite != null else null
+			if sprite_material == null or sprite_material.get_shader_parameter("world_lighting_value") == null:
+				continue
+			if str(sprite.get_meta("asset_id", "")) == "settlement_props/fire":
+				continue
+			graded_sprite_count += 1
+			var sprite_day_grade := float(sprite_material.get_shader_parameter("world_lighting_value"))
+			world.set("hour", 22.0)
+			world.call("_update_lighting")
+			var sprite_night_grade := float(sprite_material.get_shader_parameter("world_lighting_value"))
+			_check(absf(sprite_day_grade - sprite_night_grade) > 0.01, "%s sprite grade must respond to the authoritative clock" % sprite.name)
+			break
+		_check(graded_sprite_count > 0, "live authored Sanctuary sprites must receive the clock lighting grade")
 		var moss_count := 0
 		var path_count := 0
 		var smooth_path_vertex_count := 0
@@ -90,6 +115,10 @@ func _run() -> void:
 			if path_material != null and path_material.get_shader_parameter("path_texture") != null:
 				textured_path_count += 1
 		_check(textured_path_count >= 1, "live Sanctuary must bind the generated packed-earth texture to route ribbons")
+		var hearth_pad := style.get_node_or_null("SharedHearthActivityPad") as MeshInstance3D
+		var hearth_material := hearth_pad.material_override as ShaderMaterial if hearth_pad != null else null
+		_check(hearth_material != null and bool(hearth_material.get_shader_parameter("use_path_texture")), "hearth commons must use the generated packed-earth surface")
+		_check(hearth_material != null and hearth_material.get_shader_parameter("lighting_value") != null, "hearth commons must receive the authoritative clock lighting grade")
 		_check(smooth_path_vertex_count >= 40, "organic path ribbons must be resampled before rendering so corners cannot read as hard slabs")
 		_check(decal_count > 0, "live Sanctuary must activate measured ground decal meshes")
 		_check(contact_count > 0, "live Sanctuary must retain presentation-only contact shadows")

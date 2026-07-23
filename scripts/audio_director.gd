@@ -31,6 +31,7 @@ var spatial_cursor := 0
 var music_streams: Dictionary = {}
 var current_music := ""
 var music_transition: Tween
+var music_transition_was_paused := false
 var audio_focus_lost := false
 var playback_paused := false
 var last_action_times: Dictionary = {}
@@ -387,9 +388,12 @@ func _set_playback_paused(paused: bool) -> void:
 			(player as AudioStreamPlayer3D).stream_paused = paused
 	if music_transition != null and music_transition.is_valid():
 		if paused:
-			music_transition.pause()
-		else:
+			if music_transition.is_running():
+				music_transition.pause()
+				music_transition_was_paused = true
+		elif music_transition_was_paused:
 			music_transition.play()
+			music_transition_was_paused = false
 
 func _sampled_key_for(kind: String) -> String:
 	if kind.begins_with("step") and not sampled_streams.has(kind):

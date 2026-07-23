@@ -10,6 +10,11 @@ uniform float step_center : hint_range(0.0, 1.0, 0.01) = 0.52;
 uniform float step_softness : hint_range(0.01, 0.35, 0.01) = 0.12;
 uniform float shadow_value : hint_range(0.35, 1.0, 0.01) = 0.72;
 uniform float light_value : hint_range(0.75, 1.25, 0.01) = 1.04;
+// World-clock grade is supplied by the Sanctuary presentation layer. Keeping
+// it in the authored sprite shader makes illustrated buildings and props move
+// with the same day/night state as the ground instead of remaining at noon.
+uniform vec4 world_lighting_tint : source_color = vec4(1.0);
+uniform float world_lighting_value : hint_range(0.50, 1.20, 0.01) = 1.0;
 // Construction presentation is an optional per-sprite layer. A value of zero
 // preserves the operational toon treatment; one renders a blueprint envelope;
 // two reveals an authored silhouette from the ground up as materials arrive.
@@ -53,7 +58,7 @@ void fragment() {
 	float ramp = smoothstep(step_center - step_softness, step_center + step_softness, half_lambert);
 	vec3 ramp_tint = mix(shadow_tint.rgb, light_tint.rgb, ramp);
 	float ramp_value = mix(shadow_value, light_value, ramp);
-	vec3 lit_color = clamp(source.rgb * ramp_tint * ramp_value, vec3(0.0), vec3(1.0));
+	vec3 lit_color = clamp(source.rgb * ramp_tint * ramp_value * world_lighting_tint.rgb * world_lighting_value, vec3(0.0), vec3(1.0));
 	if (construction_mode == 0) {
 		ALBEDO = lit_color;
 		ALPHA = source.a;

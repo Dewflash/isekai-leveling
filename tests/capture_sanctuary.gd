@@ -18,10 +18,22 @@ func _capture() -> void:
 	root.add_child(capture_viewport)
 	var world := MainScene.instantiate()
 	capture_viewport.add_child(world)
+	var requested_hour := OS.get_environment("SANCTUARY_CAPTURE_HOUR")
 	# Imported FBX/glTF presentation, the first camera settle, and the HUD all
 	# need at least a few rendered frames before the image is useful.
 	for _frame in 45:
 		await process_frame
+	# Main restores the authoritative clock from GameSession during startup, so
+	# apply a capture-only hour after the scene has settled. Updating both values
+	# keeps the lighting grade and the HUD clock on the same evidence frame; this
+	# never mutates the saved game because the capture runs in its own process.
+	if not requested_hour.is_empty():
+		var capture_hour := clampf(float(requested_hour), 0.0, 23.99)
+		world.set("hour", capture_hour)
+		var session := world.get("session") as Node
+		if session != null:
+			session.set("hour", capture_hour)
+		world.call("_update_lighting")
 	# The startup welcome is useful during play but would obscure the visual
 	# checkpoint. Capture the settled Sanctuary without transient boot copy.
 	world.set("toast_timer", 0.0)

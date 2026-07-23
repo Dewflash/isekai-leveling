@@ -167,6 +167,7 @@ var resource_visual_roots: Array[Node3D] = []
 var canonical_landmark_roots: Dictionary = {}
 var lived_in_activity_root: Node3D
 var key_light_direction := Vector3(-0.42, 0.84, 0.34)
+var sanctuary_daylight := 1.0
 var build_sprite_regions := {
 	"scaffold": 0,
 	"workshop": 1,
@@ -212,6 +213,7 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 	_build_lived_in_activity()
 	_build_route_markers()
 	_build_ambient_lights()
+	set_sanctuary_daylight(sanctuary_daylight)
 
 func set_key_light_direction(direction: Vector3) -> void:
 	if direction.length_squared() < 0.001:
@@ -224,6 +226,46 @@ func set_key_light_direction(direction: Vector3) -> void:
 		var material := sprite.material_override as ShaderMaterial if sprite != null else null
 		if material != null:
 			material.set_shader_parameter("key_light_direction", key_light_direction)
+
+func set_sanctuary_daylight(daylight: float) -> void:
+	# The illustrated ground shaders are intentionally unshaded so the authored
+	# texture remains stable across the Compatibility renderer. Apply the
+	# authoritative world-clock grade explicitly instead of allowing the plate
+	# and route decals to stay at noon while the sun turns blue at night.
+	sanctuary_daylight = clampf(daylight, 0.12, 1.0)
+	var night_mix := 1.0 - inverse_lerp(0.12, 1.0, sanctuary_daylight)
+	var ground_tint := Color("#fff0d0").lerp(Color("#7787b8"), night_mix * 0.82)
+	var ground_value := lerpf(0.72, 1.08, 1.0 - night_mix)
+	# Keep authored buildings readable at night. Their toon ramp already carries
+	# a shadow band, so applying the full ground grade would crush the dark side
+	# into a silhouette. The cooler tint still establishes evening without
+	# sacrificing doors, furnaces, or collision-facing bases.
+	var sprite_tint := Color("#fff0d0").lerp(Color("#9eabd0"), night_mix * 0.56)
+	var sprite_value := lerpf(0.88, 1.08, 1.0 - night_mix)
+	for mesh_value in find_children("*", "MeshInstance3D", true, false):
+		var mesh := mesh_value as MeshInstance3D
+		var material := mesh.material_override as ShaderMaterial if mesh != null else null
+		if material == null:
+			continue
+		var shader_role := str(mesh.get_meta("shader_role", ""))
+		var presentation_role := str(mesh.get_meta("presentation_role", ""))
+		if shader_role.begins_with("ground_") or presentation_role == "authored_open_ground_backdrop":
+			material.set_shader_parameter("lighting_tint", ground_tint)
+			material.set_shader_parameter("lighting_value", ground_value)
+	for grade_sprite_value in find_children("*", "Sprite3D", true, false):
+		var grade_sprite := grade_sprite_value as Sprite3D
+		var sprite_material := grade_sprite.material_override as ShaderMaterial if grade_sprite != null else null
+		if sprite_material == null:
+			continue
+		# Fire is an emissive activity cue and keeps its warm authored value while
+		# buildings, landmark cutouts, and props settle into the world grade.
+		var asset_id := str(grade_sprite.get_meta("asset_id", ""))
+		if asset_id == "settlement_props/fire":
+			sprite_material.set_shader_parameter("world_lighting_tint", Color("#fff0d8"))
+			sprite_material.set_shader_parameter("world_lighting_value", 1.04)
+		else:
+			sprite_material.set_shader_parameter("world_lighting_tint", sprite_tint)
+			sprite_material.set_shader_parameter("world_lighting_value", sprite_value)
 
 func _process(delta: float) -> void:
 	elapsed += delta
@@ -488,24 +530,40 @@ func _build_open_ground_plate() -> void:
 	add_child(open_ground_plate)
 
 func _build_paths() -> void:
-	# The route network is a hand-authored traversal layer, not a tile grid. It
-	# deliberately bends around the shared hearth so the open building reserve
-	# remains legible and the player reads a lived-in courtyard instead of a
-	# procedural X. The measured world cells remain untouched by this artwork.
+	# The route network is a hand-authored traversal layer, not a tile grid. The
+	# hearth landing is a small commons and the paths arrive at it from readable
+	# activity fronts: the lodge, bazaar, pond, garden edge, and south workyard.
+	# None of these ribbons claims a build cell or becomes a physics authority.
+	# Keeping the approaches offset from the fire avoids the old procedural-X
+	# read while preserving a natural, navigable courtyard for any future layout.
 	_add_curved_worn_path([
-		Vector2(-1.15, -4.8), Vector2(-1.28, -3.35), Vector2(-1.42, -1.85),
-		Vector2(-1.26, -0.55), Vector2(-1.02, 0.80), Vector2(-0.62, 2.35),
-		Vector2(0.20, 3.70), Vector2(0.74, 5.0),
-	], 0.76)
+		Vector2(0.0, -1.95), Vector2(-0.15, -1.35), Vector2(-0.20, -0.65),
+		Vector2(-0.55, -0.05), Vector2(-0.95, 0.38),
+	], 0.72)
 	_add_curved_worn_path([
-		Vector2(-1.26, -0.55), Vector2(-2.05, -0.52), Vector2(-3.05, -0.73),
-		Vector2(-4.40, -1.04), Vector2(-5.75, -1.32), Vector2(-7.25, -1.52),
-	], 0.70)
+		Vector2(-1.55, 0.78), Vector2(-2.25, 0.54), Vector2(-3.05, 0.08),
+		Vector2(-4.15, -0.28), Vector2(-5.35, -0.72), Vector2(-6.55, -1.10),
+		Vector2(-7.55, -1.42),
+	], 0.74)
 	_add_curved_worn_path([
-		Vector2(0.84, 1.02), Vector2(1.82, 1.18), Vector2(2.92, 1.00),
-		Vector2(4.25, 0.78), Vector2(5.65, 0.82), Vector2(7.05, 0.60),
-		Vector2(8.55, 0.38),
-	], 0.70)
+		Vector2(1.72, 1.22), Vector2(2.55, 1.58), Vector2(3.55, 1.78),
+		Vector2(4.75, 1.72), Vector2(5.95, 1.40), Vector2(7.25, 0.98),
+		Vector2(8.55, 0.42),
+	], 0.72)
+	_add_curved_worn_path([
+		Vector2(-1.95, 1.86), Vector2(-2.75, 2.30), Vector2(-3.65, 2.72),
+		Vector2(-4.75, 3.00), Vector2(-5.95, 3.10), Vector2(-7.25, 3.05),
+	], 0.66)
+	_add_curved_worn_path([
+		Vector2(1.35, 2.20), Vector2(1.72, 2.92), Vector2(1.85, 3.76),
+		Vector2(1.55, 4.72), Vector2(0.92, 5.72), Vector2(0.22, 6.72),
+	], 0.68)
+	# A quieter branch climbs toward the archive so the fixed landmarks share a
+	# believable settlement circulation loop instead of floating beside it.
+	_add_curved_worn_path([
+		Vector2(-4.35, -0.34), Vector2(-4.75, -1.18), Vector2(-5.05, -2.25),
+		Vector2(-5.55, -3.40), Vector2(-6.20, -4.62), Vector2(-6.82, -5.72),
+	], 0.58, true)
 	# Boundary variation belongs to the ribbon mesh and its feathered shader.
 	# Do not scatter independent quad decals across the meadow: their fixed
 	# rectangles survive camera movement and read as render artifacts rather
@@ -556,7 +614,10 @@ func _build_story_campfire() -> void:
 	var fire_position := Vector3(0.0, 0.10, 1.35)
 	var fire_pad_color: Color = PALETTE["path_shadow"]
 	fire_pad_color.a = 0.36
-	var fire_pad := _add_rounded_patch(fire_position + Vector3(0.0, -0.035, 0.0), Vector2(2.75, 1.85), fire_pad_color, -2.0)
+	# The commons is a textured packed-earth landing, not a detached brown oval.
+	# It remains a presentation decal: the hearth's existing gameplay shell and
+	# the free-build reserve remain the only physical authorities.
+	var fire_pad := _add_rounded_patch(fire_position + Vector3(0.0, -0.035, 0.0), Vector2(4.20, 3.05), fire_pad_color, -2.0, true, 1)
 	fire_pad.name = "SharedHearthActivityPad"
 	var fire := _fire_sprite_from_sheet(fire_position, 2.55)
 	if fire != null:
@@ -2282,6 +2343,11 @@ func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3,
 		decal_material.set_shader_parameter("corner_radius", 0.18 if path_material else 0.24)
 		decal_material.set_shader_parameter("edge_softness", 0.055 if is_shadow else 0.028)
 		decal_material.set_shader_parameter("ellipse_radius", 0.92)
+		if path_material and packed_earth_texture != null:
+			decal_material.set_shader_parameter("path_texture", packed_earth_texture)
+			decal_material.set_shader_parameter("path_texture_repeat", clampf(maxf(size.x, size.y) / 2.8, 1.0, 8.0))
+			decal_material.set_shader_parameter("path_texture_strength", 0.62)
+			decal_material.set_shader_parameter("use_path_texture", true)
 		patch.material_override = decal_material
 	else:
 		patch.material_override = _ground_material(color, color.a < 0.999, path_material)

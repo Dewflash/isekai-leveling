@@ -12,6 +12,9 @@ uniform float ellipse_radius : hint_range(0.60, 1.05, 0.01) = 0.92;
 uniform sampler2D path_texture : source_color, repeat_enable;
 uniform float path_texture_repeat : hint_range(1.0, 8.0, 0.1) = 3.0;
 uniform float path_texture_strength : hint_range(0.0, 1.0, 0.01) = 0.45;
+uniform bool use_path_texture = false;
+uniform vec4 lighting_tint : source_color = vec4(1.0);
+uniform float lighting_value : hint_range(0.50, 1.20, 0.01) = 1.0;
 
 float hash21(vec2 point) {
 	point = fract(point * vec2(123.34, 456.21));
@@ -49,14 +52,18 @@ void fragment() {
 	float grain = smooth_value_noise(UV * 18.0);
 	float edge_wobble = (grain - 0.5) * (shape_mode == 1 ? 0.045 : 0.075);
 	float edge_alpha = 1.0 - smoothstep(-edge_softness, edge_softness, distance_to_edge + edge_wobble);
-	if (shape_mode == 2) {
+	if (shape_mode == 2 || use_path_texture) {
 		// The ribbon mesh owns the curve, while the shader owns a restrained soft
 		// edge. Without this side feather every camera angle exposes a hard
 		// quadrilateral and the path reads like an editor strip.
 		float side_distance = abs(point.x);
 		float side_alpha = 1.0 - smoothstep(0.82, 0.995, side_distance);
 		float end_distance = min(UV.y, 1.0 - UV.y);
-		float end_alpha = smoothstep(0.0, 0.045, end_distance);
+		// Feather the ribbon into surrounding meadow over a measured cap instead
+		// of terminating it as a square editor strip. This keeps activity paths
+		// readable near plots while letting the commons and grass absorb their
+		// endpoints naturally under the fixed 3/4 camera.
+		float end_alpha = smoothstep(0.0, 0.08, end_distance);
 		edge_alpha *= side_alpha;
 		edge_alpha *= end_alpha;
 		// A soft, directional dapple keeps the trail hand-painted without the
@@ -77,7 +84,7 @@ void fragment() {
 		packed_earth = mix(packed_earth, base_color.rgb, 0.08);
 		surface_color = mix(surface_color, packed_earth, path_texture_strength);
 	}
-	ALBEDO = surface_color;
+	ALBEDO = clamp(surface_color * lighting_tint.rgb * lighting_value, vec3(0.0), vec3(1.0));
 	ALPHA = base_color.a * edge_alpha;
 	ROUGHNESS = 1.0;
 }

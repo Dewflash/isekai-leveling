@@ -1,6 +1,6 @@
 # Prodewty Build Status
 
-Updated: 2026-07-23, Asia/Singapore
+Updated: 2026-07-24, Asia/Singapore
 
 ## Current target
 
@@ -1035,3 +1035,43 @@ close the Sanctuary gate. The central route composition still needs another
 art-direction pass, and physical device hitbox QA, final lighting, deeper
 interiors, full action animation coverage, audio depth, and all frozen biome
 production work remain open.
+
+## 2026-07-24 measured collision and clock-grade checkpoint
+
+- Re-authored the central Sanctuary circulation as offset activity approaches
+  around a shared hearth landing: lodge, bazaar, pond, garden edge, south
+  workyard, and archive. The route is still presentation-only; GameSession
+  remains the authority for movement, placement, occupancy, and collision.
+  Ribbon endpoint feathering was widened in the live ground decal shader so
+  paths dissolve into the meadow instead of ending as square editor strips.
+- Added a display-backed hitbox evidence harness at
+  `tests/capture_sanctuary_hitbox_alignment.gd`. It instantiates four real
+  operational structures at rotations q0–q3, draws the imported fitted source
+  envelope in cyan and every live measured collision component in red, and
+  verifies containment with a 0.025 m tolerance. The latest run passed
+  `SANCTUARY_HITBOX_ALIGNMENT_PASS structures=4 checks=39`; evidence is
+  `/private/tmp/isekai-sanctuary-hitbox-alignment-v2.png`.
+- Ground, landmark, player-structure, and authored prop shaders now receive
+  the same authoritative day/night grade. The world-clock capture override is
+  applied after Main restores the save clock, so the HUD time and rendered
+  lighting are one evidence frame. Campfire art remains a warm activity cue;
+  night buildings remain readable instead of collapsing into silhouettes.
+- The display-backed shader integration contract passes 159 checks. Day and
+  night evidence is `/private/tmp/isekai-sanctuary-light-day-v3.png` and
+  `/private/tmp/isekai-sanctuary-light-night-v4.png`; the final daylight route
+  frame is `/private/tmp/isekai-sanctuary-final-day.png`.
+- Full stage proof passes in `/private/tmp/isekai-sanctuary-stages-light-v2/`:
+  placement and q1 preview, blueprint/scaffold/mid/late/operational states,
+  motion occlusion, and both materially different player-authored layouts.
+  The latest layout comparison reports 78 occupied-cell differences,
+  `changed_ratio=0.6477`, and `mean_color_delta=0.1474`.
+- Fixed the audio focus path so a finished music transition is never played
+  again after the app regains focus. The Sanctuary visual contract remains
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5653` without the prior finished-Tween
+  warning.
+
+This is a verified Sanctuary implementation increment, not a final-game claim.
+The accepted A+C bar remains open for final route art direction, device-level
+movement/hitbox acceptance, deeper building interiors, full character/action
+animation coverage, audio depth, final UI polish, and the frozen biome/content
+production pass.
