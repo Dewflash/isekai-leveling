@@ -4,6 +4,7 @@ const SessionScript := preload("res://scripts/game_session.gd")
 
 var failures: Array[String] = []
 var checks := 0
+var owned_sessions: Array[Node] = []
 
 func _init() -> void:
 	call_deferred("_run")
@@ -14,8 +15,19 @@ func _check(condition: bool, message: String) -> void:
 		failures.append(message)
 		push_error("FIRST_RUN_FAIL: " + message)
 
+func _new_session() -> Node:
+	var session: Node = SessionScript.new()
+	owned_sessions.append(session)
+	return session
+
+func _cleanup_sessions() -> void:
+	for session in owned_sessions:
+		if is_instance_valid(session):
+			session.free()
+	owned_sessions.clear()
+
 func _run() -> void:
-	var session := SessionScript.new()
+	var session: Node = _new_session()
 	_check(int(session.get("quest").get("target", 0)) == 2, "fresh first-run contract matches the two-unit field bundle")
 	_check(str(session.call("first_run_stage")) == "meet_mira", "fresh session starts with the Mira objective")
 	_check(bool(session.call("advance_first_run", "meet_mira")), "meeting Mira advances the first-run journey")
@@ -38,15 +50,17 @@ func _run() -> void:
 	_check(bool(session.get("quest").get("first_run_completed", false)), "completion is recorded in the quest save payload")
 	var payload: Dictionary = session.call("_to_dict")
 	_check(bool(session.call("_save_shape_is_supported", payload)), "the extended quest payload remains save-valid")
-	var restored := SessionScript.new()
+	var restored: Node = _new_session()
 	restored.call("_apply_dict", payload)
 	_check(str(restored.call("first_run_stage")) == "complete", "the completed journey survives state reload")
 	_check(bool(restored.get("quest").get("first_run_completed", false)), "reload preserves the completion flag")
 	if failures.is_empty():
 		print("FIRST_RUN_GUIDANCE_PASS checks=%d" % checks)
+		_cleanup_sessions()
 		quit(0)
 	else:
 		print("FIRST_RUN_GUIDANCE_FAIL failures=%d checks=%d" % [failures.size(), checks])
 		for failure in failures:
 			print("  ", failure)
+		_cleanup_sessions()
 		quit(1)

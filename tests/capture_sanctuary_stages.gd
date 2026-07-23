@@ -222,7 +222,7 @@ func _capture_clean_daylight() -> bool:
 	await _settle_and_pause()
 	_set_camera_focus(Vector3(0.0, 0.0, 1.6))
 	await process_frame
-	return _save_capture("01_clean_daylight.png")
+	return await _save_capture("01_clean_daylight.png")
 
 func _capture_placement_preview() -> bool:
 	await _begin_state()
@@ -260,7 +260,7 @@ func _capture_placement_preview() -> bool:
 	if not preview_valid or not preview_active or not preview_shape_matches:
 		_abort("Placement preview did not resolve to a valid active footprint")
 		return false
-	return _save_capture("02_placement_preview_active.png")
+	return await _save_capture("02_placement_preview_active.png")
 
 func _capture_rotated_placement_preview() -> bool:
 	await _begin_state()
@@ -298,7 +298,7 @@ func _capture_rotated_placement_preview() -> bool:
 	if not preview_valid or preview_root == null or not preview_root.visible or not preview_shape_matches or silhouette == null:
 		_abort("Rotated placement preview did not resolve to an authored footprint and silhouette")
 		return false
-	return _save_capture("03_rotated_placement_preview_active.png")
+	return await _save_capture("03_rotated_placement_preview_active.png")
 
 func _capture_structure_stage(file_name: String, state: String, remaining_hours: float, delivered: Dictionary, rotation := 0) -> bool:
 	await _begin_state()
@@ -333,7 +333,7 @@ func _capture_structure_stage(file_name: String, state: String, remaining_hours:
 	await _settle_and_pause()
 	_set_camera_focus(structure_center)
 	await process_frame
-	return _save_capture(file_name)
+	return await _save_capture(file_name)
 
 func _capture_motion_occlusion_proof() -> bool:
 	await _begin_state()
@@ -377,6 +377,7 @@ func _capture_motion_occlusion_proof() -> bool:
 	paused = true
 	_set_camera_focus(focus)
 	await process_frame
+	await _flush_capture_render()
 	if not _motion_subject_is_in_capture(proof_tree, "swaying tree"):
 		return false
 	if not _motion_subject_is_in_capture(proof_fire, "hearth/fire"):
@@ -405,6 +406,7 @@ func _capture_motion_occlusion_proof() -> bool:
 			paused = true
 			_set_camera_focus(focus)
 			await process_frame
+			await _flush_capture_render()
 
 		max_tree_delta = maxf(max_tree_delta, (proof_tree.scale - initial_tree_scale).length())
 		max_fire_delta = maxf(max_fire_delta, (proof_fire.scale - initial_fire_scale).length())
@@ -600,6 +602,7 @@ func _capture_player_authored_layout(layout_id: String, file_name: String, layou
 	await _settle_and_pause()
 	_set_camera_focus(focus)
 	await process_frame
+	await _flush_capture_render()
 	if not _layout_visuals_are_visible(placed_instance_ids, layout_id):
 		return {}
 	var image := _current_render_image("player-authored layout %s" % layout_id)
@@ -1018,14 +1021,10 @@ func _player_rendered_pixel_count(visible_image: Image, player: CharacterBody3D,
 	# difference proves the avatar is present in the actual image, not merely
 	# enabled in the scene tree or nominally inside the camera frustum.
 	visual.visible = false
-	# The Sanctuary now carries a real sun plus bounded lantern shadows. Give the
-	# display-backed SubViewport two render frames to retire the previous shadow
-	# map before sampling the hidden comparison; a single process frame can still
-	# return the old shadowed image on Metal.
-	await _wait_frames(5)
+	await _flush_capture_render()
 	var hidden_image := _current_render_image("hidden-player comparison %d" % sample_index)
 	visual.visible = true
-	await _wait_frames(5)
+	await _flush_capture_render()
 	if hidden_image == null:
 		return -1
 
@@ -1121,6 +1120,11 @@ func _save_capture(file_name: String) -> bool:
 	if capture_viewport == null:
 		_abort("Capture viewport disappeared before %s" % file_name)
 		return false
+	# Stage capture intentionally pauses gameplay between states, but a paused
+	# SceneTree can leave a SubViewport texture on the previous rendered frame.
+	# Flush the real renderer while keeping Main's camera process disabled so the
+	# stage focus is preserved.
+	await _flush_capture_render()
 	var texture := capture_viewport.get_texture()
 	if texture == null:
 		_unavailable("viewport texture became unavailable while writing %s" % file_name)
@@ -1136,6 +1140,26 @@ func _save_capture(file_name: String) -> bool:
 		return false
 	print("SANCTUARY_STAGE_CAPTURE_PASS ", output_path, " ", image.get_width(), "x", image.get_height())
 	return true
+
+func _flush_capture_render() -> void:
+	if capture_viewport == null:
+		return
+	var was_paused := paused
+	var previous_world_process_mode := world.process_mode if world != null else Node.PROCESS_MODE_INHERIT
+	if was_paused:
+		if world != null:
+			world.process_mode = Node.PROCESS_MODE_DISABLED
+		paused = false
+	# `process_frame` advances scene state, while `force_draw` commits the
+	# SubViewport texture. Both are needed when a capture follows a paused state.
+	capture_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await process_frame
+	RenderingServer.force_draw(false, false)
+	await process_frame
+	capture_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	paused = was_paused
+	if world != null:
+		world.process_mode = previous_world_process_mode
 
 func _wait_frames(frame_count: int) -> void:
 	for _frame in frame_count:

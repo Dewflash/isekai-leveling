@@ -6,6 +6,7 @@ const ContentRegistry = preload("res://scripts/content_registry.gd")
 var failures: Array[String] = []
 var checks_run := 0
 var unique_save_slot := ""
+var owned_sessions: Array[Node] = []
 
 func _init() -> void:
 	unique_save_slot = "qa_progression_runtime_%d_%d" % [int(Time.get_unix_time_from_system()), Time.get_ticks_msec()]
@@ -19,10 +20,16 @@ func _check(condition: bool, message: String) -> bool:
 	push_error("PROGRESSION_RUNTIME_FAIL: " + message)
 	return false
 
-func _fresh_session() -> Node:
+func _new_session(add_to_tree := true) -> Node:
 	var session: Node = SessionScript.new()
+	owned_sessions.append(session)
+	if add_to_tree:
+		root.add_child(session)
+	return session
+
+func _fresh_session() -> Node:
+	var session := _new_session()
 	session.save_slot = unique_save_slot
-	root.add_child(session)
 	return session
 
 func _install_operational_workshop(session: Node) -> void:
@@ -283,7 +290,7 @@ func _test_deterministic_chance_rolls(session: Node) -> void:
 	var incomplete_current: Dictionary = snapshot.duplicate(true)
 	incomplete_current.erase("chance_rolls")
 	_check(not session.call("_save_shape_is_supported", incomplete_current), "current-version saves cannot omit chance history")
-	var reloaded: Node = SessionScript.new()
+	var reloaded: Node = _new_session(false)
 	reloaded.call("_apply_dict", snapshot)
 	_check(reloaded.resolve_mastery_chance("farming_seed_saver", "seed_refund_chance", action_id) == first_result, "a chance result survives save/load")
 	_check(reloaded.chance_rolls.size() == session.chance_rolls.size(), "chance roll history survives save/load")
@@ -294,8 +301,7 @@ func _test_playable_mastery_effects() -> void:
 	# Seasonal pressure is evaluated from the previous day state before the
 	# calendar rolls forward. Without Steward, a watered crop loses its entire
 	# growth step in the two harsh seasons; with the permission, it still grows.
-	var plain_farm: Node = SessionScript.new()
-	root.add_child(plain_farm)
+	var plain_farm: Node = _new_session()
 	plain_farm.day = 1
 	plain_farm.last_day_transaction = 0
 	plain_farm.season = "Frostveil"
@@ -303,8 +309,7 @@ func _test_playable_mastery_effects() -> void:
 	_check(plain_farm.advance_day(2), "a harsh-season day advances once")
 	_check(int(plain_farm.farm_plot.get("growth", -1)) == 0, "harsh-season crop pressure is authoritative before Steward")
 
-	var steward_farm: Node = SessionScript.new()
-	root.add_child(steward_farm)
+	var steward_farm: Node = _new_session()
 	steward_farm.day = 1
 	steward_farm.last_day_transaction = 0
 	steward_farm.season = "Frostveil"
@@ -318,8 +323,7 @@ func _test_playable_mastery_effects() -> void:
 	# Deep seams are authored runtime instances. Collection rejects the seam
 	# before the permission, then resolves the extra unit in the same harvest
 	# transaction after Deep Delver is earned.
-	var mine: Node = SessionScript.new()
-	root.add_child(mine)
+	var mine: Node = _new_session()
 	mine.day = 1
 	mine.energy = mine.max_energy
 	mine.coins = 1000
@@ -345,8 +349,7 @@ func _test_playable_mastery_effects() -> void:
 	# Tide Reader is a real expedition fishing loop. The coastal spot remains
 	# route-bound, while the permission converts a favorable tide roll into a
 	# persisted uncommon shell that is paid only on claim.
-	var coastal: Node = SessionScript.new()
-	root.add_child(coastal)
+	var coastal: Node = _new_session()
 	coastal.coins = 1000
 	coastal.energy = coastal.max_energy
 	coastal.inventory["fiber"] = 1
@@ -380,8 +383,7 @@ func _test_playable_mastery_effects() -> void:
 	# Crafting tiers now change a real Workshop output. Quality Work restores a
 	# reinforced hatchet above its old durability, while Masterwork Bench exposes
 	# a separate pickaxe recipe and keeps the same elapsed job/claim boundary.
-	var crafter: Node = SessionScript.new()
-	root.add_child(crafter)
+	var crafter: Node = _new_session()
 	_install_operational_workshop(crafter)
 	crafter.masteries["Crafting"] = 70
 	crafter.call("_sync_mastery_permissions")
@@ -421,8 +423,7 @@ func _test_playable_mastery_effects() -> void:
 	# Sanctuary Breeder is a care loop, not an instant trait flag. Four feed/
 	# sleep cycles nurture Clover's authored Sunplume trait, which then pays one
 	# extra egg in the same collection transaction.
-	var breeder: Node = SessionScript.new()
-	root.add_child(breeder)
+	var breeder: Node = _new_session()
 	breeder.built["livestock_pen"] = true
 	breeder.masteries["Livestock"] = 95
 	breeder.call("_sync_mastery_permissions")
@@ -438,7 +439,7 @@ func _test_playable_mastery_effects() -> void:
 	var eggs_before_trait := int(breeder.inventory.get("egg", 0))
 	var trait_collection: Dictionary = breeder.collect_livestock("clover")
 	_check(int(trait_collection.get("egg", 0)) >= 2 and int(breeder.inventory.get("egg", 0)) == eggs_before_trait + int(trait_collection.get("egg", 0)), "Sunplume pays its extra egg atomically")
-	var breeder_reload := SessionScript.new()
+	var breeder_reload: Node = _new_session(false)
 	breeder_reload.call("_apply_dict", breeder.call("_to_dict"))
 	_check(str(breeder_reload.livestock["clover"].get("trait_id", "")) == "sunplume", "livestock traits survive state reload")
 	var forged_livestock_payload: Dictionary = breeder.call("_to_dict")
@@ -452,8 +453,7 @@ func _test_playable_mastery_effects() -> void:
 	# route, branch selection is required, and Context Reader/World Polyglot
 	# determine which inscriptions can be translated. A translation is a
 	# one-time persisted reward rather than a repeatable menu payout.
-	var translator: Node = SessionScript.new()
-	root.add_child(translator)
+	var translator: Node = _new_session()
 	translator.coins = 1000
 	translator.energy = translator.max_energy
 	_check(translator.start_expedition("Whisperwood"), "a translator can enter the authored forest route")
@@ -470,15 +470,14 @@ func _test_playable_mastery_effects() -> void:
 	_check(translator.read_expedition_inscription("whisperwood_root_oath").is_empty(), "a translated inscription cannot pay twice")
 	_check(translator.read_expedition_inscription("sunlit_tide_vow").is_empty(), "an inscription on another expedition cannot be read in the current route")
 	var translated_save: Dictionary = translator.call("_to_dict")
-	var translated_reload: Node = SessionScript.new()
+	var translated_reload: Node = _new_session(false)
 	translated_reload.call("_apply_dict", translated_save)
 	_check(translated_reload.translated_inscriptions.has("whisperwood_root_oath"), "translated lore survives state reload")
 	var forged_translation_payload: Dictionary = translator.call("_to_dict")
 	forged_translation_payload["translated_inscriptions"] = ["forged_inscription"]
 	_check(not translator.call("_save_shape_is_supported", forged_translation_payload), "unknown translated lore cannot enter a save")
 
-	var polyglot: Node = SessionScript.new()
-	root.add_child(polyglot)
+	var polyglot: Node = _new_session()
 	polyglot.coins = 1000
 	polyglot.energy = polyglot.max_energy
 	polyglot.unlocked_routes.append("Sunken Dungeon")
@@ -495,8 +494,7 @@ func _test_playable_mastery_effects() -> void:
 	var ancient_translation: Dictionary = polyglot.read_expedition_inscription("sunken_vault_verse")
 	_check(int(ancient_translation.get("xp", 0)) == 21 and int(ancient_translation.get("coins", 0)) == 12, "World Polyglot applies the authored ancient-lore reward multiplier")
 
-	var hunter: Node = SessionScript.new()
-	root.add_child(hunter)
+	var hunter: Node = _new_session()
 	hunter.coins = 1000
 	hunter.energy = hunter.max_energy
 	_check(hunter.start_expedition("Whisperwood"), "a hunter can enter the wildlife route")
@@ -511,18 +509,16 @@ func _test_playable_mastery_effects() -> void:
 	hunter.call("_sync_mastery_permissions")
 	_check(is_equal_approx(float(hunter.permission_effect("hunting_ambush_sense", "warning_seconds", 0.0)), 1.5), "Ambush Sense exposes its authored warning window")
 	var hunter_save: Dictionary = hunter.call("_to_dict")
-	var hunter_reload: Node = SessionScript.new()
+	var hunter_reload: Node = _new_session(false)
 	hunter_reload.call("_apply_dict", hunter_save)
 	_check(hunter_reload.tracked_wildlife.has("forest_rabbit"), "track notes survive state reload")
 	var forged_track_payload: Dictionary = hunter.call("_to_dict")
 	forged_track_payload["tracked_wildlife"] = ["forged_wildlife"]
 	_check(not hunter.call("_save_shape_is_supported", forged_track_payload), "unknown track notes cannot enter a save")
-	var untrained_combat: Node = SessionScript.new()
-	root.add_child(untrained_combat)
+	var untrained_combat: Node = _new_session()
 	untrained_combat.energy = untrained_combat.max_energy
 	var untrained_attack: Dictionary = untrained_combat.resolve_attack(7, 1, 18, false, true)
-	var trained_combat: Node = SessionScript.new()
-	root.add_child(trained_combat)
+	var trained_combat: Node = _new_session()
 	trained_combat.energy = trained_combat.max_energy
 	trained_combat.masteries["Hunting"] = 45
 	trained_combat.call("_sync_mastery_permissions")
@@ -532,8 +528,7 @@ func _test_playable_mastery_effects() -> void:
 	# Bazaar offers are a daily sourcing loop rather than an infinite fixed
 	# payout. Appraisal and caravan permissions change what is readable and what
 	# is available, while a persisted receipt prevents a duplicate trade.
-	var market: Node = SessionScript.new()
-	root.add_child(market)
+	var market: Node = _new_session()
 	market.save_slot = unique_save_slot
 	var offers: Array = market.market_offers()
 	_check(offers.size() == 4, "a fresh Bazaar exposes the four core daily offers")
@@ -584,9 +579,8 @@ func _test_playable_mastery_effects() -> void:
 		forged_fishing_payload["fishing_attempt"] = forged_fishing_attempt
 		_check(not market.call("_save_shape_is_supported", forged_fishing_payload), "unknown fishing bonus resources cannot enter a save")
 		_check(market.save_game(), "daily market receipts save atomically")
-		var market_loaded: Node = SessionScript.new()
+		var market_loaded: Node = _new_session()
 		market_loaded.save_slot = unique_save_slot
-		root.add_child(market_loaded)
 		_check(market_loaded.load_game(), "daily market receipts reload")
 		_check(market_loaded.resolve_trade_offer(first_id).is_empty(), "reloaded market receipts still block duplicate sale")
 		_check(market_loaded.resolve_trade_contract(str(guild_contract.get("contract_id", ""))).is_empty(), "reloaded Guild contract receipts still block duplicate settlement")
@@ -604,9 +598,8 @@ func _remove_unique_save() -> void:
 
 func _test_save_reload(session: Node) -> void:
 	_check(session.save_game(), "progression state saves to a unique slot")
-	var reloaded: Node = SessionScript.new()
+	var reloaded: Node = _new_session()
 	reloaded.save_slot = unique_save_slot
-	root.add_child(reloaded)
 	_check(reloaded.load_game(), "unique progression slot reloads successfully")
 	_check(reloaded.activity_minutes_total == session.activity_minutes_total, "activity minute total survives reload")
 	_check(reloaded.activity_stat_gains == session.activity_stat_gains, "activity stat gains survive reload")
@@ -625,6 +618,7 @@ func _test_save_reload(session: Node) -> void:
 
 func _finish() -> void:
 	_remove_unique_save()
+	_cleanup_sessions()
 	if failures.is_empty():
 		print("PROGRESSION_RUNTIME_PASS checks=%d slot=%s" % [checks_run, unique_save_slot])
 		quit(0)
@@ -633,6 +627,12 @@ func _finish() -> void:
 	for index in failures.size():
 		print("  %02d. %s" % [index + 1, failures[index]])
 	quit(1)
+
+func _cleanup_sessions() -> void:
+	for session in owned_sessions:
+		if is_instance_valid(session):
+			session.free()
+	owned_sessions.clear()
 
 func _run() -> void:
 	var session := _fresh_session()

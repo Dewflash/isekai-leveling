@@ -6429,7 +6429,11 @@ func _enter_building_interior(structure_node: Node3D) -> void:
 	if str(structure.get("state", "")) != "operational":
 		return
 	var measurement: Dictionary = structure_node.get_meta("source_measurement", {})
-	var rotation := int(structure_node.get_meta("structure_rotation", 0))
+	# The structure root owns the canonical quarter-turn. Keep the same authored
+	# rotation when configuring the separate interior room; the old metadata key
+	# silently defaulted to zero and made rotated doors use the wrong room-facing
+	# contract even though the exterior anchor was correct.
+	var rotation := int(structure_node.get_meta("rotation_quarter_turns", structure_node.get_meta("structure_rotation", 0)))
 	var access_zones: Array = SanctuaryAssetCatalog.structure_access_zones(kind, rotation)
 	if not building_interior.call("configure_for_structure", kind, measurement, access_zones, interior_profile):
 		_show_toast("The %s interior is unavailable until its measured shell is valid." % _structure_display_name(kind), 2.6)

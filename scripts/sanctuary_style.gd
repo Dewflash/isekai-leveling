@@ -118,10 +118,10 @@ const PALETTE := {
 	"meadow_deep": Color("#455a46"),
 	"forest_skirt": Color("#173526"),
 	"build_field": Color("#788b63"),
-	"path": Color("#b58a65"),
-	"path_light": Color("#c09973"),
-	"path_shadow": Color("#89634f"),
-	"path_edge": Color("#745f4e"),
+	"path": Color("#c39167"),
+	"path_light": Color("#d0a579"),
+	"path_shadow": Color("#9b674b"),
+	"path_edge": Color("#80523e"),
 	"contact_shadow": Color(0.12, 0.16, 0.12, 0.24),
 	"grid": Color(0.58, 0.94, 0.81, 0.32),
 	"grid_valid": Color(0.32, 0.96, 0.85, 0.82),
@@ -415,27 +415,11 @@ func _hide_render_tree(node: Node) -> void:
 		_hide_render_tree(child)
 
 func _build_soft_ground() -> void:
-	# The authored plate supplies the continuous woodland floor. Keep only a
-	# handful of small shader-driven moss overlays for depth and measured style
-	# coverage; a giant opaque procedural slab would hide the authored ground and
-	# recreate the old smooth-green presentation the art gate rejected.
-	_add_rounded_patch(Vector3(-9.8, 0.024, -5.5), Vector2(2.6, 1.8), PALETTE["meadow_shadow"], -12.0)
-	_add_rounded_patch(Vector3(9.4, 0.024, 5.0), Vector2(2.7, 1.9), PALETTE["meadow_light"], 14.0)
-	_add_rounded_patch(Vector3(-8.0, 0.026, 7.6), Vector2(2.5, 1.5), PALETTE["meadow_light"], 4.0)
-	_add_rounded_patch(Vector3(7.0, 0.026, -7.0), Vector2(2.6, 1.5), PALETTE["meadow_shadow"], -8.0)
-	for edge_data in [
-		[Vector3(-12.9, 0.028, -5.8), Vector2(1.7, 2.3), -16.0, "meadow_deep"],
-		[Vector3(-13.2, 0.029, 3.0), Vector2(1.5, 2.0), 9.0, "meadow_shadow"],
-		[Vector3(-9.8, 0.029, 10.0), Vector2(2.2, 1.3), -8.0, "meadow_light"],
-		[Vector3(-2.8, 0.029, 11.2), Vector2(2.4, 1.1), 5.0, "meadow_shadow"],
-		[Vector3(5.4, 0.029, 10.9), Vector2(2.0, 1.1), -11.0, "meadow_light"],
-		[Vector3(12.8, 0.029, 6.2), Vector2(1.6, 2.2), 14.0, "meadow_shadow"],
-		[Vector3(13.3, 0.029, -2.8), Vector2(1.4, 1.9), -7.0, "meadow_deep"],
-		[Vector3(8.2, 0.029, -10.1), Vector2(2.1, 1.4), 10.0, "meadow_light"],
-		[Vector3(-1.0, 0.029, -10.5), Vector2(2.6, 1.1), -4.0, "meadow_shadow"],
-	]:
-		var edge := _add_rounded_patch(edge_data[0], edge_data[1], PALETTE[str(edge_data[3])], float(edge_data[2]))
-		edge.name = "IrregularMeadowEdge"
+	# The authored ground plate already provides the continuous woodland floor.
+	# Independent moss quads were visually reading as detached grey-green cards
+	# at the camera's current scale, so depth variation now comes from the ground
+	# shader, path ribbons, shadows, and authored foliage instead of extra decals.
+	pass
 
 func _build_forest_backdrop() -> void:
 	# A+C reads as a settlement carved out of a living forest, not a green
@@ -506,36 +490,19 @@ func _build_paths() -> void:
 		Vector2(-0.70, -4.8), Vector2(-0.48, -3.3), Vector2(-0.12, -1.7),
 		Vector2(0.08, 0.05), Vector2(0.20, 1.80), Vector2(-0.02, 3.45),
 		Vector2(0.75, 5.0),
-	], 1.12)
+	], 0.82)
 	_add_curved_worn_path([
 		Vector2(-0.05, -0.05), Vector2(-1.40, -0.30), Vector2(-2.80, -0.68),
 		Vector2(-4.35, -1.05), Vector2(-5.70, -1.38), Vector2(-7.25, -1.52),
-	], 0.98)
+	], 0.72)
 	_add_curved_worn_path([
 		Vector2(0.16, 0.72), Vector2(1.65, 0.78), Vector2(3.20, 0.60),
 		Vector2(4.85, 0.48), Vector2(6.55, 0.70), Vector2(8.55, 0.38),
-	], 0.96)
-	for wear_data in [
-		[Vector3(-1.48, 0.059, -3.0), Vector2(0.72, 1.45), -14.0],
-		[Vector3(1.47, 0.059, -0.7), Vector2(0.62, 1.20), 11.0],
-		[Vector3(-1.42, 0.059, 5.5), Vector2(0.58, 1.30), 8.0],
-		[Vector3(-7.4, 0.059, -1.0), Vector2(1.35, 0.55), -8.0],
-		[Vector3(-3.4, 0.059, 1.62), Vector2(1.10, 0.50), 12.0],
-		[Vector3(4.8, 0.059, -0.93), Vector2(1.20, 0.48), -11.0],
-		[Vector3(8.1, 0.059, 1.53), Vector2(1.05, 0.45), 6.0],
-	]:
-		var wear := _add_rounded_patch(wear_data[0], wear_data[1], PALETTE["path_light"], float(wear_data[2]), false, 0)
-		wear.name = "IrregularPathWear"
-	for intrusion_data in [
-		[Vector3(-1.42, 0.061, -5.0), Vector2(0.78, 1.10), -8.0],
-		[Vector3(1.38, 0.061, 8.0), Vector2(0.70, 1.25), 13.0],
-		[Vector3(-8.4, 0.064, -1.02), Vector2(1.25, 0.60), 7.0],
-		[Vector3(-7.1, 0.064, 1.52), Vector2(1.00, 0.52), -10.0],
-		[Vector3(7.2, 0.064, -0.75), Vector2(1.10, 0.52), 9.0],
-		[Vector3(8.6, 0.064, 1.44), Vector2(0.92, 0.48), -7.0],
-	]:
-		var intrusion := _add_rounded_patch(intrusion_data[0], intrusion_data[1], PALETTE["meadow"], float(intrusion_data[2]), false, 0)
-		intrusion.name = "IrregularGrassIntrusion"
+	], 0.72)
+	# Boundary variation belongs to the ribbon mesh and its feathered shader.
+	# Do not scatter independent quad decals across the meadow: their fixed
+	# rectangles survive camera movement and read as render artifacts rather
+	# than worn ground, especially beside player-authored buildings.
 	for stone_data in [
 		[Vector3(-1.8, 0.075, 5.8), 0.22], [Vector3(1.9, 0.075, 5.9), 0.25],
 		[Vector3(-2.15, 0.075, -4.0), 0.20], [Vector3(2.3, 0.075, -4.0), 0.19],
@@ -548,13 +515,9 @@ func _build_open_build_field() -> void:
 	# Keep its quiet ground treatment and build-mode-only grid, but do not paint
 	# permanent plot discs into the world: even neutral pads imply a prescribed
 	# settlement layout before the player has chosen one.
-	# The authored ground already carries the clearing. Keep the reserve's
-	# presentation as a barely-there tint so it remains discoverable without
-	# hiding the woodland texture or dictating an old prototype-style oval.
-	var field_edge := _add_rounded_patch(Vector3(0.0, 0.061, 1.65), Vector2(11.0, 8.6), Color(0.20, 0.28, 0.20, 0.18), 0.0)
-	field_edge.name = "PlayerDirectedBuildFieldEdge"
-	var field := _add_rounded_patch(Vector3(0.0, 0.064, 1.65), Vector2(10.6, 8.2), Color(0.40, 0.52, 0.36, 0.11), 0.0)
-	field.name = "PlayerDirectedBuildField"
+	# The authored ground already carries the clearing. The build reserve stays
+	# visually undecorated until the player enters placement mode; a permanent
+	# oval would imply a preselected layout and break the free-placement promise.
 	grid_root = Node3D.new()
 	grid_root.name = "BuildGridOverlay"
 	grid_root.visible = false
@@ -584,7 +547,9 @@ func _build_story_campfire() -> void:
 	# beat from the saved Sanctuary target without prescribing where future plots
 	# must be placed.
 	var fire_position := Vector3(0.0, 0.10, 1.35)
-	var fire_pad := _add_rounded_patch(fire_position + Vector3(0.0, -0.035, 0.0), Vector2(2.75, 1.85), PALETTE["path_shadow"], -2.0)
+	var fire_pad_color: Color = PALETTE["path_shadow"]
+	fire_pad_color.a = 0.36
+	var fire_pad := _add_rounded_patch(fire_position + Vector3(0.0, -0.035, 0.0), Vector2(2.75, 1.85), fire_pad_color, -2.0)
 	fire_pad.name = "SharedHearthActivityPad"
 	var fire := _fire_sprite_from_sheet(fire_position, 2.55)
 	if fire != null:
@@ -2183,12 +2148,40 @@ func _add_curved_worn_path(points: Array, width: float, darker := false) -> void
 			normalized_points.append(point_value as Vector2)
 	if normalized_points.size() < 2:
 		return
+	# A short authored waypoint list is a design input, not a render polygon.
+	# Resample it with a centripetal-looking Catmull-Rom pass so camera motion
+	# cannot expose the old angular editor-strip corners.
+	normalized_points = _resample_curved_points(normalized_points, 6)
 	var edge_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path_edge"]
 	var core_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path"]
 	var edge := _add_curved_ribbon(normalized_points, width + 0.18, edge_color, 0.046)
 	edge.name = "PackedEarthPathEdge"
 	var core := _add_curved_ribbon(normalized_points, width, core_color, 0.056)
 	core.name = "PackedEarthPath"
+
+func _resample_curved_points(points: Array[Vector2], subdivisions: int) -> Array[Vector2]:
+	if points.size() < 2 or subdivisions < 2:
+		return points.duplicate()
+	var result: Array[Vector2] = []
+	var last_index := points.size() - 1
+	for index in range(last_index):
+		var p0 := points[maxi(0, index - 1)]
+		var p1 := points[index]
+		var p2 := points[index + 1]
+		var p3 := points[mini(last_index, index + 2)]
+		for step in range(subdivisions):
+			var t := float(step) / float(subdivisions)
+			var t2 := t * t
+			var t3 := t2 * t
+			var sample := 0.5 * (
+				(2.0 * p1)
+				+ (-p0 + p2) * t
+				+ (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+				+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+			)
+			result.append(sample)
+	result.append(points[last_index])
+	return result
 
 func _add_curved_ribbon(points: Array[Vector2], width: float, color: Color, y_position: float) -> MeshInstance3D:
 	var patch := MeshInstance3D.new()

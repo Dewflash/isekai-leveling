@@ -45,6 +45,7 @@ func _run() -> void:
 		_check(ground_plate != null and not bool(ground_plate.get_meta("occupies_build_cells", true)), "open-ground plate must not claim build cells")
 		var moss_count := 0
 		var path_count := 0
+		var smooth_path_vertex_count := 0
 		var contact_count := 0
 		var decal_count := 0
 		for value in style.find_children("*", "MeshInstance3D", true, false):
@@ -71,6 +72,11 @@ func _run() -> void:
 				decal_count += 1
 				if shader_role == "ground_decal_path":
 					path_count += 1
+					var path_mesh := mesh_instance.mesh as ArrayMesh
+					if path_mesh != null and path_mesh.get_surface_count() > 0:
+						var path_arrays: Array = path_mesh.surface_get_arrays(0)
+						if path_arrays.size() > Mesh.ARRAY_VERTEX and path_arrays[Mesh.ARRAY_VERTEX] is PackedVector3Array:
+							smooth_path_vertex_count = maxi(smooth_path_vertex_count, (path_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size())
 				if shader_role == "ground_decal_contact_shadow":
 					contact_count += 1
 			elif shader_role == "transparent_contact":
@@ -78,6 +84,7 @@ func _run() -> void:
 				_check(not (mesh_instance.material_override is ShaderMaterial), "%s transparent contact shadow must not use the opaque ground shader" % mesh_instance.name)
 		_check(moss_count > 0 or decal_count > 0, "live Sanctuary must activate measured ground presentation meshes")
 		_check(path_count > 0, "live Sanctuary must activate packed-earth path shader patches")
+		_check(smooth_path_vertex_count >= 40, "organic path ribbons must be resampled before rendering so corners cannot read as hard slabs")
 		_check(decal_count > 0, "live Sanctuary must activate measured ground decal meshes")
 		_check(contact_count > 0, "live Sanctuary must retain presentation-only contact shadows")
 	var building_interior := world.get("building_interior") as Node3D

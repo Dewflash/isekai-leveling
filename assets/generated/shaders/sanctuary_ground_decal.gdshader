@@ -36,9 +36,15 @@ void fragment() {
 	float edge_wobble = (grain - 0.5) * (shape_mode == 1 ? 0.065 : 0.10);
 	float edge_alpha = 1.0 - smoothstep(-edge_softness, edge_softness, distance_to_edge + edge_wobble);
 	if (shape_mode == 2) {
-		// Keep the side boundary owned by the measured ribbon mesh. The mesh's
-		// sampled points provide the organic curve; the shader adds only subtle
-		// world-facing variation so the path does not read as a flat editor strip.
+		// The ribbon mesh owns the curve, while the shader owns a restrained soft
+		// edge. Without this side feather every camera angle exposes a hard
+		// quadrilateral and the path reads like an editor strip.
+		float side_distance = abs(point.x);
+		float side_alpha = 1.0 - smoothstep(0.82, 0.995, side_distance);
+		float end_distance = min(UV.y, 1.0 - UV.y);
+		float end_alpha = smoothstep(0.0, 0.045, end_distance);
+		edge_alpha *= side_alpha;
+		edge_alpha *= end_alpha;
 		grain = hash21(floor(UV * vec2(7.0, 34.0)));
 	}
 	ALBEDO = base_color.rgb * mix(0.94, 1.035, grain);

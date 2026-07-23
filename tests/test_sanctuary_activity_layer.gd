@@ -42,15 +42,7 @@ func _run() -> void:
 	var build_field := style.get_node_or_null("PlayerDirectedBuildField") as MeshInstance3D if style != null else null
 	_check(style != null, "Sanctuary presentation style must exist")
 	_check(activity != null and activity.visible, "lived-in activity layer must be visible on a fresh Sanctuary")
-	_check(build_field != null, "player-directed build field must remain visible")
-	var field_rect := Rect2()
-	if build_field != null:
-		# Derive the live reserve envelope from the presentation node itself so the
-		# test follows the same authored dimensions as the running scene.
-		field_rect = Rect2(
-			Vector2(build_field.global_position.x - build_field.scale.x, build_field.global_position.z - build_field.scale.z),
-			Vector2(build_field.scale.x * 2.0, build_field.scale.z * 2.0)
-		)
+	_check(build_field == null, "fresh Sanctuary must not mount a permanent build-field decal")
 	var framing_rects: Array = AssetCatalog.framing_placement_rects()
 	if activity != null:
 		var art_count := 0
@@ -76,7 +68,6 @@ func _run() -> void:
 						Vector2(float(footprint[0]), float(footprint[1]))
 					)
 					activity_rects.append({"id": str(child.get_meta("activity_socket_id", child.name)), "rect": activity_rect})
-					_check(not field_rect.grow(0.02).intersects(activity_rect), "%s must not overlap the player-directed build field" % child.name)
 					for framing_value in framing_rects:
 						if framing_value is Dictionary:
 							var framing_rect: Rect2 = (framing_value as Dictionary).get("rect", Rect2())

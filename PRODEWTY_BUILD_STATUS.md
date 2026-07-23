@@ -935,13 +935,13 @@ acceptance, and expedition production visuals; other biomes remain frozen.
   has eight visible life/work anchors without pre-placing player-owned
   buildings or claiming build cells.
 - Added a measured mutual-footprint assertion for activity art. The new
-  sockets must clear the player-directed build field, measured framing
-  obstacles, route reservations, and one another; activity roots remain
-  presentation-only with collision layer 0 and no occupancy authority.
-- Softened path wear and grass intrusions into shader-backed organic decals,
-  and kept route ribbons on the dedicated decal shader. The display capture
-  also caught and corrected a shader-comment compilation error before this
-  checkpoint was accepted.
+  sockets must clear the open placement reserve, measured framing obstacles,
+  route reservations, and one another; activity roots remain presentation-only
+  with collision layer 0 and no occupancy authority.
+- Kept route ribbons on the dedicated decal shader while removing detached
+  path-wear, grass-intrusion, and reserve cards that read as render artifacts.
+  The display capture also caught and corrected a shader-comment compilation
+  error before this checkpoint was accepted.
 - Evidence: `/private/tmp/isekai-sanctuary-density-v5.png` at 1280x720;
   `SANCTUARY_ACTIVITY_LAYER_PASS checks=361 sockets=8`,
   `ASSET_HITBOX_TESTS_PASS checks=633`,
@@ -952,3 +952,35 @@ This is a visible Sanctuary density increment, not the finished A+C game.
 The route language still needs final authored treatment, and final UI polish,
 interiors, touch-device evidence, character/NPC action coverage, audio depth,
 the five expedition maps, and broader full-game content remain open.
+
+## 2026-07-23 Sanctuary ground continuity and visual-proof checkpoint
+
+- Removed the detached moss, path-wear, grass-intrusion, and permanent build-
+  reserve decals that were reading as grey-green render cards at the current
+  camera scale. The continuous authored ground plate, curved route ribbons,
+  foliage, contact shadows, and placement-mode grid now carry those visual
+  responsibilities without implying a fixed player layout.
+- The ground-decal shader now feather-fades both sides and endpoints of curved
+  ribbons. The result remains presentation-only: no path or decal contributes
+  collision, occupancy, or interaction authority.
+- Repaired the visual-proof harness so paused captures force a real SubViewport
+  draw while temporarily disabling Main's gameplay process. This prevents
+  camera-follow and stale-texture false positives. The display-backed proof now
+  produces distinct blueprint, scaffold, late-build, operational, motion, and
+  player-layout images; the two authored layouts measured a 0.6839 changed
+  sample ratio with 78 occupied-cell differences.
+- Rotated Workshop interior QA now asserts the interior room door direction
+  mirrors the same measured exterior access zone used by the hitbox and entry
+  resolver.
+
+Verification after cleanup: `SANCTUARY_ACTIVITY_LAYER_PASS checks=353`,
+`SANCTUARY_SHADER_INTEGRATION_PASS checks=133`,
+`ASSET_HITBOX_TESTS_PASS checks=633`, all Sanctuary visual-contract sections
+passed, and the display-backed stage proof completed in
+`/private/tmp/isekai-sanctuary-stages-clean/`.
+
+This is a render-continuity and evidence-quality checkpoint, not a final-game
+claim. The route silhouette still needs a final authored art pass, and the
+accepted A+C bar remains open for final UI polish, broader facility interiors,
+character/NPC action coverage, audio depth, device acceptance, and the frozen
+expedition presentation pass.
