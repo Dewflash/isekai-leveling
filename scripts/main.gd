@@ -37,6 +37,7 @@ const KENNEY_PANEL_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Defa
 const KENNEY_BUTTON_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Default/button_brown.png"
 const KENNEY_BUTTON_HOVER_TEXTURE := "res://assets/sourced/kenney-ui-adventure/PNG/Default/button_grey.png"
 const KENNEY_ICON_ROOT := "res://assets/sourced/kenney-mobile-controls/Sprites/Icons/Default/"
+const GENERATED_UI_ICON_ROOT := "res://assets/generated/ui/"
 const SANCTUARY_PACK_ROOT := "res://assets/sourced/quaternius-medieval-village/Medieval Village Pack - Dec 2020/"
 const PLAYER_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary/player-direction-sheet.png"
 const PLAYER_WALK_SHEET_PATH := "res://assets/generated/sanctuary/player-walk-sheet.png"
@@ -2860,6 +2861,7 @@ func _reference_slot_button(key_text: String, label_text: String, callback: Call
 
 func _reference_ui_icon_path(label: String) -> String:
 	var icon_name := ""
+	var generated_path := ""
 	match label:
 		"Ledger": icon_name = "icon_save.png"
 		"Map / routes": icon_name = "icon_search.png"
@@ -2869,13 +2871,15 @@ func _reference_ui_icon_path(label: String) -> String:
 		"ATTACK": icon_name = "icon_sword.png"
 		"DODGE": icon_name = "icon_arrow_curved.png"
 		"FOOD": icon_name = "icon_fire.png"
-		"WATER": icon_name = "icon_drop.png"
-		"FARM": icon_name = "icon_leaf.png"
+		"WATER": generated_path = GENERATED_UI_ICON_ROOT + "icon_water_v1.svg"
+		"FARM": generated_path = GENERATED_UI_ICON_ROOT + "icon_leaf_v1.svg"
 		"BUILD": icon_name = "icon_wrench.png"
 		"EXTRACT": icon_name = "icon_arrow.png"
 		"LEDGER": icon_name = "icon_save.png"
 		_:
 			return ""
+	if not generated_path.is_empty() and FileAccess.file_exists(generated_path):
+		return generated_path
 	var path := KENNEY_ICON_ROOT + icon_name
 	return path if FileAccess.file_exists(path) else ""
 
@@ -5041,6 +5045,8 @@ func _button(text: String, callback: Callable) -> Button:
 	return button
 
 func _load_sourced_texture(path: String) -> Texture2D:
+	if path.get_extension().to_lower() == "svg":
+		return load(path) as Texture2D
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return null

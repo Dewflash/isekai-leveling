@@ -84,6 +84,12 @@ func _run() -> void:
 				_check(not (mesh_instance.material_override is ShaderMaterial), "%s transparent contact shadow must not use the opaque ground shader" % mesh_instance.name)
 		_check(moss_count > 0 or decal_count > 0, "live Sanctuary must activate measured ground presentation meshes")
 		_check(path_count > 0, "live Sanctuary must activate packed-earth path shader patches")
+		var textured_path_count := 0
+		for value in style.find_children("PackedEarthPath", "MeshInstance3D", true, false):
+			var path_material := (value as MeshInstance3D).material_override as ShaderMaterial
+			if path_material != null and path_material.get_shader_parameter("path_texture") != null:
+				textured_path_count += 1
+		_check(textured_path_count >= 1, "live Sanctuary must bind the generated packed-earth texture to route ribbons")
 		_check(smooth_path_vertex_count >= 40, "organic path ribbons must be resampled before rendering so corners cannot read as hard slabs")
 		_check(decal_count > 0, "live Sanctuary must activate measured ground decal meshes")
 		_check(contact_count > 0, "live Sanctuary must retain presentation-only contact shadows")

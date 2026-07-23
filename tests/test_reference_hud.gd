@@ -50,7 +50,8 @@ func _run() -> void:
 	var belt_style := belt.get_theme_stylebox("panel") if belt != null else null
 	_check(belt_style is StyleBoxTexture, "bottom action belt must use the sourced warm panel texture")
 	var first_slot := slots.get_child(0) as Button if slots != null and slots.get_child_count() > 0 else null
-	_check(first_slot != null and first_slot.get_node_or_null("SlotIcon") is Label and first_slot.get_node_or_null("SlotCaption") is Label, "action slots must expose a readable icon/caption treatment")
+	var first_slot_icon := first_slot.get_node_or_null("SlotIcon") if first_slot != null else null
+	_check(first_slot != null and first_slot_icon is Control and first_slot.get_node_or_null("SlotCaption") is Label, "action slots must expose a readable icon/caption treatment")
 	_check(context_button != null, "bottom action belt must expose a contextual interaction button")
 	_check(not bool((world.get("hud_top_panel") as Panel).visible), "prototype top panel must yield to the reference header")
 	_check(not bool((world.get("hud_action_panel") as Panel).visible), "prototype context panel must yield to the action belt")

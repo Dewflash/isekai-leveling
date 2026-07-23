@@ -16,6 +16,7 @@ const GROUND_MOSS_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_gro
 const GROUND_PATH_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_path.tres"
 const STRUCTURE_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
 const OPEN_GROUND_TEXTURE_PATH := "res://assets/generated/sanctuary/sanctuary-open-ground-v1.png"
+const PACKED_EARTH_TEXTURE_PATH := "res://assets/generated/sanctuary/sanctuary-packed-earth-v1.png"
 const OPEN_GROUND_SHADER_PATH := "res://assets/generated/shaders/sanctuary_ground_plate.gdshader"
 const GROUND_DECAL_SHADER_PATH := "res://assets/generated/shaders/sanctuary_ground_decal.gdshader"
 const OPEN_GROUND_AUTHORED_SIZE := Vector2(80.0, 60.0)
@@ -142,6 +143,7 @@ var ground_moss_material: ShaderMaterial
 var ground_path_material: ShaderMaterial
 var structure_sprite_material: ShaderMaterial
 var ground_decal_shader: Shader
+var packed_earth_texture: Texture2D
 var open_ground_plate: MeshInstance3D
 var grid_root: Node3D
 var preview_root: Node3D
@@ -189,6 +191,9 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 	ground_path_material = load(GROUND_PATH_MATERIAL_PATH) as ShaderMaterial
 	structure_sprite_material = load(STRUCTURE_SPRITE_MATERIAL_PATH) as ShaderMaterial
 	ground_decal_shader = load(GROUND_DECAL_SHADER_PATH) as Shader
+	packed_earth_texture = load(PACKED_EARTH_TEXTURE_PATH) as Texture2D
+	if packed_earth_texture == null:
+		push_warning("Sanctuary packed-earth texture could not be loaded: %s" % PACKED_EARTH_TEXTURE_PATH)
 	_hide_replaced_presentation(legacy_nodes)
 	_hide_furnace_presentation()
 	if source_district != null:
@@ -2156,9 +2161,9 @@ func _add_curved_worn_path(points: Array, width: float, darker := false) -> void
 	normalized_points = _resample_curved_points(normalized_points, 6)
 	var edge_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path_edge"]
 	var core_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path"]
-	var edge := _add_curved_ribbon(normalized_points, width + 0.14, edge_color, 0.046)
+	var edge := _add_curved_ribbon(normalized_points, width + 0.14, edge_color, 0.046, 0.70)
 	edge.name = "PackedEarthPathEdge"
-	var core := _add_curved_ribbon(normalized_points, width, core_color, 0.058)
+	var core := _add_curved_ribbon(normalized_points, width, core_color, 0.058, 1.0)
 	core.name = "PackedEarthPath"
 
 func _resample_curved_points(points: Array[Vector2], subdivisions: int) -> Array[Vector2]:
@@ -2185,7 +2190,7 @@ func _resample_curved_points(points: Array[Vector2], subdivisions: int) -> Array
 	result.append(points[last_index])
 	return result
 
-func _add_curved_ribbon(points: Array[Vector2], width: float, color: Color, y_position: float) -> MeshInstance3D:
+func _add_curved_ribbon(points: Array[Vector2], width: float, color: Color, y_position: float, texture_strength := 0.0) -> MeshInstance3D:
 	var patch := MeshInstance3D.new()
 	patch.name = "OrganicCurvedPathRibbon"
 	var vertices := PackedVector3Array()
@@ -2238,6 +2243,10 @@ func _add_curved_ribbon(points: Array[Vector2], width: float, color: Color, y_po
 		decal_material.set_shader_parameter("corner_radius", 0.20)
 		decal_material.set_shader_parameter("edge_softness", 0.028)
 		decal_material.set_shader_parameter("ellipse_radius", 0.92)
+		if packed_earth_texture != null:
+			decal_material.set_shader_parameter("path_texture", packed_earth_texture)
+			decal_material.set_shader_parameter("path_texture_repeat", clampf(total_length / 3.5, 1.0, 8.0))
+			decal_material.set_shader_parameter("path_texture_strength", texture_strength)
 		patch.material_override = decal_material
 	else:
 		patch.material_override = _ground_material(color, false, true)

@@ -9,6 +9,9 @@ uniform int shape_mode = 0; // 0 = feathered ellipse, 1 = rounded rectangle, 2 =
 uniform float corner_radius : hint_range(0.02, 0.45, 0.01) = 0.18;
 uniform float edge_softness : hint_range(0.002, 0.20, 0.002) = 0.045;
 uniform float ellipse_radius : hint_range(0.60, 1.05, 0.01) = 0.92;
+uniform sampler2D path_texture : source_color, repeat_enable;
+uniform float path_texture_repeat : hint_range(1.0, 8.0, 0.1) = 3.0;
+uniform float path_texture_strength : hint_range(0.0, 1.0, 0.01) = 0.45;
 
 float hash21(vec2 point) {
 	point = fract(point * vec2(123.34, 456.21));
@@ -64,7 +67,17 @@ void fragment() {
 		float fine_dapple = smooth_value_noise(UV * vec2(13.0, 58.0));
 		grain = mix(broad_dapple, fine_dapple, 0.28);
 	}
-	ALBEDO = base_color.rgb * mix(0.90, 1.045, grain);
+	vec3 surface_color = base_color.rgb * mix(0.90, 1.045, grain);
+	if (shape_mode == 2) {
+		// The route is authored as a continuous world-space ribbon, but its
+		// surface detail comes from a generated, seamless packed-earth texture.
+		// Repeating along measured ribbon length avoids stretching one large
+		// stamp across the entire path and keeps the material legible at scale.
+		vec3 packed_earth = texture(path_texture, vec2(UV.x, UV.y * path_texture_repeat)).rgb;
+		packed_earth = mix(packed_earth, base_color.rgb, 0.08);
+		surface_color = mix(surface_color, packed_earth, path_texture_strength);
+	}
+	ALBEDO = surface_color;
 	ALPHA = base_color.a * edge_alpha;
 	ROUGHNESS = 1.0;
 }

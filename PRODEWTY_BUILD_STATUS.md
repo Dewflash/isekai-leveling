@@ -1010,3 +1010,28 @@ The route still needs a final hand-authored texture treatment, hitbox QA still
 needs physical play-through on device, and final UI polish, interiors,
 character/NPC action coverage, audio depth, device acceptance, expedition
 presentation, and broader content remain open.
+
+## 2026-07-24 Sanctuary packed-earth and action-icon checkpoint
+
+- Added the generated, seamless `sanctuary-packed-earth-v1.png` surface to the
+  live route shader. Each ribbon repeats the texture from its measured path
+  length; the core and edge use separate strengths, and the route remains
+  presentation-only with no collision or occupancy authority.
+- Added generated water-drop and leaf vector icons so every reference action
+  slot has a visual treatment at runtime; the HUD test now accepts either a
+  sourced texture icon or a readable fallback control without weakening the
+  caption contract.
+- The shader integration contract now verifies that a live packed-earth route
+  material has the generated texture bound, rather than only checking that the
+  shader resource exists.
+- Display-backed evidence: `/private/tmp/isekai-sanctuary-packed-earth-v3.png`
+  at 1280x720. Focused checks passed: `REFERENCE_HUD_TESTS_PASS checks=27`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=134`,
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5653`, and
+  `ASSET_HITBOX_TESTS_PASS checks=633`.
+
+This makes the current route and HUD materially more authored, but it does not
+close the Sanctuary gate. The central route composition still needs another
+art-direction pass, and physical device hitbox QA, final lighting, deeper
+interiors, full action animation coverage, audio depth, and all frozen biome
+production work remain open.
