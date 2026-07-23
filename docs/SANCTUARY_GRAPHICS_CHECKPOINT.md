@@ -31,6 +31,12 @@ the remaining gaps are seamless boundary treatment in every extreme camera
 focus, denser hand-authored props/activity coverage, full action animation/audio
 polish, and the other biome presentations.
 
+The follow-up moss refinement is saved at
+`docs/evidence/sanctuary-open-ground-v2/`. The formerly broad procedural moss
+was reduced to small shader-driven depth accents, so the authored meadow
+texture remains the dominant surface instead of reading as smooth green
+placeholder ovals.
+
 ## Implemented in this pass
 
 - Added a dedicated 2.5D presentation layer in `scripts/sanctuary_style.gd`.
@@ -218,6 +224,8 @@ polish, and the other biome presentations.
   `assets/generated/reference/sanctuary-a-plus-c-target.png`
 - Authored open-ground visual proof:
   `docs/evidence/sanctuary-open-ground-v1/`
+- Moss-overlay refinement proof:
+  `docs/evidence/sanctuary-open-ground-v2/`
 
 ## Verification
 

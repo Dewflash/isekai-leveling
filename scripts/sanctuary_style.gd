@@ -413,20 +413,20 @@ func _build_soft_ground() -> void:
 	# handful of small shader-driven moss overlays for depth and measured style
 	# coverage; a giant opaque procedural slab would hide the authored ground and
 	# recreate the old smooth-green presentation the art gate rejected.
-	_add_rounded_patch(Vector3(-9.8, 0.024, -5.5), Vector2(5.4, 4.0), PALETTE["meadow_shadow"], -12.0)
-	_add_rounded_patch(Vector3(9.4, 0.024, 5.0), Vector2(5.6, 4.2), PALETTE["meadow_light"], 14.0)
-	_add_rounded_patch(Vector3(-8.0, 0.026, 7.6), Vector2(5.4, 3.0), PALETTE["meadow_light"], 4.0)
-	_add_rounded_patch(Vector3(7.0, 0.026, -7.0), Vector2(5.4, 3.0), PALETTE["meadow_shadow"], -8.0)
+	_add_rounded_patch(Vector3(-9.8, 0.024, -5.5), Vector2(2.6, 1.8), PALETTE["meadow_shadow"], -12.0)
+	_add_rounded_patch(Vector3(9.4, 0.024, 5.0), Vector2(2.7, 1.9), PALETTE["meadow_light"], 14.0)
+	_add_rounded_patch(Vector3(-8.0, 0.026, 7.6), Vector2(2.5, 1.5), PALETTE["meadow_light"], 4.0)
+	_add_rounded_patch(Vector3(7.0, 0.026, -7.0), Vector2(2.6, 1.5), PALETTE["meadow_shadow"], -8.0)
 	for edge_data in [
-		[Vector3(-12.9, 0.028, -5.8), Vector2(3.0, 4.2), -16.0, "meadow_deep"],
-		[Vector3(-13.2, 0.029, 3.0), Vector2(2.4, 3.4), 9.0, "meadow_shadow"],
-		[Vector3(-9.8, 0.029, 10.0), Vector2(4.2, 2.3), -8.0, "meadow_light"],
-		[Vector3(-2.8, 0.029, 11.2), Vector2(4.6, 1.8), 5.0, "meadow_shadow"],
-		[Vector3(5.4, 0.029, 10.9), Vector2(3.6, 2.0), -11.0, "meadow_light"],
-		[Vector3(12.8, 0.029, 6.2), Vector2(2.8, 4.0), 14.0, "meadow_shadow"],
-		[Vector3(13.3, 0.029, -2.8), Vector2(2.2, 3.2), -7.0, "meadow_deep"],
-		[Vector3(8.2, 0.029, -10.1), Vector2(4.0, 2.5), 10.0, "meadow_light"],
-		[Vector3(-1.0, 0.029, -10.5), Vector2(4.8, 2.0), -4.0, "meadow_shadow"],
+		[Vector3(-12.9, 0.028, -5.8), Vector2(1.7, 2.3), -16.0, "meadow_deep"],
+		[Vector3(-13.2, 0.029, 3.0), Vector2(1.5, 2.0), 9.0, "meadow_shadow"],
+		[Vector3(-9.8, 0.029, 10.0), Vector2(2.2, 1.3), -8.0, "meadow_light"],
+		[Vector3(-2.8, 0.029, 11.2), Vector2(2.4, 1.1), 5.0, "meadow_shadow"],
+		[Vector3(5.4, 0.029, 10.9), Vector2(2.0, 1.1), -11.0, "meadow_light"],
+		[Vector3(12.8, 0.029, 6.2), Vector2(1.6, 2.2), 14.0, "meadow_shadow"],
+		[Vector3(13.3, 0.029, -2.8), Vector2(1.4, 1.9), -7.0, "meadow_deep"],
+		[Vector3(8.2, 0.029, -10.1), Vector2(2.1, 1.4), 10.0, "meadow_light"],
+		[Vector3(-1.0, 0.029, -10.5), Vector2(2.6, 1.1), -4.0, "meadow_shadow"],
 	]:
 		var edge := _add_rounded_patch(edge_data[0], edge_data[1], PALETTE[str(edge_data[3])], float(edge_data[2]))
 		edge.name = "IrregularMeadowEdge"

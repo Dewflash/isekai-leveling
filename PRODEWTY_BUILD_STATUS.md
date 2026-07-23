@@ -16,6 +16,7 @@ Updated: 2026-07-23, Asia/Singapore
 - Latest display-backed stage proof: `/private/tmp/isekai-a-plus-c-live-stages-v4/`
 - Persisted A+C evidence set: `docs/evidence/sanctuary-a-plus-c-v27/`
 - Latest authored-ground proof: `docs/evidence/sanctuary-open-ground-v1/`
+- Latest moss-overlay refinement proof: `docs/evidence/sanctuary-open-ground-v2/`
 - Launch note: restart any Godot editor or export opened before the A+C
   authority checkpoint; stale/committed builds cannot render the new assets.
 
@@ -103,6 +104,11 @@ persisted images are in `docs/evidence/sanctuary-open-ground-v1/`.
 This remains a progress checkpoint, not a full-game completion claim. The
 Sanctuary still needs further seamless boundary/art-density work and the full
 audio, interior, expedition, device, and cross-biome presentation pass.
+
+The next visual refinement reduced the broad opaque procedural moss islands to
+small shader-driven depth accents. The authored ground texture now dominates
+the clean Sanctuary, operational structure, and two player-layout captures;
+the placement, measured shell, and collision contracts are unchanged.
 
 ## What exists (current checkpoint)
 
