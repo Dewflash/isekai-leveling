@@ -24,6 +24,7 @@ func _run() -> void:
 	var interior := world.get("building_interior") as Node3D
 	var sanctuary := world.get("sanctuary_zone") as Node3D
 	var player := world.get("player") as CharacterBody3D
+	var audio := world.get("audio_director") as Node
 	_check(interior != null, "Main must expose the reusable building interior controller")
 	_check(sanctuary != null and sanctuary.visible, "Sanctuary must start visible")
 	_check(player != null, "Main must expose the player for interior entry")
@@ -91,6 +92,21 @@ func _run() -> void:
 	world.call("_toggle_utilities")
 	_check(not bool(world.get("utilities_open")), "Sanctuary ledger toggle must be forbidden while inside a building")
 	_check(int(interior.call("active_station_count")) == 2, "entered workshop must mount its persisted fit-out during the entry transition")
+	var machine_sources: Array = interior.call("active_machine_sources")
+	_check(machine_sources.size() == 1, "entered workshop must publish one operational furnace audio source")
+	if machine_sources.size() == 1:
+		var machine_source: Dictionary = machine_sources[0]
+		_check(str(machine_source.get("kind", "")) == "furnace_left", "machine audio source must preserve the measured furnace identity")
+		_check(machine_source.get("position", Vector3.ZERO) is Vector3, "machine audio source must publish a world-space position")
+		_check(float(machine_source.get("intensity", 0.0)) > 1.0, "working furnace must publish an intensified machine source")
+	if audio != null and audio.has_method("get_station_source_contract"):
+		var source_contract: Dictionary = audio.call("get_station_source_contract")
+		_check(source_contract.size() == 1, "audio director must mirror the active furnace source")
+		if source_contract.size() == 1:
+			var contract_source: Dictionary = source_contract.values()[0]
+			_check(bool(contract_source.get("spatial", false)), "furnace source must be spatial")
+			_check(str(contract_source.get("bus", "")) == "Stations", "furnace source must use the Stations bus")
+			_check(float(contract_source.get("max_distance", 0.0)) > 0.0, "furnace source must expose distance attenuation")
 	var entry_facing: Vector3 = player.get("last_direction")
 	var expected_entry_facing: Vector3 = interior.call("entry_facing")
 	_check(entry_facing.dot(expected_entry_facing) > 0.94, "interior spawn must face inward through the door")
@@ -123,12 +139,17 @@ func _run() -> void:
 		session.set("station_job", ready_job)
 	await _wait_frames(3)
 	_check(furnace_label != null and furnace_label.text.contains("READY"), "completed furnace job must show a ready-to-claim status label")
+	_check((interior.call("active_machine_sources") as Array).is_empty(), "ready furnace must stop publishing an active machine source")
+	if audio != null and audio.has_method("get_station_source_contract"):
+		_check((audio.call("get_station_source_contract") as Dictionary).is_empty(), "ready furnace must stop its spatial machine audio")
 	player.global_position = interior.call("exit_position")
 	world.call("_contextual_interact")
 	await _wait_seconds(0.85)
 	_check(not bool(world.get("interior_active")), "workshop exit must restore exterior mode")
 	_check(sanctuary.visible, "exiting must restore Sanctuary presentation")
 	_check(not bool(interior.call("is_active")), "exiting must deactivate the interior room")
+	if audio != null and audio.has_method("get_station_source_contract"):
+		_check((audio.call("get_station_source_contract") as Dictionary).is_empty(), "exiting Workshop must clear spatial machine sources")
 	_check(str(world.get("interior_instance_id")) == "", "exiting must clear only the transient interior pointer")
 	_check((player.global_position - door_world).dot(door_outward) > 0.30, "egress must resolve beyond the measured front-door shell")
 	_check(player.get("last_direction").dot(door_outward) > 0.94, "egress must preserve the measured outward door facing")

@@ -879,3 +879,24 @@ its world assertions because the fresh QA save probe cannot open a new
 that assertion. The focused interior, Sanctuary, shader, hitbox, animation,
 camera, and input suites above pass. This runner/storage failure is separate
 from the Workshop sync change and was left visible rather than counted as green.
+
+## 2026-07-23 Workshop spatial machine-audio checkpoint
+
+- The Workshop now publishes measured world-space furnace sources from the
+  active interior controller into the AudioDirector. The director creates
+  `AudioStreamPlayer3D` sources on the `Stations` bus with bounded inverse-
+  distance attenuation and a quiet generated fire/ember bed.
+- Sources exist only while the authoritative `GameSession.station_job` is
+  actively processing on that exact operational furnace. Ready or idle
+  furnaces stop emitting machine audio; the interior still retains their
+  visible station and interaction state.
+- Verification: `WORKSHOP_INTERIOR_RUNTIME_PASS checks=78` covers entry,
+  spatial source publication, active-job intensity, READY shutdown, exit
+  cleanup, and blocked egress recovery. `AUDIO_INPUT_FEEL_TESTS_PASS` covers
+  source metadata, Stations-bus routing, live spatial-player creation, frame
+  fill, and disposal. The existing macOS certificate warning is environmental.
+
+This closes the Workshop spatial-audio reliability gate, not the complete audio
+production pass. Richer source variation, indoor room filtering/reverb, full
+NPC/creature action audio, final device acceptance, Sanctuary density, and the
+remaining expedition presentation gates remain open.

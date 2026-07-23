@@ -307,3 +307,19 @@ context.
 This closes a player-facing interior state bug. It does not make the Workshop
 art/audio final, nor does it close the broader Sanctuary density, character
 animation, device, expedition, or full-game content gates.
+
+## Update after the 2026-07-23 spatial machine-audio checkpoint
+
+The Workshop audio gap was narrower and more concrete than the earlier visual
+state bug: `near_furnace` only drove one global generator, so a room with two
+visible furnaces had no measured spatial machine source. The interior now
+publishes the active job's exact furnace position and intensity to the
+AudioDirector. The director owns bounded `AudioStreamPlayer3D` sources on the
+Stations bus and generates a restrained fire/ember bed; it never mutates job
+state. When the job becomes READY or the room exits, the source is removed.
+
+The runtime and audio tests prove creation, spatial metadata, active-job
+intensity, READY shutdown, and cleanup. This closes one non-negotiable Workshop
+gate; it does not establish final audio variation, indoor filtering/reverb,
+Sanctuary visual density, character/creature action animation, device evidence,
+the five production biomes, or full-game content.

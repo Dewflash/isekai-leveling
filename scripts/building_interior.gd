@@ -235,6 +235,45 @@ func has_operational_furnace() -> bool:
 			return true
 	return false
 
+func active_machine_sources() -> Array[Dictionary]:
+	# The interior controller publishes measured machine positions only. Audio
+	# owns the spatial players, while GameSession remains the authority for the
+	# installation state and production job mirrored below.
+	var result: Array[Dictionary] = []
+	if not active or active_kind != "workshop":
+		return result
+	var session := host_world.get("session") as Node if host_world != null else null
+	var job_value: Variant = session.get("station_job") if session != null else {}
+	var job: Dictionary = job_value if job_value is Dictionary else {}
+	var job_structure_id := str(job.get("structure_id", ""))
+	var job_station_id := str(job.get("station_id", ""))
+	var job_kind := str(job.get("kind", "none"))
+	var job_bound := job_kind != "none" and job_structure_id == active_instance_id and not job_station_id.is_empty()
+	var job_ready := job_bound and float(job.get("remaining_hours", 0.0)) <= 0.0
+	for station_id_value in stations:
+		var station_id := str(station_id_value)
+		var station := stations.get(station_id) as Node3D
+		if station == null or not is_instance_valid(station):
+			continue
+		var station_kind := str(station.get_meta("interior_station_kind", ""))
+		if station_kind not in ["furnace_left", "furnace_right"] or str(station.get_meta("installation_state", "blueprint")) != "operational":
+			continue
+		# A built furnace is not an active machine by itself. The source exists
+		# only while the authoritative job is smelting on this exact station;
+		# READY/idle furnaces therefore stop emitting heat audio.
+		if not job_bound or station_id != job_station_id or job_ready:
+			continue
+		var intensity := 1.24
+		var source_position := station.to_global(Vector3(0.0, 0.62, 0.48))
+		result.append({
+			"id": "%s:%s" % [active_instance_id, station_id],
+			"kind": station_kind,
+			"position": source_position,
+			"intensity": intensity,
+			"max_distance": 10.5,
+		})
+	return result
+
 func world_to_room_local(world_position: Vector3) -> Vector3:
 	return room_root.to_local(world_position) if room_root != null else world_position
 

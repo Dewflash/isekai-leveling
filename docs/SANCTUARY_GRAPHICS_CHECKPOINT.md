@@ -453,3 +453,19 @@ This is a player-facing reliability checkpoint, not a final interior-art or
 full-game claim. Station art, lighting, audio depth, Sanctuary density, richer
 character/NPC action animation, device acceptance, and the frozen expedition
 presentation pass remain open.
+
+## 2026-07-23 Workshop spatial machine-audio checkpoint
+
+- The visible furnace job is now paired with a measured world-space audio
+  source. `BuildingInterior` publishes only the active furnace job; the
+  AudioDirector places a spatial player on the Stations bus and uses bounded
+  inverse-distance attenuation.
+- A READY or idle furnace no longer emits the active machine bed, and leaving
+  the Workshop disposes the source. The source metadata is covered in the
+  audio contract and the entry/exit runtime capture path.
+
+This strengthens the Workshop gold-standard slice and keeps audio tied to the
+same station/job authority as the visuals. It is not a final audio mix or a
+full-game claim; room filtering/reverb, richer variation, Sanctuary density,
+character/NPC action coverage, device evidence, and expedition presentation
+remain open.

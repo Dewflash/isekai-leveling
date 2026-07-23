@@ -133,6 +133,42 @@ func _run() -> void:
 	joystick.call("_notification", NOTIFICATION_APPLICATION_FOCUS_OUT)
 	_expect(joystick.get("value") == Vector2.ZERO, "focus loss left joystick input latched")
 
+	# Station sources are published independently of platform output so the
+	# gameplay/runtime contract can be tested headlessly. Real output creates an
+	# AudioStreamPlayer3D on the Stations bus; headless output still retains the
+	# measured source metadata for inspection.
+	audio.set("audio_enabled", false)
+	audio.call("set_station_sources", [{
+		"id": "workshop_qa_001:furnace_left_001",
+		"kind": "furnace_left",
+		"position": Vector3(2.0, 1.0, -1.0),
+		"intensity": 1.25,
+		"max_distance": 10.5,
+	}])
+	var source_contract: Dictionary = audio.call("get_station_source_contract")
+	_expect(source_contract.size() == 1, "station source contract did not retain the active machine")
+	if source_contract.size() == 1:
+		var source: Dictionary = source_contract.values()[0]
+		_expect(source.get("position", Vector3.ZERO) == Vector3(2.0, 1.0, -1.0), "station source did not retain its measured world position")
+		_expect(bool(source.get("spatial", false)), "station source did not declare spatial attenuation")
+		_expect(str(source.get("bus", "")) == "Stations", "station source did not route to the Stations bus")
+	audio.call("set_station_sources", [])
+	_expect((audio.call("get_station_source_contract") as Dictionary).is_empty(), "clearing station sources left stale machine audio")
+	audio.set("audio_enabled", true)
+	audio.call("_ensure_buses")
+	audio.call("set_station_sources", [{
+		"id": "workshop_qa_001:furnace_left_001",
+		"kind": "furnace_left",
+		"position": Vector3(2.0, 1.0, -1.0),
+		"intensity": 1.25,
+		"max_distance": 10.5,
+	}])
+	var live_source_players: Dictionary = audio.get("station_source_players")
+	_expect(live_source_players.size() == 1, "audio director did not create a spatial station player")
+	audio.call("_process", 0.016)
+	audio.call("set_station_sources", [])
+	_expect((audio.get("station_source_players") as Dictionary).is_empty(), "audio director did not dispose the spatial station player")
+
 	joystick.queue_free()
 	audio.queue_free()
 	await process_frame

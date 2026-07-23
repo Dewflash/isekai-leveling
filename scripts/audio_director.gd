@@ -34,9 +34,15 @@ var music_transition: Tween
 var audio_focus_lost := false
 var playback_paused := false
 var last_action_times: Dictionary = {}
+var station_sources: Dictionary = {}
+var station_source_players: Dictionary = {}
+var station_source_playbacks: Dictionary = {}
+var station_source_phases: Dictionary = {}
+var station_source_contract: Dictionary = {}
 
 const RPG_AUDIO_ROOT := "res://assets/sourced/kenney-rpg-audio/Audio/"
 const AUDIO_BUSES := ["Music", "Ambience", "Weather", "Stations", "Effects", "UI"]
+const STATION_SAMPLE_RATE := 22050.0
 
 func _ready() -> void:
 	# Audio must continue receiving pause/focus notifications so it can stop
@@ -174,6 +180,94 @@ func set_environment(zone: String, surface: String, hour: float, weather: String
 			music_transition.tween_property(music_player, "volume_db", -18.0, 0.34)
 			current_music = music_key
 
+func set_station_sources(sources: Array) -> void:
+	# Machine audio is a presentation mirror of authoritative station records.
+	# Main supplies measured world positions from the active room; this director
+	# owns only the spatial players and never creates or advances a job.
+	var desired: Dictionary = {}
+	for source_value in sources:
+		if not (source_value is Dictionary):
+			continue
+		var source := source_value as Dictionary
+		var source_id := str(source.get("id", ""))
+		var source_kind := str(source.get("kind", ""))
+		var source_position: Variant = source.get("position", Vector3.ZERO)
+		if source_id.is_empty() or source_kind.is_empty() or not (source_position is Vector3):
+			continue
+		var normalized := {
+			"id": source_id,
+			"kind": source_kind,
+			"position": source_position,
+			"intensity": clampf(float(source.get("intensity", 1.0)), 0.0, 2.0),
+			"max_distance": clampf(float(source.get("max_distance", 11.0)), 3.0, 24.0),
+			"spatial": true,
+			"bus": "Stations",
+		}
+		desired[source_id] = normalized
+	station_sources = desired
+	station_source_contract = desired.duplicate(true)
+	if audio_enabled:
+		_sync_station_source_players()
+	else:
+		_clear_station_source_players()
+
+func get_station_source_contract() -> Dictionary:
+	return station_source_contract.duplicate(true)
+
+func _sync_station_source_players() -> void:
+	var stale_ids: Array[String] = []
+	for source_id in station_source_players:
+		if not station_sources.has(source_id):
+			stale_ids.append(str(source_id))
+	for source_id in stale_ids:
+		_remove_station_source_player(source_id)
+	for source_id in station_sources:
+		var source: Dictionary = station_sources.get(source_id, {})
+		var player := station_source_players.get(source_id) as AudioStreamPlayer3D
+		if player == null or not is_instance_valid(player):
+			player = _create_station_source_player(str(source_id), source)
+			if player == null:
+				continue
+		var source_position: Vector3 = source.get("position", Vector3.ZERO)
+		player.global_position = source_position
+		player.max_distance = float(source.get("max_distance", 11.0))
+		player.volume_db = linear_to_db(clampf(float(source.get("intensity", 1.0)) * 0.42, 0.02, 0.84))
+
+func _create_station_source_player(source_id: String, source: Dictionary) -> AudioStreamPlayer3D:
+	var player := AudioStreamPlayer3D.new()
+	player.name = "StationSource_%s" % source_id.replace(":", "_")
+	player.bus = "Stations"
+	player.max_distance = float(source.get("max_distance", 11.0))
+	player.unit_size = 1.8
+	player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	var generator := AudioStreamGenerator.new()
+	generator.mix_rate = STATION_SAMPLE_RATE
+	generator.buffer_length = 0.30
+	player.stream = generator
+	add_child(player)
+	player.global_position = source.get("position", Vector3.ZERO)
+	player.play()
+	station_source_players[source_id] = player
+	station_source_playbacks[source_id] = player.get_stream_playback()
+	station_source_phases[source_id] = 0.0
+	return player
+
+func _remove_station_source_player(source_id: String) -> void:
+	var player := station_source_players.get(source_id) as AudioStreamPlayer3D
+	if player != null and is_instance_valid(player):
+		player.stop()
+		player.queue_free()
+	station_source_players.erase(source_id)
+	station_source_playbacks.erase(source_id)
+	station_source_phases.erase(source_id)
+
+func _clear_station_source_players() -> void:
+	var source_ids: Array[String] = []
+	for source_id in station_source_players:
+		source_ids.append(str(source_id))
+	for source_id in source_ids:
+		_remove_station_source_player(source_id)
+
 func play_action(kind: String) -> void:
 	if not _can_play_audio() or not _allow_action(kind):
 		return
@@ -264,6 +358,7 @@ func _process(delta: float) -> void:
 	_fill(weather_playback, "weather", 0.0)
 	_fill(station_playback, "station", 0.0)
 	_fill(sfx_playback, "sfx", 0.0)
+	_fill_station_sources()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
@@ -287,6 +382,9 @@ func _set_playback_paused(paused: bool) -> void:
 	for player in spatial_players:
 		if is_instance_valid(player):
 			player.stream_paused = paused
+	for player in station_source_players.values():
+		if is_instance_valid(player):
+			(player as AudioStreamPlayer3D).stream_paused = paused
 	if music_transition != null and music_transition.is_valid():
 		if paused:
 			music_transition.pause()
@@ -334,6 +432,7 @@ func _exit_tree() -> void:
 		if is_instance_valid(player):
 			player.stop()
 			player.stream = null
+	_clear_station_source_players()
 	ambience_playback = null
 	weather_playback = null
 	station_playback = null
@@ -364,7 +463,10 @@ func _sample(layer: String, t: float) -> float:
 		var rain := sin(t * TAU * 720.0) * 0.0012 + sin(t * TAU * 1180.0) * 0.0008
 		return rain
 	if layer == "station":
-		if not environment["near_furnace"]:
+		# Once measured spatial sources exist, the global generator must not
+		# duplicate them across the whole room. It remains the fallback for legacy
+		# Sanctuary furnace presentation and headless contract tests.
+		if not environment["near_furnace"] or not station_sources.is_empty():
 			return 0.0
 		var fire := 0.0035 * sin(t * TAU * 145.0) + 0.002 * sin(t * TAU * 265.0)
 		return fire
@@ -402,3 +504,30 @@ func _sample(layer: String, t: float) -> float:
 			return sin(t * TAU * 220.0) * 0.03 * envelope
 		return sin(t * TAU * 380.0) * 0.04 * envelope
 	return 0.0
+
+func _fill_station_sources() -> void:
+	for source_id in station_source_playbacks:
+		var playback = station_source_playbacks.get(source_id)
+		if playback == null or not is_instance_valid(playback):
+			continue
+		var source: Dictionary = station_sources.get(source_id, {})
+		var frames: int = playback.get_frames_available()
+		var phase := float(station_source_phases.get(source_id, 0.0))
+		var intensity := float(source.get("intensity", 1.0))
+		var kind := str(source.get("kind", "furnace"))
+		for index in frames:
+			var t := phase + float(index) / STATION_SAMPLE_RATE
+			var sample := _station_source_sample(kind, t, intensity)
+			playback.push_frame(Vector2(sample, sample))
+		station_source_phases[source_id] = phase + float(frames) / STATION_SAMPLE_RATE
+
+func _station_source_sample(kind: String, time_seconds: float, intensity: float) -> float:
+	if not kind.begins_with("furnace") and kind != "furnace":
+		return 0.0
+	# A quiet generated fire bed plus deterministic ember crackle keeps the
+	# source self-contained and mobile-safe. The spatial player supplies the
+	# distance/pan; the station job supplies only the intensity.
+	var bed := sin(time_seconds * TAU * 74.0) * 0.0024 + sin(time_seconds * TAU * 131.0) * 0.0015
+	var ember_wave := maxf(0.0, sin(time_seconds * TAU * 5.7 + 0.8))
+	var crackle := pow(ember_wave, 12.0) * sin(time_seconds * TAU * 620.0) * 0.018
+	return (bed + crackle) * clampf(intensity, 0.0, 2.0)

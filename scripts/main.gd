@@ -5457,8 +5457,22 @@ func _update_audio_context() -> void:
 	var surface := "wood" if interior_active else _current_surface()
 	var indoor := interior_active or (current_zone == "Sanctuary" and absf(player.position.x) < 2.15 and player.position.z < -2.0 and player.position.z > -5.8)
 	var near_furnace := furnace_active and current_zone == "Sanctuary" and _ground_distance(player.global_position, furnace.global_position) < 6.0
-	if interior_active and building_interior != null and building_interior.has_method("has_operational_furnace"):
-		near_furnace = bool(building_interior.call("has_operational_furnace"))
+	var station_sources: Array = []
+	if interior_active and building_interior != null and building_interior.has_method("active_machine_sources"):
+		station_sources = building_interior.call("active_machine_sources")
+		near_furnace = not station_sources.is_empty()
+	elif furnace_active and furnace != null and current_zone == "Sanctuary":
+		# Preserve the legacy Sanctuary furnace interaction while giving it the
+		# same spatial source contract as an interior machine.
+		station_sources = [{
+			"id": "sanctuary:furnace",
+			"kind": "furnace",
+			"position": furnace.global_position + Vector3(0.0, 0.68, 0.28),
+			"intensity": 0.92,
+			"max_distance": 9.0,
+		}]
+	if audio_director.has_method("set_station_sources"):
+		audio_director.call("set_station_sources", station_sources)
 	audio_director.call("set_environment", current_zone, surface, hour, weather, indoor, near_furnace)
 	if furnace != null:
 		var fire: Node3D = furnace.get_node_or_null("Fire")
