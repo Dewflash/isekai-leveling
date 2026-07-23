@@ -15,6 +15,7 @@ Updated: 2026-07-23, Asia/Singapore
 - Latest live A+C capture: `/private/tmp/isekai-a-plus-c-live-v2.png`
 - Latest display-backed stage proof: `/private/tmp/isekai-a-plus-c-live-stages-v4/`
 - Persisted A+C evidence set: `docs/evidence/sanctuary-a-plus-c-v27/`
+- Latest authored-ground proof: `docs/evidence/sanctuary-open-ground-v1/`
 - Launch note: restart any Godot editor or export opened before the A+C
   authority checkpoint; stale/committed builds cannot render the new assets.
 
@@ -83,6 +84,25 @@ Updated: 2026-07-23, Asia/Singapore
   Workshop construction-stage art is still the earlier authored layered family,
   and the remaining Sanctuary art, interior transitions, device capture, and
   full content pass are still open.
+
+## 2026-07-23 visible-ground checkpoint
+
+The player-facing Sanctuary now uses the original generated open-ground plate
+`assets/generated/sanctuary/sanctuary-open-ground-v1.png` and
+`assets/generated/shaders/sanctuary_ground_plate.gdshader`. This is the first
+checkpoint where the dense meadow/forest texture, pond, flowers, and scattered
+ground detail are mounted in the live Godot scene rather than existing only as
+reference art. The plate is explicitly presentation-only; it creates no body,
+does not claim grid cells, and does not change the measured facility hitboxes.
+
+The live shader and scene contract passed with 206 checks. The display-backed
+Sanctuary harness passed its motion/occlusion samples and both player-layout
+proofs (`occupied_cell_symmetric_difference=78`, `changed_ratio=0.6242`). The
+persisted images are in `docs/evidence/sanctuary-open-ground-v1/`.
+
+This remains a progress checkpoint, not a full-game completion claim. The
+Sanctuary still needs further seamless boundary/art-density work and the full
+audio, interior, expedition, device, and cross-biome presentation pass.
 
 ## What exists (current checkpoint)
 

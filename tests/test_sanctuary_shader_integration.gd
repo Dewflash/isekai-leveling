@@ -16,11 +16,14 @@ func _check(condition: bool, message: String) -> void:
 
 func _run() -> void:
 	var shader_source := FileAccess.get_file_as_string("res://assets/generated/shaders/cozy_toon_sprite.gdshader")
+	var ground_shader_source := FileAccess.get_file_as_string("res://assets/generated/shaders/ground_depth_edge.gdshader")
 	_check(shader_source.contains("* COLOR"), "toon sprite shader must preserve Sprite3D modulate in its lit output")
 	_check(shader_source.contains("key_light_direction_view"), "toon sprite shader must convert its world light direction into fragment view space")
 	_check(shader_source.contains("MODELVIEW_MATRIX") and shader_source.contains("INV_VIEW_MATRIX"), "toon sprite shader must preserve Sprite3D billboarding when used as a material override")
 	_check(shader_source.contains("depth_prepass_alpha"), "toon sprite shader must depth-prepass alpha silhouettes for scalable 2.5D overlap")
 	_check(shader_source.contains("filter_linear") and not shader_source.contains("filter_linear_mipmap"), "toon sprite shader sampler must match runtime art without mipmaps")
+	_check(ground_shader_source.contains("detail_scale") and ground_shader_source.contains("detail_variation"), "ground shader must expose deterministic dapple controls")
+	_check(ground_shader_source.contains("world_position.x * detail_scale") and not ground_shader_source.contains("TIME"), "ground dapple must remain world-anchored and pause-stable")
 	var world := MainScene.instantiate()
 	root.add_child(world)
 	for _index in 12:
@@ -28,6 +31,18 @@ func _run() -> void:
 	var style := world.get("sanctuary_style") as Node3D
 	_check(style != null, "Sanctuary style must exist")
 	if style != null:
+		var ground_plate := style.get_node_or_null("SanctuaryOpenGroundPlate") as MeshInstance3D
+		_check(ground_plate != null, "live Sanctuary must mount the authored open-ground plate")
+		_check(ground_plate != null and ground_plate.mesh is QuadMesh, "open-ground plate must remain a presentation quad")
+		var ground_material := ground_plate.material_override as ShaderMaterial if ground_plate != null else null
+		_check(ground_material != null and ground_material.shader != null, "open-ground plate must use its live coverage shader")
+		_check(ground_material != null and ground_material.get_shader_parameter("ground_texture") != null, "open-ground plate shader must bind its authored texture")
+		_check(ground_material != null and ground_material.get_shader_parameter("authored_size") == Vector2(64.0, 48.0), "open-ground plate shader must preserve authored world scale")
+		_check(ground_material != null and ground_material.get_shader_parameter("plate_size") == Vector2(80.0, 60.0), "open-ground plate shader must expose the camera coverage skirt")
+		_check(ground_material != null and ground_material.get_shader_parameter("forest_skirt_color") == Color("#173526"), "open-ground plate shader must use a forest-matched camera skirt")
+		_check(ground_plate != null and bool(ground_plate.get_meta("presentation_only", false)), "open-ground plate must be presentation-only")
+		_check(ground_plate != null and str(ground_plate.get_meta("collision_authority", "")) == "none", "open-ground plate must not own collision")
+		_check(ground_plate != null and not bool(ground_plate.get_meta("occupies_build_cells", true)), "open-ground plate must not claim build cells")
 		var moss_count := 0
 		var path_count := 0
 		var contact_count := 0
@@ -39,6 +54,8 @@ func _run() -> void:
 			if shader_role in ["ground_moss", "ground_path"]:
 				var material := mesh_instance.material_override as ShaderMaterial
 				_check(material != null and material.shader != null, "%s must use a live ground shader" % mesh_instance.name)
+				if material != null:
+					_check(float(material.get_shader_parameter("detail_variation")) > 0.0, "%s must activate restrained ground dapple" % mesh_instance.name)
 				_check(mesh_instance.mesh is CylinderMesh, "%s shader must be on an opaque ground patch" % mesh_instance.name)
 				_check(mesh_instance.get_child_count() == 0, "%s ground patch must not own collision children" % mesh_instance.name)
 				if shader_role == "ground_moss":

@@ -10,5 +10,7 @@ shader_parameter/edge_width = 0.16
 shader_parameter/side_depth = 0.72
 shader_parameter/macro_scale = 0.22
 shader_parameter/macro_variation = 0.045
+shader_parameter/detail_scale = 1.85
+shader_parameter/detail_variation = 0.026
 shader_parameter/saturation = 1.05
 shader_parameter/contrast = 1.04

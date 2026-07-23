@@ -9,6 +9,8 @@ uniform float edge_width : hint_range(0.01, 0.45, 0.01) = 0.16;
 uniform float side_depth : hint_range(0.35, 1.0, 0.01) = 0.72;
 uniform float macro_scale : hint_range(0.02, 1.0, 0.01) = 0.22;
 uniform float macro_variation : hint_range(0.0, 0.15, 0.005) = 0.045;
+uniform float detail_scale : hint_range(0.15, 8.0, 0.05) = 1.85;
+uniform float detail_variation : hint_range(0.0, 0.08, 0.005) = 0.025;
 uniform float saturation : hint_range(0.6, 1.4, 0.01) = 1.05;
 uniform float contrast : hint_range(0.75, 1.3, 0.01) = 1.04;
 
@@ -34,8 +36,15 @@ void fragment() {
 	float macro_a = sin((world_position.x + world_position.z * 0.63) * macro_scale);
 	float macro_b = sin((world_position.z - world_position.x * 0.41) * macro_scale * 1.73 + 1.7);
 	float variation = 1.0 + (macro_a * 0.62 + macro_b * 0.38) * macro_variation;
+	// Deterministic, world-anchored dapple keeps the meadow from reading as one
+	// smooth painted oval. It uses no runtime clock, texture, alpha, or screen sampling,
+	// so presentation cannot drift from placement geometry or animate on pause.
+	float detail_a = sin(world_position.x * detail_scale + sin(world_position.z * 1.31));
+	float detail_b = cos(world_position.z * detail_scale * 1.17 + sin(world_position.x * 0.87));
+	float dapple = detail_a * 0.56 + detail_b * 0.44;
+	float detail = 1.0 + dapple * detail_variation;
 
 	vec3 edge_mixed = mix(edge_color.rgb, base_color.rgb, edge_factor);
-	vec3 grounded = edge_mixed * mix(side_depth, 1.0, top_factor) * variation;
+	vec3 grounded = edge_mixed * mix(side_depth, 1.0, top_factor) * variation * detail;
 	ALBEDO = apply_chroma(grounded);
 }

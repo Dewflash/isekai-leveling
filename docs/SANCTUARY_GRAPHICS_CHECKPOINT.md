@@ -1,6 +1,6 @@
 # Sanctuary graphics checkpoint
 
-Updated: 2026-07-22
+Updated: 2026-07-23
 
 Sanctuary is the current art gate for Isekai Leveling. The other biome
 presentations remain frozen until this scene reaches the saved reference's
@@ -12,6 +12,24 @@ The active A+C visual authority is
 `assets/generated/reference/sanctuary-a-plus-c-target.png`. It is a
 composition/style target rather than a fixed background: the player remains
 free to choose the actual building layout.
+
+## Current visible checkpoint: authored Sanctuary ground
+
+The live scene now mounts
+`assets/generated/sanctuary/sanctuary-open-ground-v1.png` as a presentation-only
+world plate. It supplies the dense meadow/forest texture, scattered flowers and
+stones, and pond treatment that was missing from the smooth prototype floor.
+The coverage skirt is shader-driven and has no collision, occupancy, pathing, or
+building-layout authority. `GameSession`, the measured shells, and the build
+grid remain the only gameplay authorities.
+
+The display-backed proof is saved at
+`docs/evidence/sanctuary-open-ground-v1/`. It includes a clean Sanctuary view,
+an operational structure focus, and two different player-authored layouts.
+This is a real visual improvement, but it is not the final Sanctuary art gate:
+the remaining gaps are seamless boundary treatment in every extreme camera
+focus, denser hand-authored props/activity coverage, full action animation/audio
+polish, and the other biome presentations.
 
 ## Implemented in this pass
 
@@ -140,6 +158,10 @@ free to choose the actual building layout.
 - Darkened the remaining prototype collision-floor backdrop and added a denser
   distant woodland frame so fresh Sanctuary startup no longer presents the old
   bright green prototype plane as its visual base.
+- Mounted an original reference-guided open-ground plate and dedicated coverage
+  shader. The plate preserves player-directed building freedom while replacing
+  the broad smooth-green wash with dense illustrated meadow texture; its
+  presentation-only, non-occupying contract is asserted at runtime.
 - Synchronized the directional construction presentation with the authoritative
   material milestones: frame through 50% progress, walls through 76%, then roof
   to completion. The renderer derives each cutout's placement from its measured
@@ -194,6 +216,8 @@ free to choose the actual building layout.
   beside each q0 asset).
 - Saved visual target:
   `assets/generated/reference/sanctuary-a-plus-c-target.png`
+- Authored open-ground visual proof:
+  `docs/evidence/sanctuary-open-ground-v1/`
 
 ## Verification
 
@@ -215,9 +239,13 @@ free to choose the actual building layout.
 - `tests/test_storage_shed_visuals.gd`: pass, 148 checks covering all four
   directional operational views, all sixteen construction-stage views, visible
   feature declarations, alpha-envelope coverage, and fail-closed metadata
-- `tests/test_sanctuary_shader_integration.gd`: pass, 160 checks covering live
-  moss/path/facility shader bindings, Sprite3D modulation preservation, and the
-  billboarding/light-direction shader contract
+- `tests/test_sanctuary_shader_integration.gd`: pass, 206 checks covering the
+  authored ground plate/coverage shader, live moss/path/facility bindings,
+  Sprite3D modulation preservation, and the billboarding/light-direction
+  shader contract
+- Latest display-backed ground proof: pass, full stage harness with motion and
+  two player-authored layouts; both layout runs still resolve through the live
+  placement/delivery/day-advance path after the ground plate is mounted
 - `tests/test_workshop_interior_contract.gd`: pass, 87 checks covering room
   composition, measured station alpha bounds, station collision calibration,
   and the authored shell

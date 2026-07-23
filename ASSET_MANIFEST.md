@@ -18,6 +18,20 @@ These sheets are presentation assets only. Player-selected building placement,
 construction state, material delivery, and hit boxes remain authoritative in
 the Godot gameplay/session code.
 
+## Codex-generated Sanctuary open-ground plate
+
+- Creator/source: Codex image generation guided by the saved A+C Sanctuary
+  reference; retained as an original project backdrop asset
+- License/status: Original generated project artwork; no external asset license
+  dependency
+- Files: `assets/generated/sanctuary/sanctuary-open-ground-v1.png` and
+  `assets/generated/shaders/sanctuary_ground_plate.gdshader`
+- Runtime use: dense illustrated meadow/forest floor, scattered ground detail,
+  and pond context beneath the player-directed Sanctuary layout
+- Runtime contract: the quad is presentation-only, has no collision body, does
+  not occupy build cells, and never replaces the authoritative floor, pathing,
+  measured facility shells, or hit boxes
+
 ## Codex-generated Workshop work-yard kit
 
 - Creator/source: Codex image generation, then locally chroma-key processed

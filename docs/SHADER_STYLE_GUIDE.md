@@ -1,6 +1,7 @@
 # Isekai Leveling shader style guide
 
-Status: isolated shader contribution, not gameplay-integrated.
+Status: ground and presentation shader contribution; the Sanctuary ground plate
+is now live while the remaining future integration points stay isolated.
 
 These shaders support the saved Sanctuary north star: warm, substantial,
 anime-adjacent 2.5D forms with selective motion and depth. They deliberately do
@@ -18,6 +19,7 @@ refraction, custom post-process, or custom `light()` function.
 | --- | --- | --- |
 | `cozy_toon_surface.gdshader` | Opaque procedural or sourced 3D wood, stone, canvas, metal, construction pieces | Illustrated Sprite3D cutouts, transparent foliage, UI |
 | `ground_depth_edge.gdshader` | Opaque meadow/path CylinderMesh patches; darkens UV edges and vertical sides | Contact shadows, build ghosts, transparent decals |
+| `sanctuary_ground_plate.gdshader` | Authored open Sanctuary ground plate plus a camera-coverage forest skirt | Collision floor, build grid, occupancy, pathing, or facility hitboxes |
 | `cozy_water_ripple.gdshader` | Small subdivided pond/pool surface meshes | Whole pond illustration atlases, ocean-scale water, collision geometry |
 | `cozy_foliage_sway.gdshader` | Leaf-only low-poly surfaces or explicitly bound cutout cards | Trunks, buildings, collider meshes, an already CPU-swaying whole tree |
 | `reward_glow_shell.gdshader` | Duplicate visual-only shell around a pickup marker, cache marker, or capstone sigil | Base reward mesh, hit box, collision shape, large environment meshes |
@@ -62,6 +64,12 @@ normal light pass intact is the safer cross-renderer contract.
 - `macro_scale`: world-space variation scale. Keep `0.18-0.35` for Sanctuary.
 - `macro_variation`: default `0.035-0.045`, hard ceiling `0.07`. More becomes
   procedural camouflage and fights the illustrated buildings.
+- `detail_scale`: deterministic world-anchored meadow dapple scale. Keep
+  `1.35-2.20` for Sanctuary so the breakup reads as soft grass variation rather
+  than a tiled texture.
+- `detail_variation`: restrained dapple contrast. Keep under `0.035` on moss and
+  under `0.025` on packed paths; this is a depth cue, not a replacement for
+  authored foliage or ground decals.
 
 This shader never moves vertices and never writes alpha. It cannot alter a hit
 box, placement footprint, navigation path, or z anchor.
@@ -120,18 +128,10 @@ ordinary prop.
 
 ## Safe future integration points
 
-No integration is included in this lane. When the active gameplay batch is
-stable, wire in this order and capture each step independently:
+The open-ground plate is integrated. The remaining material families should be
+wired in this order and captured independently:
 
-1. **Ground proof in Sanctuary.** In
-   `scripts/sanctuary_style.gd::_create_rounded_patch()`, replace
-   `_ground_material()` only for opaque `SoftGroundPatch`,
-   `PackedEarthPath`, and `PackedEarthPathEdge` presentation meshes. Use
-   duplicated `sanctuary_ground_moss.tres` or
-   `sanctuary_ground_path.tres` materials. Keep
-   `IllustratedContactShadow`, `ConstructionPlacementPreview`, and grid lines on
-   their existing alpha materials.
-2. **Opaque 3D material proof.** In
+1. **Opaque 3D material proof.** In
    `scripts/sanctuary_district.gd::_district_material()` and the additive
    construction pieces assembled by `scripts/sanctuary_style.gd`, trial
    `cozy_toon_surface` on wood/stone visual MeshInstance3D nodes. Do not assign it
@@ -139,25 +139,25 @@ stable, wire in this order and capture each step independently:
    authored and intentionally unshaded. For imported glTF surfaces, duplicate
    each source material and transfer its albedo texture rather than applying one
    color-only `material_override` to the whole model.
-3. **Water proof.** `scripts/main.gd::_create_pond()` owns the legacy pond's
+2. **Water proof.** `scripts/main.gd::_create_pond()` owns the legacy pond's
    `water` MeshInstance3D. The current visible illustrated Sanctuary pond is one
    atlas cell created by `scripts/sanctuary_style.gd::_add_environment_sprite()`;
    never deform that whole sprite because rocks, reeds, flowers, and water share
    the image. Use a separate, water-only subdivided visual mesh aligned over the
    illustrated water region, or first split a water-only atlas layer. Keep the
    existing PondWaterSource interaction and collider untouched.
-4. **Foliage proof.** `scripts/main.gd::_create_tree()` currently registers whole
+3. **Foliage proof.** `scripts/main.gd::_create_tree()` currently registers whole
    roots in `sway_nodes`, and `scripts/sanctuary_style.gd::_add_environment_sprite()`
    separately performs CPU scale sway for illustrated trees. Choose exactly one
    motion owner. The shader is safest on leaf-only descendants found after
    `scripts/main.gd::_add_sourced_model()` instantiates a tree; do not combine it
    with the existing whole-root sway or apply it to measured trunks.
-5. **Pickup glow proof.** In `scripts/main.gd::_spawn_expedition_pickup()`, after
+4. **Pickup glow proof.** In `scripts/main.gd::_spawn_expedition_pickup()`, after
    the base resource mesh is created under `PickupVisual`, add a collision-free
    duplicate MeshInstance3D child using `expedition_pickup_glow.tres`. The
    ResourcePickup root, pickup position, collection radius, and save ID remain
    authoritative.
-6. **Capstone/cache hierarchy.** In
+5. **Capstone/cache hierarchy.** In
    `scripts/main.gd::_create_whisper_cache()`, shell only `CacheMarker`; toggle it
    from `_refresh_whisperwood_route()` when the chosen cache is actually
    claimable. In `scripts/main.gd::_create_expedition_route_landmarks()`, shell

@@ -15,6 +15,10 @@ const CONSTRUCTION_WORKER_SPRITE_SHEET_PATH := "res://assets/generated/sanctuary
 const GROUND_MOSS_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_moss.tres"
 const GROUND_PATH_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_ground_path.tres"
 const STRUCTURE_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
+const OPEN_GROUND_TEXTURE_PATH := "res://assets/generated/sanctuary/sanctuary-open-ground-v1.png"
+const OPEN_GROUND_SHADER_PATH := "res://assets/generated/shaders/sanctuary_ground_plate.gdshader"
+const OPEN_GROUND_AUTHORED_SIZE := Vector2(64.0, 48.0)
+const OPEN_GROUND_PLATE_SIZE := Vector2(80.0, 60.0)
 const CELL_SIZE := 512.0
 const CELL_INSET := 7.0
 const CELL_EXTENT := 498.0
@@ -111,6 +115,7 @@ const PALETTE := {
 	"meadow_light": Color("#83966b"),
 	"meadow_shadow": Color("#586d50"),
 	"meadow_deep": Color("#455a46"),
+	"forest_skirt": Color("#173526"),
 	"build_field": Color("#788b63"),
 	"path": Color("#b58a65"),
 	"path_light": Color("#c09973"),
@@ -135,6 +140,7 @@ var player_structure_sheet: Texture2D
 var ground_moss_material: ShaderMaterial
 var ground_path_material: ShaderMaterial
 var structure_sprite_material: ShaderMaterial
+var open_ground_plate: MeshInstance3D
 var grid_root: Node3D
 var preview_root: Node3D
 var preview_fill: MeshInstance3D
@@ -184,6 +190,7 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 		# gameplay footprint therefore stays in place while its hard-edged source
 		# meshes are replaced by this authored 2.5D layer.
 		source_district.visible = false
+	_build_open_ground_plate()
 	_build_soft_ground()
 	_build_forest_backdrop()
 	_build_paths()
@@ -338,7 +345,7 @@ func finalize_legacy_cleanup() -> void:
 				if ground_mesh == null:
 					continue
 				var backdrop_material := StandardMaterial3D.new()
-				backdrop_material.albedo_color = PALETTE["meadow_deep"]
+				backdrop_material.albedo_color = PALETTE["forest_skirt"]
 				backdrop_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 				backdrop_material.roughness = 0.98
 				ground_mesh.material_override = backdrop_material
@@ -402,14 +409,14 @@ func _hide_render_tree(node: Node) -> void:
 		_hide_render_tree(child)
 
 func _build_soft_ground() -> void:
-	# Layered moss islands sit above the legacy collision plane. Low-contrast
-	# tonal shifts and perimeter scallops break the synthetic lime oval while
-	# leaving the central player-authored reserve completely untouched.
-	_add_rounded_patch(Vector3(0.0, 0.018, 0.8), Vector2(27.5, 22.0), PALETTE["meadow"], 0.0)
-	_add_rounded_patch(Vector3(-8.8, 0.024, -5.5), Vector2(8.5, 7.0), PALETTE["meadow_shadow"], -12.0)
-	_add_rounded_patch(Vector3(9.0, 0.024, 5.0), Vector2(9.0, 6.5), PALETTE["meadow_light"], 14.0)
-	_add_rounded_patch(Vector3(-8.0, 0.026, 7.6), Vector2(9.0, 4.8), PALETTE["meadow_light"], 4.0)
-	_add_rounded_patch(Vector3(7.0, 0.026, -7.0), Vector2(9.0, 4.8), PALETTE["meadow_shadow"], -8.0)
+	# The authored plate supplies the continuous woodland floor. Keep only a
+	# handful of small shader-driven moss overlays for depth and measured style
+	# coverage; a giant opaque procedural slab would hide the authored ground and
+	# recreate the old smooth-green presentation the art gate rejected.
+	_add_rounded_patch(Vector3(-9.8, 0.024, -5.5), Vector2(5.4, 4.0), PALETTE["meadow_shadow"], -12.0)
+	_add_rounded_patch(Vector3(9.4, 0.024, 5.0), Vector2(5.6, 4.2), PALETTE["meadow_light"], 14.0)
+	_add_rounded_patch(Vector3(-8.0, 0.026, 7.6), Vector2(5.4, 3.0), PALETTE["meadow_light"], 4.0)
+	_add_rounded_patch(Vector3(7.0, 0.026, -7.0), Vector2(5.4, 3.0), PALETTE["meadow_shadow"], -8.0)
 	for edge_data in [
 		[Vector3(-12.9, 0.028, -5.8), Vector2(3.0, 4.2), -16.0, "meadow_deep"],
 		[Vector3(-13.2, 0.029, 3.0), Vector2(2.4, 3.4), 9.0, "meadow_shadow"],
@@ -445,6 +452,45 @@ func _build_forest_backdrop() -> void:
 		sprite.name = "APlusCForestBackdrop"
 		sprite.modulate = Color(float(item[3]), float(item[3]) * 1.03, float(item[3]) * 0.92, 1.0)
 		sprite.set_meta("presentation_role", "distant_forest_framing")
+
+func _build_open_ground_plate() -> void:
+	# This is presentation-only authored ground: it carries no occupancy, pathing,
+	# or collision authority. The free build reserve and all hitboxes remain owned
+	# by GameSession and the existing district shells. Keeping the plate as a
+	# horizontal textured quad lets the player-directed layout remain open while
+	# giving Sanctuary the dense woodland floor shown in the A+C target.
+	var ground_texture := load(OPEN_GROUND_TEXTURE_PATH) as Texture2D
+	if ground_texture == null:
+		push_warning("Sanctuary open ground texture could not be loaded: %s" % OPEN_GROUND_TEXTURE_PATH)
+		return
+	open_ground_plate = MeshInstance3D.new()
+	open_ground_plate.name = "SanctuaryOpenGroundPlate"
+	var mesh := QuadMesh.new()
+	mesh.size = OPEN_GROUND_PLATE_SIZE
+	open_ground_plate.mesh = mesh
+	open_ground_plate.position = Vector3(0.0, 0.003, 0.7)
+	open_ground_plate.rotation_degrees.x = -90.0
+	var shader := load(OPEN_GROUND_SHADER_PATH) as Shader
+	if shader == null:
+		push_warning("Sanctuary open ground shader could not be loaded: %s" % OPEN_GROUND_SHADER_PATH)
+		return
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("ground_texture", ground_texture)
+	material.set_shader_parameter("authored_size", OPEN_GROUND_AUTHORED_SIZE)
+	material.set_shader_parameter("plate_size", OPEN_GROUND_PLATE_SIZE)
+	material.set_shader_parameter("forest_skirt_color", PALETTE["forest_skirt"])
+	open_ground_plate.material_override = material
+	open_ground_plate.set_meta("asset_id", "sanctuary/ground/open_meadow_v1")
+	open_ground_plate.set_meta("presentation_only", true)
+	open_ground_plate.set_meta("presentation_role", "authored_open_ground_backdrop")
+	open_ground_plate.set_meta("collision_authority", "none")
+	open_ground_plate.set_meta("occupancy_authority", "GameSession")
+	open_ground_plate.set_meta("occupies_build_cells", false)
+	open_ground_plate.set_meta("measurement_source", "generated_ground_plate_dimensions")
+	open_ground_plate.set_meta("source_texture_path", OPEN_GROUND_TEXTURE_PATH)
+	open_ground_plate.set_meta("world_size", [OPEN_GROUND_PLATE_SIZE.x, OPEN_GROUND_PLATE_SIZE.y])
+	add_child(open_ground_plate)
 
 func _build_paths() -> void:
 	# Two-to-three-metre traversal lanes use a dark packed-earth shoulder, a
@@ -488,9 +534,12 @@ func _build_open_build_field() -> void:
 	# Keep its quiet ground treatment and build-mode-only grid, but do not paint
 	# permanent plot discs into the world: even neutral pads imply a prescribed
 	# settlement layout before the player has chosen one.
-	var field_edge := _add_rounded_patch(Vector3(0.0, 0.061, 1.65), Vector2(11.0, 8.6), PALETTE["meadow_shadow"], 0.0)
+	# The authored ground already carries the clearing. Keep the reserve's
+	# presentation as a barely-there tint so it remains discoverable without
+	# hiding the woodland texture or dictating an old prototype-style oval.
+	var field_edge := _add_rounded_patch(Vector3(0.0, 0.061, 1.65), Vector2(11.0, 8.6), Color(0.20, 0.28, 0.20, 0.18), 0.0)
 	field_edge.name = "PlayerDirectedBuildFieldEdge"
-	var field := _add_rounded_patch(Vector3(0.0, 0.064, 1.65), Vector2(10.6, 8.2), PALETTE["build_field"], 0.0)
+	var field := _add_rounded_patch(Vector3(0.0, 0.064, 1.65), Vector2(10.6, 8.2), Color(0.40, 0.52, 0.36, 0.11), 0.0)
 	field.name = "PlayerDirectedBuildField"
 	grid_root = Node3D.new()
 	grid_root.name = "BuildGridOverlay"
