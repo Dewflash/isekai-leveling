@@ -7189,6 +7189,11 @@ func _workshop_use(source: Node3D = null) -> void:
 				_show_toast("Workshop complete  |  %s restored to %d durability" % [str(claimed.get("tool_id", "")).replace("_", " ").capitalize(), int(claimed.get("max_durability", 0))], 2.8)
 			else:
 				_show_toast("Workshop complete  |  +%d %s" % [int(claimed.get("output", 0)), str(claimed.get("output_id", "")).capitalize()], 2.6)
+			if audio_director != null:
+				var claim_position := player.global_position if player != null else Vector3.ZERO
+				if source != null:
+					claim_position = source.global_position
+				audio_director.call("play_action_at", "collect", claim_position)
 			return
 	else:
 		var recipe_id := "ingot" if station_action == "furnace" else selected_recipe
@@ -7206,6 +7211,11 @@ func _workshop_use(source: Node3D = null) -> void:
 				_refresh_station_visual()
 				_show_toast("The workshop order could not be secured. Materials were returned.", 2.8)
 			return
+		if audio_director != null:
+			var start_position := player.global_position if player != null else Vector3.ZERO
+			if source != null:
+				start_position = source.global_position
+			audio_director.call("play_action_at", "craft", start_position)
 		_show_toast("%s job started. Sleep once, then claim it here." % recipe_id.capitalize(), 2.5)
 	_refresh_station_visual()
 

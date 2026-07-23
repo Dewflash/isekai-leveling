@@ -143,6 +143,12 @@ geometry.
   the player moves inside it. The exit doorway is part of the illustrated room
   shell, while the live egress capsule and doorway clearance remain measured
   gameplay geometry.
+- Workshop production feedback now mirrors the authoritative
+  `GameSession.station_job` inside the room: the active station shows WORKING
+  or READY, a pulsing presentation-only floor marker, and intensified furnace
+  fire/smoke while the job is running. Starting and claiming a job also emit
+  spatial craft/collect feedback through the existing audio director; no job
+  state is duplicated in the interior controller.
 - Workshop entry/exit now validates the player's full capsule at every egress
   candidate and fails closed if no clear position is available. Construction
   stage sizing uses the selected directional asset's alpha envelope, and the
@@ -223,6 +229,9 @@ geometry.
   and `10_player_layout_split_workyard.png`
 - Workshop interior proof:
   `docs/evidence/sanctuary-scale-v26/workshop-interior-authored-stations.png`
+- Workshop production feedback proof:
+  `docs/evidence/workshop-interior-job-feedback/04_operational_fitout.png`,
+  `05_working_job.png`, and `06_ready_to_claim.png`
 - New operational facility assets:
   `assets/generated/sanctuary/archive/archive-q0.png`,
   `assets/generated/sanctuary/livestock_pen/livestock-pen-q0.png`, and
@@ -271,13 +280,14 @@ geometry.
 - `tests/test_workshop_interior_contract.gd`: pass, 87 checks covering room
   composition, measured station alpha bounds, station collision calibration,
   and the authored shell
-- `tests/test_workshop_interior_runtime.gd`: pass, 63 checks covering entry,
-  room-centered interior movement, interaction, egress clearance, and exit
-- `tests/test_workshop_stage_visuals.gd`: pass, 215 checks covering four
+- `tests/test_workshop_interior_runtime.gd`: pass, 67 checks covering entry,
+  room-centered interior movement, live station-job feedback, interaction,
+  egress clearance, and exit
+- `tests/test_workshop_stage_visuals.gd`: pass, 230 checks covering four
   directional layered Workshop construction families, measured alpha coverage,
   and motion
 - `tests/test_camera_controls.gd`: pass
-- `tests/test_reference_hud.gd`: pass, 18 checks covering gameplay visibility,
+- `tests/test_reference_hud.gd`: pass, 27 checks covering gameplay visibility,
   portrait/status content, first-run objective, sourced belt texture,
   icon/caption slots, wired action slots, context action, and ledger visibility
   switching

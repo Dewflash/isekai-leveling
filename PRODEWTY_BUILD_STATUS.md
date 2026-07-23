@@ -19,6 +19,7 @@ Updated: 2026-07-23, Asia/Singapore
 - Latest moss-overlay refinement proof: `docs/evidence/sanctuary-open-ground-v2/`
 - Latest camera-envelope refinement proof: `docs/evidence/sanctuary-open-ground-v3/`
 - Reference HUD baseline: `docs/evidence/sanctuary-hud-baseline/`
+- Workshop production feedback proof: `docs/evidence/workshop-interior-job-feedback/`
 - Launch note: restart any Godot editor or export opened before the A+C
   authority checkpoint; stale/committed builds cannot render the new assets.
 
@@ -61,6 +62,11 @@ Updated: 2026-07-23, Asia/Singapore
 - The Workshop interior capture waits for the real fade state to settle and now
   produces a readable empty room; blueprint, assembling, and operational
   station stages are captured in `/private/tmp/isekai-workshop-fitout-3/`.
+- Workshop production jobs now read directly from the durable station-job
+  record in the active interior. The selected station visibly reports WORKING
+  or READY, furnace fire/smoke intensifies while working, and craft/claim
+  actions use spatial audio feedback. The display-backed proof is persisted in
+  `docs/evidence/workshop-interior-job-feedback/`.
 - The Sanctuary now has a player-facing Build Catalogue in the gameplay HUD.
   Press `B` or the `BUILD` action slot to open it. Each structure card reads the
   authoritative ContentRegistry footprint/cost, displays its authored q0 art,

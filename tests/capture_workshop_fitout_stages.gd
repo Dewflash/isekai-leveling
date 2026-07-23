@@ -107,6 +107,28 @@ func _capture() -> void:
 	interior.call("sync_persisted_stations", operational_stations)
 	await _wait_seconds(0.70)
 	await _save_stage("04_operational_fitout")
+	var workbench_id := ""
+	for station_id in operational_stations:
+		if str(operational_stations[station_id].get("kind", "")) == "workbench":
+			workbench_id = str(station_id)
+			break
+	if workbench_id.is_empty():
+		push_error("WORKSHOP_FITOUT_CAPTURE_FAIL: operational workbench missing for job feedback")
+		quit(1)
+		return
+	var started_job: Dictionary = session.call("start_workshop_job", "plank", workbench_id, STRUCTURE_ID)
+	if started_job.is_empty():
+		push_error("WORKSHOP_FITOUT_CAPTURE_FAIL: workshop job could not start")
+		quit(1)
+		return
+	interior.call("sync_persisted_stations", operational_stations)
+	await _wait_seconds(0.45)
+	await _save_stage("05_working_job")
+	var ready_job: Dictionary = session.get("station_job")
+	ready_job["remaining_hours"] = 0.0
+	session.set("station_job", ready_job)
+	await _wait_seconds(0.45)
+	await _save_stage("06_ready_to_claim")
 	print("WORKSHOP_FITOUT_CAPTURE_PASS ", output_dir)
 	quit()
 
@@ -152,6 +174,14 @@ func _deliver_all_station_materials(session: Node, blueprint_stations: Dictionar
 	return true
 
 func _save_stage(stage_id: String) -> void:
+	# Main's normal UI loop derives toast visibility from its timer every frame;
+	# clear both sides before saving so visual evidence contains only the actual
+	# room/station state rather than a transient entry hint.
+	var toast := world.get("toast_label") as Label
+	if toast != null:
+		toast.visible = false
+	world.set("toast_timer", 0.0)
+	await process_frame
 	var image := viewport.get_texture().get_image()
 	var path := output_dir.path_join(stage_id + ".png")
 	var result := image.save_png(path)

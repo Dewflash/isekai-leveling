@@ -104,6 +104,35 @@ func _run() -> void:
 	if room != null:
 		var active_collision := room.find_child("MeasuredProxy", true, false) as CollisionShape3D
 		_check(active_collision != null and not active_collision.disabled, "entered workshop must enable measured station collision")
+	# The room must mirror the durable station job rather than leaving a static
+	# workstation visually indistinguishable from an active production order.
+	var furnace_record := {
+		"id": "furnace_left_001",
+		"structure_id": "workshop_qa_001",
+		"kind": "furnace_left",
+		"cell": [-2, -2],
+		"rotation": 0,
+		"state": "operational",
+		"remaining_hours": 0.0,
+		"total_hours": 12.0,
+		"delivered_materials": {"stone": 3, "wood": 2},
+	}
+	if session != null:
+		session.set("interior_stations", {"workshop_qa_001": {"furnace_left_001": furnace_record}})
+		session.set("station_job", {"kind": "ingot", "structure_id": "workshop_qa_001", "station_id": "furnace_left_001", "remaining_hours": 4.0, "total_hours": 12.0, "output_id": "ingot", "output": 1, "output_kind": "material", "tool_id": "", "quality_multiplier": 1.0, "action_id": "qa", "material_refunded": false})
+		interior.call("sync_persisted_stations", session.get("interior_stations").get("workshop_qa_001", {}))
+	await _wait_frames(3)
+	var furnace_station := room.find_child("InteriorStation_furnace_left_001", true, false) as Node3D if room != null else null
+	var furnace_label := furnace_station.get_node_or_null("StationLabel") as Label3D if furnace_station != null else null
+	var job_marker := furnace_station.get_node_or_null("StationJobMarker") as MeshInstance3D if furnace_station != null else null
+	_check(furnace_label != null and furnace_label.text.contains("WORKING"), "active furnace job must show a working status label")
+	_check(job_marker != null and job_marker.visible, "active furnace job must show a presentation-only station marker")
+	if session != null:
+		var ready_job: Dictionary = session.get("station_job")
+		ready_job["remaining_hours"] = 0.0
+		session.set("station_job", ready_job)
+	await _wait_frames(3)
+	_check(furnace_label != null and furnace_label.text.contains("READY"), "completed furnace job must show a ready-to-claim status label")
 	player.global_position = interior.call("exit_position")
 	world.call("_contextual_interact")
 	await _wait_seconds(0.85)

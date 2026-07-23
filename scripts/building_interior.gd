@@ -52,6 +52,7 @@ var interior_fill_light: OmniLight3D
 var door_fill_light: OmniLight3D
 var fade_layer: CanvasLayer
 var fade_rect: ColorRect
+var station_feedback_time := 0.0
 
 func build(world: Node3D) -> void:
 	if world == null or room_root != null:
@@ -167,6 +168,7 @@ func _process(delta: float) -> void:
 	if not active:
 		return
 	elapsed += delta
+	station_feedback_time += delta
 	for fire_data in animated_fire:
 		var fire := fire_data.get("node") as MeshInstance3D
 		if fire == null or not is_instance_valid(fire):
@@ -188,6 +190,7 @@ func _process(delta: float) -> void:
 		puff.scale = Vector3.ONE * (1.0 + fmod(elapsed * 0.18 + phase, 0.5) * 0.35)
 	if animated_wheel != null and is_instance_valid(animated_wheel):
 		animated_wheel.rotation.z = fmod(animated_wheel.rotation.z + delta * 0.75, TAU)
+	_update_station_job_feedback()
 
 func is_active() -> bool:
 	return active
@@ -367,6 +370,7 @@ func _clear_room() -> void:
 	interior_fill_light = null
 	door_fill_light = null
 	registered_floor_panel = null
+	station_feedback_time = 0.0
 
 func _first_access_zone(access_zones: Array, kind: String) -> Dictionary:
 	for zone_value in access_zones:
@@ -848,6 +852,101 @@ func _apply_station_state(station: Node3D, record: Dictionary) -> void:
 			faded_material.albedo_color.a = material_override.albedo_color.a * material_alpha
 			material_mesh.material_override = faded_material
 	_set_station_collision_active(station, state == "operational")
+
+func _update_station_job_feedback() -> void:
+	# Production status remains authoritative in GameSession.station_job. This
+	# room only mirrors it into presentation: a warm pulse means the selected
+	# station is working, a green pulse means its result is ready to claim. No
+	# job is created, advanced, or completed here.
+	var session := host_world.get("session") as Node if host_world != null else null
+	var job_value: Variant = session.get("station_job") if session != null else {}
+	var job: Dictionary = job_value if job_value is Dictionary else {}
+	var job_kind := str(job.get("kind", "none"))
+	var job_structure_id := str(job.get("structure_id", ""))
+	var job_station_id := str(job.get("station_id", ""))
+	var job_bound := active and active_kind == "workshop" and job_kind != "none" and job_structure_id == active_instance_id and not job_station_id.is_empty()
+	var job_ready := job_bound and float(job.get("remaining_hours", 0.0)) <= 0.0
+	for station_id_value in stations:
+		var station := stations.get(station_id_value) as Node3D
+		if station == null or not is_instance_valid(station):
+			continue
+		var station_id := str(station_id_value)
+		if station_id == "exit":
+			var exit_label := station.get_node_or_null("StationLabel") as Label3D
+			if exit_label != null:
+				exit_label.text = "EXIT\nE"
+				exit_label.modulate = Color("#f6e1b0")
+			var exit_marker := station.get_node_or_null("StationJobMarker") as MeshInstance3D
+			if exit_marker != null:
+				exit_marker.visible = false
+			continue
+		var operational := str(station.get_meta("installation_state", "blueprint")) == "operational"
+		var is_job_station := job_bound and operational and station_id == job_station_id
+		var label := station.get_node_or_null("StationLabel") as Label3D
+		if label != null:
+			var station_kind := str(station.get_meta("interior_station_kind", ""))
+			var base_label := str(ContentRegistry.interior_station_definition(station_kind).get("label", label.text)).split("\n")[0]
+			if is_job_station:
+				label.text = "%s\n%s" % [base_label, "READY" if job_ready else "WORKING"]
+				label.modulate = Color("#bff2b0") if job_ready else Color("#ffd37c")
+			else:
+				label.text = base_label if operational else "%s\n%s" % [base_label, "BLUEPRINT" if str(station.get_meta("installation_state", "")) == "blueprint" else "ASSEMBLING"]
+				label.modulate = Color("#f6e1b0")
+		var marker := station.get_node_or_null("StationJobMarker") as MeshInstance3D
+		if is_job_station:
+			if marker == null:
+				marker = _create_station_job_marker(station)
+			marker.visible = true
+			var pulse := 1.0 + sin(station_feedback_time * 5.4) * 0.12
+			marker.scale = Vector3.ONE * pulse
+			var marker_material := marker.material_override as StandardMaterial3D
+			if marker_material != null:
+				var marker_color := Color("#a8e68f") if job_ready else Color("#ffb55f")
+				marker_material.albedo_color = Color(marker_color.r, marker_color.g, marker_color.b, 0.22 + absf(sin(station_feedback_time * 5.4)) * 0.18)
+				marker_material.emission = marker_color
+				marker_material.emission_energy_multiplier = 0.55 if job_ready else 0.80
+		else:
+			if marker != null:
+				marker.visible = false
+		var station_kind := str(station.get_meta("interior_station_kind", ""))
+		if station_kind in ["furnace_left", "furnace_right"]:
+			var fire := station.get_node_or_null("FurnaceFire") as MeshInstance3D
+			var fire_light := station.get_node_or_null("FurnaceLight") as OmniLight3D
+			var smoke := station.get_node_or_null("Smoke") as Node3D
+			if fire != null:
+				fire.visible = operational
+				if is_job_station:
+					fire.scale = Vector3.ONE * (1.12 + sin(station_feedback_time * 8.0) * 0.10)
+				else:
+					fire.scale = Vector3.ONE
+			if fire_light != null:
+				fire_light.light_energy = 1.35 + (0.42 if is_job_station and not job_ready else 0.0) + sin(station_feedback_time * 7.0) * 0.10
+			if smoke != null:
+				smoke.visible = operational
+
+func _create_station_job_marker(station: Node3D) -> MeshInstance3D:
+	var marker := MeshInstance3D.new()
+	marker.name = "StationJobMarker"
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.38
+	mesh.bottom_radius = 0.38
+	mesh.height = 0.018
+	mesh.radial_segments = 24
+	marker.mesh = mesh
+	marker.position = Vector3(0.0, 0.035, 0.0)
+	marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	marker.set_meta("presentation_only", true)
+	marker.set_meta("collision_contributor", false)
+	var material := StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.emission_enabled = true
+	material.albedo_color = Color(1.0, 0.72, 0.36, 0.28)
+	material.emission = Color(1.0, 0.72, 0.36)
+	material.emission_energy_multiplier = 0.80
+	marker.material_override = material
+	station.add_child(marker)
+	return marker
 
 func _station_material_progress(record: Dictionary) -> float:
 	var kind := str(record.get("kind", ""))
