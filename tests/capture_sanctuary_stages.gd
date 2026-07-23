@@ -112,6 +112,8 @@ func _capture() -> void:
 		return
 	if not await _capture_placement_preview():
 		return
+	if not await _capture_rotated_placement_preview():
+		return
 	if not await _capture_structure_stage("03_blueprint.png", "blueprint", 0.0, {"wood": 0, "stone": 0}):
 		return
 	if not await _capture_structure_stage("04_early_scaffold.png", "building", 30.0, {"wood": 3, "stone": 2}):
@@ -259,6 +261,44 @@ func _capture_placement_preview() -> bool:
 		_abort("Placement preview did not resolve to a valid active footprint")
 		return false
 	return _save_capture("02_placement_preview_active.png")
+
+func _capture_rotated_placement_preview() -> bool:
+	await _begin_state()
+	var session := world.get("session") as Node
+	var player := world.get("player") as CharacterBody3D
+	var style := world.get("sanctuary_style") as Node
+	if session == null or player == null or style == null:
+		_abort("Session, player, or Sanctuary style disappeared before rotated placement preview capture")
+		return false
+	world.set("placement_structure_id", stage_kind)
+	world.set("placement_rotation_quarter_turns", 1)
+	world.set("placement_mode", true)
+	var rotated_origin := _find_valid_stage_origin(session, 1)
+	if rotated_origin.x == 9999:
+		_abort("Could not find a valid deterministic rotated %s capture origin" % stage_kind)
+		return false
+	var footprint_data: Array = ContentRegistry.structure_definition(stage_kind).get("footprint", [1, 1])
+	var authored_footprint := Vector2i(int(footprint_data[0]), int(footprint_data[1]))
+	var rotated_footprint := Vector2i(authored_footprint.y, authored_footprint.x)
+	var preview_distance := 3.0 + float(maxi(rotated_footprint.x, rotated_footprint.y) - 2)
+	player.global_position = Vector3(float(rotated_origin.x), 1.0, float(rotated_origin.y) - preview_distance)
+	player.set("last_direction", Vector3(0.0, 0.0, 1.0))
+	if player.has_method("cancel_navigation"):
+		player.call("cancel_navigation", true)
+	world.call("_update_structure_preview")
+	await _settle_and_pause()
+	_set_camera_focus(SettlementGrid.footprint_center_to_world(rotated_origin, rotated_footprint))
+	await process_frame
+	var preview_root := style.get_node_or_null("ConstructionPlacementPreview") as Node3D
+	var preview_fill := preview_root.get_node_or_null("PreviewFill") as MeshInstance3D if preview_root != null else null
+	var preview_mesh := preview_fill.mesh as BoxMesh if preview_fill != null else null
+	var preview_valid := bool(world.call("_structure_preview_valid", rotated_origin))
+	var preview_shape_matches := preview_mesh != null and is_equal_approx(preview_mesh.size.x, float(authored_footprint.x)) and is_equal_approx(preview_mesh.size.z, float(authored_footprint.y))
+	var silhouette := preview_root.get_node_or_null("PreviewStructureSilhouette") as Sprite3D if preview_root != null else null
+	if not preview_valid or preview_root == null or not preview_root.visible or not preview_shape_matches or silhouette == null:
+		_abort("Rotated placement preview did not resolve to an authored footprint and silhouette")
+		return false
+	return _save_capture("03_rotated_placement_preview_active.png")
 
 func _capture_structure_stage(file_name: String, state: String, remaining_hours: float, delivered: Dictionary, rotation := 0) -> bool:
 	await _begin_state()
@@ -1049,17 +1089,17 @@ func _clear_structure_visuals() -> void:
 		var structures: Dictionary = session.get("structures")
 		structures.clear()
 
-func _find_valid_stage_origin(session: Node) -> Vector2i:
+func _find_valid_stage_origin(session: Node, rotation := 0) -> Vector2i:
 	# Prefer the open central build field so the camera can show the player and
 	# the full footprint at the same 1-unit-per-metre scale. Fall back to the
 	# complete authoritative bounds rather than guessing around fixed landmarks.
 	for candidate in [Vector2i(4, 8), Vector2i(8, -12), Vector2i(-12, -12), Vector2i(2, 0), Vector2i(2, 3), Vector2i(3, -1), Vector2i(-4, 0), Vector2i(4, -1), Vector2i(2, 10), Vector2i(8, 8), Vector2i(-12, 10), Vector2i(-8, 10), Vector2i(8, -11), Vector2i(-7, -12)]:
-		if bool(session.call("can_place_structure", stage_kind, [candidate.x, candidate.y], 0)):
+		if bool(session.call("can_place_structure", stage_kind, [candidate.x, candidate.y], rotation)):
 			return candidate
 	for z in range(SettlementGrid.MIN_Z, SettlementGrid.MAX_Z + 1):
 		for x in range(SettlementGrid.MIN_X, SettlementGrid.MAX_X + 1):
 			var candidate := Vector2i(x, z)
-			if bool(session.call("can_place_structure", stage_kind, [x, z], 0)):
+			if bool(session.call("can_place_structure", stage_kind, [x, z], rotation)):
 				return candidate
 	return Vector2i(9999, 9999)
 

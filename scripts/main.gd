@@ -8080,7 +8080,7 @@ func _update_structure_preview() -> void:
 	if ghost_label != null:
 		ghost_label.text = "PLACE" if valid else "BLOCKED"
 	if sanctuary_style != null and sanctuary_style.has_method("set_placement_preview"):
-		sanctuary_style.call("set_placement_preview", build_marker.global_position, footprint, valid, placement_rotation_quarter_turns, true)
+		sanctuary_style.call("set_placement_preview", build_marker.global_position, footprint, valid, placement_rotation_quarter_turns, true, placement_structure_id)
 
 func _place_structure() -> void:
 	if get_tree().paused or is_player_input_locked() or interior_active or not placement_mode or session == null or current_zone != "Sanctuary":

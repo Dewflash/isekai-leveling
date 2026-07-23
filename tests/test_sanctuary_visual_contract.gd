@@ -1228,6 +1228,47 @@ func _check_player_placement_separation(world: Node, session: Node, player: Char
 	_check(bool(world.call("_structure_preview_valid", candidate)), "the same clear footprint must become valid when the player moves away")
 	world.set("placement_mode", false)
 
+func _check_placement_preview_contract(world: Node, session: Node, player: CharacterBody3D) -> void:
+	# Exercise the real rotated preview path. A q1 workshop is deliberately
+	# non-square so a double-swapped visual footprint cannot hide behind a
+	# square test case.
+	session.set("structures", {})
+	world.set("placement_structure_id", "workshop")
+	world.set("placement_rotation_quarter_turns", 1)
+	world.set("placement_mode", true)
+	var candidate := _find_valid_origin(session, 1)
+	if not _check(candidate.x != 9999, "rotated workshop preview needs a clear origin"):
+		world.set("placement_mode", false)
+		return
+	player.global_position = Vector3(-10.0, 1.0, 10.0)
+	player.set("last_direction", Vector3(0.0, 0.0, 1.0))
+	world.call("_update_structure_preview")
+	await process_frame
+	var style := world.get("sanctuary_style") as Node3D
+	var preview := style.get_node_or_null("ConstructionPlacementPreview") as Node3D if style != null else null
+	var fill := preview.get_node_or_null("PreviewFill") as MeshInstance3D if preview != null else null
+	var fill_mesh := fill.mesh as BoxMesh if fill != null else null
+	var workshop_footprint_data: Array = ContentRegistry.structure_definition("workshop").get("footprint", [1, 1])
+	var expected_local_footprint := Vector2i(int(workshop_footprint_data[0]), int(workshop_footprint_data[1]))
+	var expected_world_footprint: Vector2i = session.call("_structure_footprint", "workshop", 1)
+	_check(preview != null and preview.visible, "rotated placement preview must be visible")
+	_array_pair_matches(preview.get_meta("grid_footprint", []) if preview != null else [], expected_world_footprint, "rotated preview world footprint")
+	_array_pair_matches(preview.get_meta("local_footprint", []) if preview != null else [], expected_local_footprint, "rotated preview local footprint")
+	_check(fill_mesh != null, "rotated placement preview must expose its measured fill mesh")
+	if fill_mesh != null:
+		_approx(fill_mesh.size.x, float(expected_local_footprint.x), "rotated preview local width")
+		_approx(fill_mesh.size.z, float(expected_local_footprint.y), "rotated preview local depth")
+	var silhouette := preview.get_node_or_null("PreviewStructureSilhouette") as Sprite3D if preview != null else null
+	_check(silhouette != null and silhouette.visible, "rotated placement preview must show its authored blueprint silhouette")
+	if silhouette != null:
+		_check(str(silhouette.get_meta("preview_structure_kind", "")) == "workshop", "preview silhouette must bind the selected structure kind")
+		_check(int(silhouette.get_meta("preview_rotation_quarter_turns", -1)) == 1, "preview silhouette must bind the selected quarter-turn")
+		_check(bool(silhouette.get_meta("presentation_only", false)), "preview silhouette must be presentation-only")
+		_check(int(silhouette.get_meta("collision_layer", -1)) == 0, "preview silhouette must not add a collision layer")
+	world.set("placement_mode", false)
+	world.call("_update_structure_preview")
+	await process_frame
+
 func _check_player_building_physics(world: Node, player: CharacterBody3D) -> void:
 	var data := {
 		"id": PHYSICS_ID,
@@ -1375,6 +1416,10 @@ func _run() -> void:
 	section_failures = failures.size()
 	await _check_stage_nodes(world, rotation_origin)
 	print("SANCTUARY_VISUAL_CONTRACT_SECTION construction=%s" % ("OK" if failures.size() == section_failures else "FAIL"))
+
+	section_failures = failures.size()
+	await _check_placement_preview_contract(world, session, player)
+	print("SANCTUARY_VISUAL_CONTRACT_SECTION placement_preview=%s" % ("OK" if failures.size() == section_failures else "FAIL"))
 
 	section_failures = failures.size()
 	_check_player_placement_separation(world, session, player)

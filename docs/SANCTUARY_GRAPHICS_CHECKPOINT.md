@@ -13,6 +13,21 @@ The active A+C visual authority is
 composition/style target rather than a fixed background: the player remains
 free to choose the actual building layout.
 
+## Current placement checkpoint: authored blueprint preview
+
+Placement mode now shows the selected facility's own blueprint/construction
+silhouette over the measured rectangular footprint. The grid claim comes from
+`GameSession`; the presentation root resolves its canonical local dimensions
+and applies the requested quarter-turn once, so a non-square q1/q3 building
+cannot visually disagree with its occupied cells or measured collision shell.
+The fill, outline, and ghost asset carry no collision or occupancy authority.
+
+The display-backed proof is saved at
+`docs/evidence/sanctuary-placement-preview-v1/`: q0 placement, q1 rotated
+placement, and the surrounding construction/operational captures. This is a
+placement-contract improvement, not a claim that Sanctuary has reached the
+final A+C density or that the full game is complete.
+
 ## Current visible checkpoint: authored Sanctuary ground
 
 The live scene now mounts
@@ -64,7 +79,7 @@ geometry.
   an intentionally open player build reserve. Fixed full-size building and
   activity proxies were removed so the player owns the built layout.
 - Added visible construction progression for player structures: placement
-  grid/footprint preview, blueprint, early scaffold, mid construction, late
+  grid/footprint preview, authored blueprint silhouette, early scaffold, mid construction, late
   construction, and operational building. Delivered materials remain visible
   while the structure advances; additive components now render posts, beams,
   separated wall panels with a doorway gap, roof sections, and fittings.

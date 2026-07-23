@@ -20,10 +20,20 @@ Updated: 2026-07-23, Asia/Singapore
 - Latest camera-envelope refinement proof: `docs/evidence/sanctuary-open-ground-v3/`
 - Reference HUD baseline: `docs/evidence/sanctuary-hud-baseline/`
 - Workshop production feedback proof: `docs/evidence/workshop-interior-job-feedback/`
+- Placement preview rotation proof: `docs/evidence/sanctuary-placement-preview-v1/`
 - Launch note: restart any Godot editor or export opened before the A+C
   authority checkpoint; stale/committed builds cannot render the new assets.
 
 ## 2026-07-23 visual contract checkpoint
+
+- Placement mode now binds the selected structure's authored blueprint silhouette
+  to the same measured grid footprint used by GameSession. The preview child
+  stays in canonical local dimensions while the preview root applies the saved
+  quarter-turn once, fixing the 90°/270° visual footprint drift. The translucent
+  fill, outline, and silhouette are presentation-only and add no collision or
+  occupancy authority. Display-backed evidence includes q0 and q1 previews in
+  `docs/evidence/sanctuary-placement-preview-v1/`; the rotated contract is
+  covered by the Sanctuary visual test.
 
 - The fresh Sanctuary now has a catalog-authored lived-in activity ring around
   the player-directed build field: a shared kitchen garden, temporary wayfarer

@@ -145,6 +145,9 @@ var grid_root: Node3D
 var preview_root: Node3D
 var preview_fill: MeshInstance3D
 var preview_outline: Node3D
+var preview_art: Sprite3D
+var preview_art_kind := ""
+var preview_art_rotation := -1
 var placement_active := false
 var placement_center := Vector3.ZERO
 var placement_footprint := Vector2i.ONE
@@ -1282,7 +1285,7 @@ func _set_sprite_contract_metadata(sprite: Sprite3D, profile: Dictionary, opaque
 	sprite.set_meta("visual_units", "world_meters")
 	sprite.set_meta("source_opaque_bounds", [opaque_bounds.position.x, opaque_bounds.position.y, opaque_bounds.size.x, opaque_bounds.size.y])
 
-func set_placement_preview(center: Vector3, footprint: Vector2i, valid: bool, rotation_quarter_turns: int, active: bool) -> void:
+func set_placement_preview(center: Vector3, footprint: Vector2i, valid: bool, rotation_quarter_turns: int, active: bool, structure_kind := "") -> void:
 	placement_active = active
 	if grid_root != null:
 		grid_root.visible = active
@@ -1290,6 +1293,7 @@ func set_placement_preview(center: Vector3, footprint: Vector2i, valid: bool, ro
 		return
 	preview_root.visible = active
 	if not active:
+		_clear_placement_preview_art()
 		return
 	placement_center = center
 	placement_footprint = Vector2i(maxi(1, footprint.x), maxi(1, footprint.y))
@@ -1297,14 +1301,29 @@ func set_placement_preview(center: Vector3, footprint: Vector2i, valid: bool, ro
 	placement_valid = valid
 	preview_root.position = center + Vector3(0.0, 0.08, 0.0)
 	preview_root.rotation.y = float(placement_rotation) * PI * 0.5
-	var width := float(placement_footprint.x)
-	var depth := float(placement_footprint.y)
+	# `footprint` is the world/grid footprint already resolved by Main. The
+	# preview root owns the quarter-turn, so its child meshes must stay in the
+	# authored local dimensions. The old code used the already-swapped world
+	# footprint and then rotated the root again, making 90°/270° previews visibly
+	# disagree with the occupied cells and the placed collision shell.
+	var local_footprint := placement_footprint
+	if placement_rotation % 2 == 1:
+		local_footprint = Vector2i(placement_footprint.y, placement_footprint.x)
+	var width := float(local_footprint.x)
+	var depth := float(local_footprint.y)
+	preview_root.set_meta("grid_footprint", [placement_footprint.x, placement_footprint.y])
+	preview_root.set_meta("local_footprint", [local_footprint.x, local_footprint.y])
+	preview_root.set_meta("rotation_quarter_turns", placement_rotation)
+	preview_root.set_meta("presentation_only", true)
+	preview_root.set_meta("collision_layer", 0)
 	if preview_fill != null:
 		var fill_mesh := preview_fill.mesh as BoxMesh
 		if fill_mesh != null:
 			fill_mesh.size = Vector3(width, 0.035, depth)
 		preview_fill.position.y = 0.018
-		preview_fill.material_override = _soft_material(PALETTE["grid_valid"] if valid else PALETTE["grid_blocked"], true, true)
+		var fill_color: Color = PALETTE["grid_valid"] if valid else PALETTE["grid_blocked"]
+		fill_color.a = 0.12
+		preview_fill.material_override = _soft_material(fill_color, true, true)
 	if preview_outline != null:
 		var edge_specs := [
 			[Vector3(0.0, 0.035, -depth * 0.5), Vector3(width, 0.075, 0.075)],
@@ -1322,6 +1341,62 @@ func set_placement_preview(center: Vector3, footprint: Vector2i, valid: bool, ro
 			edge_mesh.size = edge_specs[index][1]
 			edge.position = edge_specs[index][0]
 			edge.material_override = _soft_material(PALETTE["grid_valid"] if valid else PALETTE["grid_blocked"], true, true)
+	_refresh_placement_preview_art(structure_kind)
+
+func _refresh_placement_preview_art(structure_kind: String) -> void:
+	if preview_root == null or structure_kind.is_empty():
+		_clear_placement_preview_art()
+		return
+	var normalized_rotation := placement_rotation
+	if preview_art != null and is_instance_valid(preview_art) and preview_art_kind == structure_kind and preview_art_rotation == normalized_rotation:
+		preview_art.modulate = Color(0.38, 1.0, 0.82, 0.72) if placement_valid else Color(1.0, 0.32, 0.34, 0.68)
+		return
+	_clear_placement_preview_art()
+	var stage_sprite := _player_structure_stage_sprite(structure_kind, "blueprint", normalized_rotation, _structure_world_size(structure_kind))
+	var preview_source := "construction_blueprint"
+	if stage_sprite == null:
+		# Pen and cistern currently have complete operational direction families
+		# while their dedicated construction sheets are still being authored. Use
+		# their own measured hero silhouette as a translucent blueprint rather than
+		# falling back to another building's art or a generic prop card.
+		stage_sprite = _player_structure_hero_sprite(structure_kind, normalized_rotation, _structure_world_size(structure_kind))
+		preview_source = "operational_silhouette_fallback"
+	if stage_sprite == null:
+		# A missing authored family must not silently become a generic prop card.
+		# The rectangular measured footprint remains visible and the missing-art
+		# metadata makes the issue inspectable in QA.
+		preview_root.set_meta("preview_art_missing", true)
+		return
+	stage_sprite.name = "PreviewStructureSilhouette"
+	stage_sprite.reparent(preview_root)
+	stage_sprite.position = Vector3(0.0, 0.055, 0.0)
+	stage_sprite.modulate = Color(0.38, 1.0, 0.82, 0.72) if placement_valid else Color(1.0, 0.32, 0.34, 0.68)
+	# The placement ghost is a readability layer, not a final lit asset. Use the
+	# Sprite3D's native alpha material here so its authored silhouette remains
+	# visible above the translucent footprint fill; placed/building art continues
+	# to use the Sanctuary toon shader.
+	stage_sprite.material_override = null
+	stage_sprite.render_priority = 2
+	stage_sprite.set_meta("presentation_only", true)
+	stage_sprite.set_meta("collision_layer", 0)
+	stage_sprite.set_meta("preview_structure_kind", structure_kind)
+	stage_sprite.set_meta("preview_rotation_quarter_turns", normalized_rotation)
+	stage_sprite.set_meta("preview_art_source", preview_source)
+	preview_art = stage_sprite
+	preview_art_kind = structure_kind
+	preview_art_rotation = normalized_rotation
+	preview_root.set_meta("preview_art_missing", false)
+
+func _clear_placement_preview_art() -> void:
+	if preview_art != null and is_instance_valid(preview_art):
+		# This is a single presentation child owned by the preview root. Free it
+		# immediately so the next quarter-turn can retain the stable node name;
+		# queue_free leaves a same-named child alive for the rest of the frame and
+		# makes valid rotated captures look like missing art.
+		preview_art.free()
+	preview_art = null
+	preview_art_kind = ""
+	preview_art_rotation = -1
 
 func apply_structure_visual(structure: Node3D, kind: String, state: String, data: Dictionary) -> void:
 	if structure == null:
