@@ -143,7 +143,20 @@ func _check_landmark_hitboxes(world: Node) -> void:
 		_check(generated.is_visible_in_tree(), "landmark %s generated presentation must be visible" % visual_root.name)
 		var measurement := AssetMeasurement.measure_runtime_node_local(sourced, [], true)
 		_check(bool(measurement.get("valid", false)), "landmark %s source must be measurable" % visual_root.name)
-		var bounds: AABB = measurement.get("bounds", AABB())
+		var generated_footprint: Variant = generated.get_meta("visual_footprint", [])
+		var generated_size: Variant = generated.get_meta("visual_size", [])
+		_check(generated_footprint is Array and (generated_footprint as Array).size() >= 2, "landmark %s generated art must publish its contact footprint" % visual_root.name)
+		_check(generated_size is Array and (generated_size as Array).size() >= 2, "landmark %s generated art must publish its visual size" % visual_root.name)
+		_check(str(generated.get_meta("visual_collision_alignment", "")) == "generated_visual_contact_footprint", "landmark %s must align collision to generated visual contact footprint" % visual_root.name)
+		_check(str(shell.get_meta("collision_alignment", "")) == "generated_alpha_envelope_with_sourced_proportions", "landmark %s shell must declare generated-art alignment" % visual_root.name)
+		var shell_bounds: Array = shell.get_meta("measured_bounds", [])
+		_check(shell_bounds.size() >= 6, "landmark %s shell must publish its rebuilt measured bounds" % visual_root.name)
+		if generated_footprint is Array and (generated_footprint as Array).size() >= 2 and shell_bounds.size() >= 6:
+			_approx(float(shell_bounds[3]), float((generated_footprint as Array)[0]), "landmark %s shell width" % visual_root.name)
+			_approx(float(shell_bounds[5]), float((generated_footprint as Array)[1]), "landmark %s shell depth" % visual_root.name)
+		var target_width := float(shell_bounds[3]) if shell_bounds.size() >= 6 else 0.0
+		var target_depth := float(shell_bounds[5]) if shell_bounds.size() >= 6 else 0.0
+		var target_rect := Rect2(Vector2(-target_width * 0.5, -target_depth * 0.5), Vector2(target_width, target_depth)).grow(0.001)
 		for shape_value in shell.find_children("*", "CollisionShape3D", true, false):
 			var collision := shape_value as CollisionShape3D
 			_check(collision != null and collision.shape is BoxShape3D, "landmark %s shell pieces must be boxes" % visual_root.name)
@@ -152,8 +165,7 @@ func _check_landmark_hitboxes(world: Node) -> void:
 			var box := collision.shape as BoxShape3D
 			_check(not str(collision.get_meta("measurement_source", "")).is_empty(), "landmark %s shell piece must declare measurement source" % visual_root.name)
 			var rect := Rect2(Vector2(collision.position.x, collision.position.z) - Vector2(box.size.x, box.size.z) * 0.5, Vector2(box.size.x, box.size.z))
-			var bounds_rect := Rect2(Vector2(bounds.position.x, bounds.position.z), Vector2(bounds.size.x, bounds.size.z)).grow(0.001)
-			_check(bounds_rect.encloses(rect), "landmark %s shell piece must remain inside measured source envelope" % visual_root.name)
+			_check(target_rect.encloses(rect), "landmark %s shell piece must remain inside generated visual contact envelope" % visual_root.name)
 
 func _check_framing_hitboxes(world: Node) -> void:
 	var style := world.get("sanctuary_style") as Node3D

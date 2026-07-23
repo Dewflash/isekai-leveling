@@ -469,3 +469,27 @@ same station/job authority as the visuals. It is not a final audio mix or a
 full-game claim; room filtering/reverb, richer variation, Sanctuary density,
 character/NPC action coverage, device evidence, and expedition presentation
 remain open.
+
+## 2026-07-23 render and measured-hitbox correction
+
+The latest runtime audit found two concrete defects behind the remaining
+visual mismatch. Ground paths and contact shadows were built from scaled
+cylinders/flat slabs, which created oval blobs and an oversized geometric
+cross. Fixed landmark art was also being fitted to the hidden imported shell,
+which made the generated A+C buildings visibly too small.
+
+The scene now uses curved, measured ribbon meshes for its three main routes and
+a dedicated decal shader for soft ground treatment. Fixed generated landmarks
+retain their catalog world size; the source scene supplies proportions only,
+and the collision authority rebuilds its compound shell from the generated
+contact footprint. This keeps the visible base and collision envelope in the
+same world-space contract without hardcoded per-screenshot hitboxes.
+
+Evidence: the 1280x720 display capture
+`/private/tmp/isekai-sanctuary-render-hitbox-v7.png` completed successfully;
+`ASSET_HITBOX_TESTS_PASS checks=633`,
+`SANCTUARY_SHADER_INTEGRATION_PASS checks=204`,
+`SANCTUARY_VISUAL_CONTRACT_PASS checks=5569`, and
+`WORLD_LOOP_TESTS_PASS`. The visual gate is still open for final density,
+device capture, broader facility/interior production art, and full-game
+content; this checkpoint only closes the render/scale/hitbox defect class.

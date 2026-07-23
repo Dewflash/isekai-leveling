@@ -873,12 +873,10 @@ full-game claim. The density, final interior art/audio, richer character/NPC
 animation, touch-device acceptance, expedition production visuals, and complete
 content pass remain open.
 
-Verification note: `tests/test_world_loop.gd` still fails on this machine before
-its world assertions because the fresh QA save probe cannot open a new
-`user://qa_world_loop.tmp.json` file; the test leaves its process alive after
-that assertion. The focused interior, Sanctuary, shader, hitbox, animation,
-camera, and input suites above pass. This runner/storage failure is separate
-from the Workshop sync change and was left visible rather than counted as green.
+Verification note superseded by the 2026-07-23 render/hitbox checkpoint below:
+with local Godot user-data access, `tests/test_world_loop.gd` now completes with
+`WORLD_LOOP_TESTS_PASS`. The earlier save-probe failure was sandbox/runtime
+user-data access, not a reproduced game-logic failure.
 
 ## 2026-07-23 Workshop spatial machine-audio checkpoint
 
@@ -900,3 +898,31 @@ This closes the Workshop spatial-audio reliability gate, not the complete audio
 production pass. Richer source variation, indoor room filtering/reverb, full
 NPC/creature action audio, final device acceptance, Sanctuary density, and the
 remaining expedition presentation gates remain open.
+
+## 2026-07-23 Sanctuary render and hitbox alignment checkpoint
+
+- Replaced the scaled-cylinder ground treatment that was producing hard-edged
+  oval blobs and screen-filling path slabs. Sanctuary paths now use measured,
+  presentation-only curved ribbon meshes with a dedicated ground-decal shader;
+  contact shadows and soft ground patches use shader-backed quads instead of
+  cylinder geometry. No decal owns collision or settlement occupancy.
+- Corrected the fixed-landmark scale boundary. Generated A+C cutouts keep their
+  catalog-measured world size, while the hidden imported source supplies only
+  landmark proportions/provenance. The district rebuilds each shell from the
+  generated contact footprint and records the alignment source, so art scale,
+  feet/base, and blocking volume no longer diverge.
+- The temporary runtime probe was removed after its assertions were folded into
+  the existing hitbox contract. Verification: `ASSET_HITBOX_TESTS_PASS
+  checks=633`, `SANCTUARY_SHADER_INTEGRATION_PASS checks=204`,
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5569`,
+  `SANCTUARY_CONSTRUCTION_SHADER_PASS checks=122`,
+  `SANCTUARY_DIRECTIONAL_FAMILY_PASS checks=99 facilities=3`,
+  `CAMERA_CONTROL_TESTS_PASS`, `REFERENCE_HUD_TESTS_PASS checks=27`,
+  `SANCTUARY_ACTIVITY_LAYER_PASS checks=169 sockets=4`, and
+  `WORLD_LOOP_TESTS_PASS`. A fresh display-backed capture completed as
+  `/private/tmp/isekai-sanctuary-render-hitbox-v7.png` at 1280x720.
+
+This is a concrete render/physics correction, not a final-game claim. The
+Sanctuary remains below the accepted A+C production bar in density, final UI
+polish, broader authored interiors, character/NPC action coverage, device
+acceptance, and expedition production visuals; other biomes remain frozen.

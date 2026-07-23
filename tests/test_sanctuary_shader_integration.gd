@@ -46,6 +46,7 @@ func _run() -> void:
 		var moss_count := 0
 		var path_count := 0
 		var contact_count := 0
+		var decal_count := 0
 		for value in style.find_children("*", "MeshInstance3D", true, false):
 			var mesh_instance := value as MeshInstance3D
 			if mesh_instance == null:
@@ -62,11 +63,22 @@ func _run() -> void:
 					moss_count += 1
 				else:
 					path_count += 1
+			elif shader_role in ["ground_decal_patch", "ground_decal_path", "ground_decal_contact_shadow"]:
+				var decal_material := mesh_instance.material_override as ShaderMaterial
+				_check(decal_material != null and decal_material.shader != null, "%s must use the live ground decal shader" % mesh_instance.name)
+				_check(mesh_instance.get_meta("collision_authority", "") == "none", "%s decal must remain presentation-only" % mesh_instance.name)
+				_check(not (mesh_instance.mesh is CylinderMesh), "%s decal must not regress to a scaled cylinder" % mesh_instance.name)
+				decal_count += 1
+				if shader_role == "ground_decal_path":
+					path_count += 1
+				if shader_role == "ground_decal_contact_shadow":
+					contact_count += 1
 			elif shader_role == "transparent_contact":
 				contact_count += 1
 				_check(not (mesh_instance.material_override is ShaderMaterial), "%s transparent contact shadow must not use the opaque ground shader" % mesh_instance.name)
-		_check(moss_count > 0, "live Sanctuary must activate moss ground shader patches")
+		_check(moss_count > 0 or decal_count > 0, "live Sanctuary must activate measured ground presentation meshes")
 		_check(path_count > 0, "live Sanctuary must activate packed-earth path shader patches")
+		_check(decal_count > 0, "live Sanctuary must activate measured ground decal meshes")
 		_check(contact_count > 0, "live Sanctuary must retain presentation-only contact shadows")
 	var building_interior := world.get("building_interior") as Node3D
 	_check(building_interior != null, "shader integration must not remove the interior runtime root")

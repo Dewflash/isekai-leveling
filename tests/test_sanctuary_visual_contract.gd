@@ -1334,8 +1334,11 @@ func _check_sanctuary_motion_contract(world: Node) -> void:
 	var initial_right_leg_rotation := right_leg.rotation.x if right_leg != null else 0.0
 	var initial_arm_rotation := left_arm.rotation.x if left_arm != null else 0.0
 	var initial_right_arm_rotation := right_arm.rotation.x if right_arm != null else 0.0
-	for _frame in 12:
-		await process_frame
+	# A headless frame can carry a near-zero process delta. Use several physics
+	# ticks so the real Villager routine has time to traverse and expose both
+	# sides of its stride rather than sampling one idle pose by accident.
+	for _frame in 60:
+		await physics_frame
 	var moved := guide.global_position.distance_to(initial_position) > 0.001
 	var left_leg_animated := left_leg != null and absf(left_leg.rotation.x - initial_leg_rotation) > 0.001
 	var right_leg_animated := right_leg != null and absf(right_leg.rotation.x - initial_right_leg_rotation) > 0.001

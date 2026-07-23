@@ -17,6 +17,7 @@ const GROUND_PATH_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_gro
 const STRUCTURE_SPRITE_MATERIAL_PATH := "res://assets/generated/shaders/sanctuary_toon_sprite.tres"
 const OPEN_GROUND_TEXTURE_PATH := "res://assets/generated/sanctuary/sanctuary-open-ground-v1.png"
 const OPEN_GROUND_SHADER_PATH := "res://assets/generated/shaders/sanctuary_ground_plate.gdshader"
+const GROUND_DECAL_SHADER_PATH := "res://assets/generated/shaders/sanctuary_ground_decal.gdshader"
 const OPEN_GROUND_AUTHORED_SIZE := Vector2(80.0, 60.0)
 const OPEN_GROUND_PLATE_SIZE := Vector2(80.0, 60.0)
 const CELL_SIZE := 512.0
@@ -140,6 +141,7 @@ var player_structure_sheet: Texture2D
 var ground_moss_material: ShaderMaterial
 var ground_path_material: ShaderMaterial
 var structure_sprite_material: ShaderMaterial
+var ground_decal_shader: Shader
 var open_ground_plate: MeshInstance3D
 var grid_root: Node3D
 var preview_root: Node3D
@@ -186,6 +188,7 @@ func build(parent_world: Node3D, zone: Node3D, district: Node3D, legacy_nodes: A
 	ground_moss_material = load(GROUND_MOSS_MATERIAL_PATH) as ShaderMaterial
 	ground_path_material = load(GROUND_PATH_MATERIAL_PATH) as ShaderMaterial
 	structure_sprite_material = load(STRUCTURE_SPRITE_MATERIAL_PATH) as ShaderMaterial
+	ground_decal_shader = load(GROUND_DECAL_SHADER_PATH) as Shader
 	_hide_replaced_presentation(legacy_nodes)
 	_hide_furnace_presentation()
 	if source_district != null:
@@ -499,11 +502,19 @@ func _build_paths() -> void:
 	# Two-to-three-metre traversal lanes use a dark packed-earth shoulder, a
 	# desaturated core, and small deterministic wear patches. This produces an
 	# irregular boundary without adding collision or claiming settlement cells.
-	_add_worn_path_segment(Vector3(0.0, 0.052, 2.0), Vector2(3.2, 16.0), 0.0)
-	_add_worn_path_segment(Vector3(-4.8, 0.055, 0.3), Vector2(11.0, 2.8), -4.0)
-	_add_worn_path_segment(Vector3(5.6, 0.055, 0.4), Vector2(9.5, 2.5), 5.0)
-	_add_worn_path_segment(Vector3(-8.3, 0.058, -4.8), Vector2(4.0, 1.9), 0.0, true)
-	_add_worn_path_segment(Vector3(8.7, 0.058, 5.0), Vector2(4.0, 1.9), 0.0, true)
+	_add_curved_worn_path([
+		Vector2(-0.70, -4.8), Vector2(-0.48, -3.3), Vector2(-0.12, -1.7),
+		Vector2(0.08, 0.05), Vector2(0.20, 1.80), Vector2(-0.02, 3.45),
+		Vector2(0.75, 5.0),
+	], 1.12)
+	_add_curved_worn_path([
+		Vector2(-0.05, -0.05), Vector2(-1.40, -0.30), Vector2(-2.80, -0.68),
+		Vector2(-4.35, -1.05), Vector2(-5.70, -1.38), Vector2(-7.25, -1.52),
+	], 0.98)
+	_add_curved_worn_path([
+		Vector2(0.16, 0.72), Vector2(1.65, 0.78), Vector2(3.20, 0.60),
+		Vector2(4.85, 0.48), Vector2(6.55, 0.70), Vector2(8.55, 0.38),
+	], 0.96)
 	for wear_data in [
 		[Vector3(-1.48, 0.059, -3.0), Vector2(0.72, 1.45), -14.0],
 		[Vector3(1.47, 0.059, -0.7), Vector2(0.62, 1.20), 11.0],
@@ -573,7 +584,7 @@ func _build_story_campfire() -> void:
 	# beat from the saved Sanctuary target without prescribing where future plots
 	# must be placed.
 	var fire_position := Vector3(0.0, 0.10, 1.35)
-	var fire_pad := _add_rounded_patch(fire_position + Vector3(0.0, -0.035, 0.0), Vector2(3.8, 2.45), PALETTE["path_shadow"], -2.0)
+	var fire_pad := _add_rounded_patch(fire_position + Vector3(0.0, -0.035, 0.0), Vector2(2.75, 1.85), PALETTE["path_shadow"], -2.0)
 	fire_pad.name = "SharedHearthActivityPad"
 	var fire := _fire_sprite_from_sheet(fire_position, 2.55)
 	if fire != null:
@@ -648,7 +659,12 @@ func _bind_canonical_landmark(parent: Node3D, definition: Dictionary) -> void:
 	parent.add_child(root)
 	# The district shell is authoritative for the landmark transform. This
 	# avoids duplicating placement/rotation coordinates in the art layer.
-	root.global_transform = shell.global_transform
+	# Fixed source scenes carry their own import scale. The generated cutout is
+	# already authored in world metres, so the presentation root inherits only
+	# the shell's measured position and facing—not its hidden source scale.
+	root.global_position = shell.global_position
+	root.global_rotation = shell.global_rotation
+	root.scale = Vector3.ONE
 
 	shell.set_meta("landmark_id", str(definition.get("id", "")))
 	shell.set_meta("asset_id", asset_id)
@@ -677,13 +693,13 @@ func _bind_canonical_landmark(parent: Node3D, definition: Dictionary) -> void:
 	match str(definition.get("id", "")):
 		"hearth_lodge":
 			generated_kind = "workshop"
-			generated_world_size = 8.2
+			generated_world_size = _structure_world_size(generated_kind)
 		"archive_house":
 			generated_kind = "archive"
-			generated_world_size = 7.1
+			generated_world_size = _structure_world_size(generated_kind)
 		"wanderers_bazaar":
 			generated_kind = "market"
-			generated_world_size = 5.8
+			generated_world_size = _structure_world_size(generated_kind)
 	var generated_sprite: Sprite3D = null
 	if generated_kind in ["workshop", "archive"]:
 		generated_sprite = _player_structure_hero_sprite(generated_kind, 0, generated_world_size)
@@ -694,6 +710,15 @@ func _bind_canonical_landmark(parent: Node3D, definition: Dictionary) -> void:
 		generated_sprite.reparent(root, false)
 		generated_sprite.position = Vector3.ZERO
 		generated_sprite.rotation = Vector3.ZERO
+		var footprint_value: Variant = generated_sprite.get_meta("visual_footprint", [])
+		var size_value: Variant = generated_sprite.get_meta("visual_size", [])
+		if footprint_value is Array and size_value is Array and (footprint_value as Array).size() >= 2 and (size_value as Array).size() >= 2:
+			var footprint := Vector2(float((footprint_value as Array)[0]), float((footprint_value as Array)[1]))
+			var visual_size := Vector2(float((size_value as Array)[0]), float((size_value as Array)[1]))
+			var alignment: Dictionary = source_district.align_fixed_shell_to_visual(shell, footprint, visual_size) if source_district.has_method("align_fixed_shell_to_visual") else {}
+			generated_sprite.set_meta("visual_collision_alignment", str(alignment.get("measurement_source", "generated_visual_contact_footprint")))
+			root.set_meta("visual_collision_alignment", str(alignment.get("measurement_source", "generated_visual_contact_footprint")))
+			root.set_meta("visual_collision_footprint", alignment.get("footprint", [footprint.x, footprint.y]))
 		generated_sprite.set_meta("canonical_landmark_art", true)
 		root.set_meta("presentation_mode", "generated_a_plus_c_cutout")
 	else:
@@ -2149,13 +2174,83 @@ func _vector3_to_array(value: Variant) -> Array:
 		return [vector.x, vector.y, vector.z]
 	return [0.0, 0.0, 0.0]
 
-func _add_worn_path_segment(position: Vector3, size: Vector2, rotation_degrees: float, darker := false) -> void:
+func _add_curved_worn_path(points: Array, width: float, darker := false) -> void:
+	if points.size() < 2:
+		return
+	var normalized_points: Array[Vector2] = []
+	for point_value in points:
+		if point_value is Vector2:
+			normalized_points.append(point_value as Vector2)
+	if normalized_points.size() < 2:
+		return
 	var edge_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path_edge"]
 	var core_color: Color = PALETTE["path_shadow"] if darker else PALETTE["path"]
-	var edge := _add_rounded_patch(position + Vector3(0.0, -0.006, 0.0), size + Vector2(0.44, 0.42), edge_color, rotation_degrees, true)
+	var edge := _add_curved_ribbon(normalized_points, width + 0.18, edge_color, 0.046)
 	edge.name = "PackedEarthPathEdge"
-	var core := _add_rounded_patch(position, size, core_color, rotation_degrees, true)
+	var core := _add_curved_ribbon(normalized_points, width, core_color, 0.056)
 	core.name = "PackedEarthPath"
+
+func _add_curved_ribbon(points: Array[Vector2], width: float, color: Color, y_position: float) -> MeshInstance3D:
+	var patch := MeshInstance3D.new()
+	patch.name = "OrganicCurvedPathRibbon"
+	var vertices := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cumulative_length := 0.0
+	var total_length := 0.0
+	for index in range(1, points.size()):
+		total_length += points[index - 1].distance_to(points[index])
+	var half_width := maxf(0.05, width * 0.5)
+	for index in points.size():
+		var current := points[index]
+		var previous := points[maxi(0, index - 1)]
+		var next := points[mini(points.size() - 1, index + 1)]
+		var tangent := (next - previous).normalized()
+		if tangent.length_squared() < 0.01:
+			tangent = Vector2.UP
+		var normal := Vector2(-tangent.y, tangent.x) * half_width
+		for side in [-1.0, 1.0]:
+			var edge_point: Vector2 = current + normal * side
+			# Author the ribbon in the local X/Y plane; the -90° X rotation
+			# below places local Y on the world-ground Z axis.
+			vertices.append(Vector3(edge_point.x, -edge_point.y, 0.0))
+			uvs.append(Vector2(0.0 if side < 0.0 else 1.0, cumulative_length / maxf(0.01, total_length)))
+		if index < points.size() - 1:
+			cumulative_length += current.distance_to(next)
+	var indices := PackedInt32Array()
+	for index in range(points.size() - 1):
+		var base := index * 2
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base + 1)
+		indices.append(base + 3)
+		indices.append(base + 2)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	patch.mesh = mesh
+	patch.position = Vector3(0.0, y_position, 0.0)
+	patch.rotation_degrees.x = -90.0
+	if ground_decal_shader != null:
+		var decal_material := ShaderMaterial.new()
+		decal_material.shader = ground_decal_shader
+		decal_material.set_shader_parameter("base_color", color)
+		decal_material.set_shader_parameter("shape_mode", 2)
+		decal_material.set_shader_parameter("corner_radius", 0.20)
+		decal_material.set_shader_parameter("edge_softness", 0.028)
+		decal_material.set_shader_parameter("ellipse_radius", 0.92)
+		patch.material_override = decal_material
+	else:
+		patch.material_override = _ground_material(color, false, true)
+	patch.set_meta("shader_role", "ground_decal_path")
+	patch.set_meta("world_size", [width, total_length])
+	patch.set_meta("collision_authority", "none")
+	add_child(patch)
+	return patch
 
 func _add_contact_shadow(parent: Node3D, position: Vector3, size: Vector2, rotation_degrees: float) -> MeshInstance3D:
 	# Shallow alpha decals anchor billboard feet and structure bases without
@@ -2168,17 +2263,27 @@ func _add_rounded_patch(position: Vector3, size: Vector2, color: Color, rotation
 func _create_rounded_patch(parent: Node3D, node_name: String, position: Vector3, size: Vector2, color: Color, rotation_degrees: float, path_material := false) -> MeshInstance3D:
 	var patch := MeshInstance3D.new()
 	patch.name = node_name
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = 1.0
-	mesh.bottom_radius = 1.02
-	mesh.height = 0.035
-	mesh.radial_segments = 32
+	var mesh := QuadMesh.new()
+	mesh.size = size
 	patch.mesh = mesh
 	patch.position = position
+	patch.rotation_degrees.x = -90.0
 	patch.rotation_degrees.y = rotation_degrees
-	patch.scale = Vector3(size.x * 0.5, 1.0, size.y * 0.5)
-	patch.material_override = _ground_material(color, color.a < 0.999, path_material)
-	patch.set_meta("shader_role", "ground_path" if path_material and color.a >= 0.999 else ("ground_moss" if color.a >= 0.999 else "transparent_contact"))
+	if ground_decal_shader != null:
+		var decal_material := ShaderMaterial.new()
+		decal_material.shader = ground_decal_shader
+		var is_shadow := node_name.contains("ContactShadow")
+		decal_material.set_shader_parameter("base_color", color)
+		decal_material.set_shader_parameter("shape_mode", 0 if is_shadow else 1)
+		decal_material.set_shader_parameter("corner_radius", 0.18 if path_material else 0.24)
+		decal_material.set_shader_parameter("edge_softness", 0.055 if is_shadow else 0.028)
+		decal_material.set_shader_parameter("ellipse_radius", 0.92)
+		patch.material_override = decal_material
+	else:
+		patch.material_override = _ground_material(color, color.a < 0.999, path_material)
+	patch.set_meta("shader_role", "ground_decal_contact_shadow" if node_name.contains("ContactShadow") else ("ground_decal_path" if path_material else "ground_decal_patch"))
+	patch.set_meta("world_size", [size.x, size.y])
+	patch.set_meta("collision_authority", "none")
 	parent.add_child(patch)
 	return patch
 

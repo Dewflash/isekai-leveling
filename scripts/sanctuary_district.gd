@@ -559,6 +559,68 @@ func _add_fixed_shell_collision(node_name: String, source_instance: Node3D) -> v
 		body.add_child(collision)
 	add_child(body)
 
+func align_fixed_shell_to_visual(shell: StaticBody3D, visual_footprint: Vector2, visual_size: Vector2) -> Dictionary:
+	"""Rebuild a fixed landmark shell from the generated presentation envelope.
+
+	The imported model remains the measurement authority for proportions, but it
+	must not dictate the world scale of a replacement A+C cutout. The cutout's
+	measured contact footprint supplies the scale; the sourced model supplies the
+	depth-to-height relationship. This keeps the visible building large enough to
+	read as a landmark while ensuring the blocking volume is derived from the same
+	asset contract instead of a guessed collider.
+	"""
+	if shell == null or visual_footprint.x <= 0.0 or visual_footprint.y <= 0.0 or visual_size.y <= 0.0:
+		return {}
+	var measured: Array = shell.get_meta("measured_bounds", [])
+	if measured.size() < 6:
+		return {}
+	var source_depth := maxf(0.01, float(measured[5]))
+	var source_height := maxf(0.01, float(measured[4]))
+	var target_width := maxf(0.01, visual_footprint.x)
+	var target_depth := maxf(0.01, visual_footprint.y)
+	# Preserve the sourced landmark's vertical massing without making the roof
+	# itself an invisible wall. This is derived from the measured source ratio and
+	# the generated asset's contact depth, not a per-building hitbox constant.
+	var target_height := maxf(0.20, source_height / source_depth * target_depth)
+	var wall_thickness := clampf(minf(target_width, target_depth) * 0.035, 0.07, 0.22)
+
+	# The generated sprite is authored in world metres. Remove the imported
+	# source scale from the shell before placing the measured boxes so both roots
+	# use the same world-space contract.
+	shell.scale = Vector3.ONE
+	for child in shell.get_children():
+		if child is CollisionShape3D:
+			child.free()
+	var bounds_position := Vector3(-target_width * 0.5, 0.0, -target_depth * 0.5)
+	var bounds_end := bounds_position + Vector3(target_width, target_height, target_depth)
+	for wall_data in [
+		[Vector3((bounds_position.x + bounds_end.x) * 0.5, target_height * 0.5, bounds_position.z + wall_thickness * 0.5), Vector3(target_width, target_height, wall_thickness)],
+		[Vector3(bounds_position.x + wall_thickness * 0.5, target_height * 0.5, (bounds_position.z + bounds_end.z) * 0.5), Vector3(wall_thickness, target_height, maxf(wall_thickness, target_depth - wall_thickness * 2.0))],
+		[Vector3(bounds_end.x - wall_thickness * 0.5, target_height * 0.5, (bounds_position.z + bounds_end.z) * 0.5), Vector3(wall_thickness, target_height, maxf(wall_thickness, target_depth - wall_thickness * 2.0))],
+	]:
+		var collision := CollisionShape3D.new()
+		collision.name = "GeneratedVisualCompound_%d" % shell.get_child_count()
+		var shape := BoxShape3D.new()
+		shape.size = wall_data[1]
+		collision.shape = shape
+		collision.position = wall_data[0]
+		collision.set_meta("landmark_asset_id", str(shell.get_meta("asset_id", "")))
+		collision.set_meta("visible_root", shell.get_meta("visible_root", null))
+		collision.set_meta("measurement_source", "generated_visual_contact_footprint")
+		collision.set_meta("visual_footprint", [target_width, target_depth])
+		shell.add_child(collision)
+	shell.set_meta("measured_bounds", [bounds_position.x, bounds_position.y, bounds_position.z, target_width, target_height, target_depth])
+	shell.set_meta("measurement_source", "generated_visual_contact_footprint")
+	shell.set_meta("collision_alignment", "generated_alpha_envelope_with_sourced_proportions")
+	shell.set_meta("visual_footprint", [target_width, target_depth])
+	shell.set_meta("visual_size", [visual_size.x, visual_size.y])
+	return {
+		"footprint": [target_width, target_depth],
+		"height": target_height,
+		"wall_thickness": wall_thickness,
+		"measurement_source": "generated_visual_contact_footprint",
+	}
+
 func _add_label(text_value: String, world_position: Vector3) -> void:
 	var label := Label3D.new()
 	label.text = text_value

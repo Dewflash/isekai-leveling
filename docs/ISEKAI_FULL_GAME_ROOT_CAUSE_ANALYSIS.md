@@ -323,3 +323,20 @@ intensity, READY shutdown, and cleanup. This closes one non-negotiable Workshop
 gate; it does not establish final audio variation, indoor filtering/reverb,
 Sanctuary visual density, character/creature action animation, device evidence,
 the five production biomes, or full-game content.
+
+## 2026-07-23 render/hitbox audit update
+
+The latest Sanctuary evidence separated two issues that had previously been
+treated as one. The path/shadow failure was caused by presentation geometry
+(scaled cylinders and broad rectangles), while the landmark-size failure was a
+collision-authority mismatch: generated A+C art was being scaled to a hidden
+imported source shell. The fix keeps the source measurement for proportions and
+provenance, keeps the generated asset's measured world size, and rebuilds the
+blocking shell from the generated contact footprint. Curved ribbon routes and
+shader-backed quads remove the flat oval/ slab artifacts without adding
+collision or occupancy claims.
+
+The result is verified by a display-backed capture and the updated hitbox,
+shader, visual, camera, HUD, activity, directional-family, and world-loop
+contracts. This is evidence that the representation is becoming more coherent,
+not evidence that the complete game or accepted A+C graphics bar is finished.
