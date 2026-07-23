@@ -10,6 +10,16 @@ uniform float step_center : hint_range(0.0, 1.0, 0.01) = 0.52;
 uniform float step_softness : hint_range(0.01, 0.35, 0.01) = 0.12;
 uniform float shadow_value : hint_range(0.35, 1.0, 0.01) = 0.72;
 uniform float light_value : hint_range(0.75, 1.25, 0.01) = 1.04;
+// Construction presentation is an optional per-sprite layer. A value of zero
+// preserves the operational toon treatment; one renders a blueprint envelope;
+// two reveals an authored silhouette from the ground up as materials arrive.
+uniform int construction_mode = 0;
+uniform float construction_progress : hint_range(0.0, 1.0, 0.01) = 0.0;
+uniform vec4 construction_outline_color : source_color = vec4(0.46, 1.0, 0.88, 1.0);
+uniform vec4 construction_fill_color : source_color = vec4(0.84, 0.94, 0.78, 1.0);
+uniform vec4 construction_grid_color : source_color = vec4(0.46, 1.0, 0.88, 1.0);
+uniform float construction_outline_strength : hint_range(0.0, 1.0, 0.01) = 0.92;
+uniform float construction_grid_scale : hint_range(1.0, 32.0, 1.0) = 10.0;
 
 varying vec3 key_light_direction_view;
 
@@ -43,7 +53,39 @@ void fragment() {
 	float ramp = smoothstep(step_center - step_softness, step_center + step_softness, half_lambert);
 	vec3 ramp_tint = mix(shadow_tint.rgb, light_tint.rgb, ramp);
 	float ramp_value = mix(shadow_value, light_value, ramp);
-	ALBEDO = clamp(source.rgb * ramp_tint * ramp_value, vec3(0.0), vec3(1.0));
-	ALPHA = source.a;
+	vec3 lit_color = clamp(source.rgb * ramp_tint * ramp_value, vec3(0.0), vec3(1.0));
+	if (construction_mode == 0) {
+		ALBEDO = lit_color;
+		ALPHA = source.a;
+	} else {
+		vec2 texel = 1.0 / vec2(textureSize(albedo_texture, 0));
+		float neighbour_alpha = 0.0;
+		neighbour_alpha = max(neighbour_alpha, texture(albedo_texture, UV + vec2(texel.x * 1.5, 0.0)).a);
+		neighbour_alpha = max(neighbour_alpha, texture(albedo_texture, UV - vec2(texel.x * 1.5, 0.0)).a);
+		neighbour_alpha = max(neighbour_alpha, texture(albedo_texture, UV + vec2(0.0, texel.y * 1.5)).a);
+		neighbour_alpha = max(neighbour_alpha, texture(albedo_texture, UV - vec2(0.0, texel.y * 1.5)).a);
+		float silhouette_edge = clamp(neighbour_alpha - source.a, 0.0, 1.0);
+		float grid_line = max(
+			step(0.92, fract(UV.x * construction_grid_scale)),
+			step(0.92, fract(UV.y * construction_grid_scale))
+		);
+		if (construction_mode == 1) {
+			// Blueprint mode is an authored silhouette envelope, not a generic
+			// rectangle. The source alpha defines the exact building shape and the
+			// grid/edge accents explain that the site is still unbuilt.
+			ALBEDO = mix(construction_grid_color.rgb, construction_outline_color.rgb, silhouette_edge);
+			ALPHA = max(source.a * 0.16, silhouette_edge * construction_outline_strength);
+			ALPHA = max(ALPHA, grid_line * source.a * 0.38);
+		} else {
+			float reveal = smoothstep(1.0 - construction_progress - 0.055, 1.0 - construction_progress + 0.055, UV.y);
+			float reveal_line = 1.0 - smoothstep(0.0, 0.045, abs(UV.y - (1.0 - construction_progress)));
+			vec3 partial_color = mix(construction_fill_color.rgb, lit_color, reveal * 0.72);
+			ALBEDO = mix(construction_outline_color.rgb, partial_color, reveal);
+			ALPHA = max(source.a * mix(0.20, 0.92, reveal), silhouette_edge * construction_outline_strength);
+			ALPHA = max(ALPHA, reveal_line * source.a * 0.86);
+			ALPHA = max(ALPHA, grid_line * source.a * (1.0 - reveal) * 0.36);
+		}
+		ALPHA *= COLOR.a;
+	}
 	ROUGHNESS = 0.92;
 }

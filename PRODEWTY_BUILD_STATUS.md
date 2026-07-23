@@ -822,3 +822,30 @@ capture, deeper audio, and the complete content pass remain open.
   unavailable in the current environment. The final Sanctuary density,
   broader facility art/interiors, richer action animation, audio depth,
   production expedition visuals, and full content pass remain open.
+
+## 2026-07-23 measured construction reveal checkpoint
+
+- Livestock Pen and Rain Cistern construction no longer fall back to a generic
+  garden/well card or render the old procedural box assembly over the authored
+  facility. Their own measured directional operational silhouettes now drive a
+  shader-backed blueprint and material-reveal presentation.
+- Blueprint mode draws the actual facility alpha envelope as a mint outline/grid
+  with the structure's real directional asset. Building mode reveals that same
+  silhouette from the ground up using authoritative construction progress; the
+  old procedural construction descendants are hidden only from rendering,
+  while collision, material ledger, persistence, and interaction nodes remain.
+- The capture harness now produces pixel-backed Pen/Cistern blueprint and
+  mid-build frames. Verification: `SANCTUARY_CONSTRUCTION_SHADER_PASS checks=122`,
+  `SANCTUARY_VISUAL_CONTRACT_PASS checks=5569`,
+  `WORKSHOP_STAGE_VISUAL_PASS checks=230`,
+  `ARCHIVE_CONSTRUCTION_VISUAL_PASS checks=177`,
+  `STORAGE_SHED_VISUAL_PASS checks=148`,
+  `WORKSHOP_INTERIOR_RUNTIME_PASS checks=67`,
+  `ARCHIVE_INTERIOR_RUNTIME_PASS checks=95`,
+  `ASSET_HITBOX_TESTS_PASS checks=612`,
+  `SANCTUARY_SHADER_INTEGRATION_PASS checks=206`, and
+  `WORLD_LOOP_TESTS_PASS`.
+- This closes one construction-presentation gap; it is not a final Sanctuary
+  or full-game claim. Density, broader authored interiors, richer directional
+  character/NPC animation, audio depth, expedition production art, and device
+  acceptance remain open.

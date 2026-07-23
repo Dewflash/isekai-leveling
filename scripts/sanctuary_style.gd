@@ -914,6 +914,29 @@ func _structure_sprite_material(texture: Texture2D) -> ShaderMaterial:
 	material.set_shader_parameter("base_color", Color.WHITE)
 	return material
 
+func _configure_construction_sprite_shader(sprite: Sprite3D, kind: String, state: String, progress: float) -> void:
+	if sprite == null:
+		return
+	var material := sprite.material_override as ShaderMaterial
+	if material == null:
+		return
+	var is_blueprint := state == "blueprint"
+	var outline_color := Color("#72f4d0")
+	var fill_color := Color("#d5ddb5")
+	if kind == "rain_cistern":
+		outline_color = Color("#8de7e6")
+		fill_color = Color("#c7e1cf")
+	material.set_shader_parameter("construction_mode", 1 if is_blueprint else 2)
+	material.set_shader_parameter("construction_progress", 0.0 if is_blueprint else clampf(progress, 0.0, 1.0))
+	material.set_shader_parameter("construction_outline_color", outline_color)
+	material.set_shader_parameter("construction_fill_color", fill_color)
+	material.set_shader_parameter("construction_grid_color", outline_color.lightened(0.08))
+	material.set_shader_parameter("construction_outline_strength", 0.92)
+	material.set_shader_parameter("construction_grid_scale", 10.0)
+	sprite.set_meta("construction_shader_contract", "authored_silhouette_reveal_v1")
+	sprite.set_meta("construction_shader_mode", "blueprint" if is_blueprint else "material_reveal")
+	sprite.set_meta("construction_shader_progress", 0.0 if is_blueprint else clampf(progress, 0.0, 1.0))
+
 func _player_structure_hero_sprite(kind: String, rotation_quarter_turns: int, world_size: float) -> Sprite3D:
 	# Every production facility uses this measured cutout constructor. Directional
 	# records resolve through the catalog; no sprite is rotated in metadata and no
@@ -1439,6 +1462,8 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	var directional_art_required := bool(structure_definition.get("directional_art_required", false))
 	var use_measured_3d_art := state == "operational" and str(structure_definition.get("operational_art_mode", "illustrated_2_5d")) == "measured_3d" and bool(structure.get_meta("source_measurement_valid", false)) and measured_3d_source != null
 	var use_player_structure_art := state == "operational" and not use_measured_3d_art and player_structure_sheet != null and PLAYER_STRUCTURE_ASSET_PROFILES.has(kind)
+	var rotation_quarter_turns := int(structure.get_meta("rotation_quarter_turns", 0))
+	var shader_construction := (state == "blueprint" or state == "building") and not directional_art_required and SanctuaryAssetCatalog.structure_construction_stage_asset(kind, "blueprint", rotation_quarter_turns).is_empty()
 	var hide_names := [
 		"CisternBase",
 		"CisternTank",
@@ -1451,12 +1476,26 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 		"ConstructionRoof",
 		"ScaffoldFrame",
 	]
+	if shader_construction:
+		# Livestock Pen and Rain Cistern use their own measured directional hero
+		# silhouette with the construction shader. Hide only the old procedural
+		# render descendants; the authoritative compound collision, material
+		# ledger, and interaction roots remain alive for gameplay and QA.
+		hide_names.append_array([
+			"CisternTank",
+			"CisternRoof",
+			"AdditiveConstructionComponents",
+			"DeliveredLogs",
+			"DeliveredStone",
+			"DeliveredPlanks",
+			"DeliveredFiber",
+		])
 	for node_name in hide_names:
 		# Building states keep their additive foundation/frame/wall/roof/fitting
 		# meshes visible; these are the material-driven construction proof. The
 		# finished source scene is likewise retained when it is the unique
 		# operational asset for this structure kind.
-		if state == "building" and node_name in ["CisternBase", "ConstructionWalls", "ConstructionRoof", "ScaffoldFrame"]:
+		if state == "building" and not shader_construction and node_name in ["CisternBase", "ConstructionWalls", "ConstructionRoof", "ScaffoldFrame"]:
 			continue
 		if state == "operational" and node_name == "FinishedSourceBuilding" and not use_player_structure_art:
 			continue
@@ -1504,7 +1543,6 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 	var structure_footprint := _structure_local_visual_footprint(structure, data, _structure_world_size(kind))
 	var cell_index := int(build_sprite_regions.get(sprite_kind, 0))
 	var sprite: Sprite3D = null
-	var rotation_quarter_turns := int(structure.get_meta("rotation_quarter_turns", 0))
 	var measured_hero_world_size := _measured_hero_world_size(structure, kind, rotation_quarter_turns)
 	var directional_stage_art := false
 	var layered_construction_art := false
@@ -1522,7 +1560,7 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 				directional_stage_art = sprite != null
 		if sprite == null and use_player_structure_art and not (directional_art_required and (state == "blueprint" or state == "building")):
 			sprite = _player_structure_hero_sprite(kind, rotation_quarter_turns, measured_hero_world_size)
-		if sprite == null and state == "building" and not directional_art_required:
+		if sprite == null and (state == "blueprint" or state == "building") and not directional_art_required:
 			# Facilities without a dedicated stage family still use their own measured
 			# directional silhouette as a low-alpha phase envelope. This is materially
 			# different from showing a generic garden/well card: the player can read
@@ -1545,12 +1583,21 @@ func apply_structure_visual(structure: Node3D, kind: String, state: String, data
 			sprite.position = Vector3.ZERO
 			if not layered_construction_art:
 				if construction_hero_overlay:
-					var phase_alpha := lerpf(0.16, 0.74, clampf(build_progress, 0.0, 1.0))
-					sprite.modulate = Color(1.0, 1.0, 1.0, phase_alpha)
-					sprite.render_priority = -1
-					sprite.set_meta("construction_phase_overlay", true)
-					sprite.set_meta("construction_phase_progress", build_progress)
-					_set_structure_sprite_metadata(sprite, structure, kind, state, "construction_phase_overlay", structure_footprint)
+					if state == "blueprint":
+						# Blueprint presentation is still the primary state layer. The
+						# shader supplies the ghost/outline treatment without changing
+						# the asset contract expected by placement and save/reload QA.
+						sprite.modulate = Color(1.0, 1.0, 1.0, 0.34)
+						sprite.render_priority = -1
+						_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)
+					else:
+						var phase_alpha := lerpf(0.16, 0.74, clampf(build_progress, 0.0, 1.0))
+						sprite.modulate = Color(1.0, 1.0, 1.0, phase_alpha)
+						sprite.render_priority = -1
+						sprite.set_meta("construction_phase_overlay", true)
+						sprite.set_meta("construction_phase_progress", build_progress)
+						_set_structure_sprite_metadata(sprite, structure, kind, state, "construction_phase_overlay", structure_footprint)
+					_configure_construction_sprite_shader(sprite, kind, state, build_progress)
 				else:
 					sprite.modulate = Color(1.0, 1.0, 1.0, 0.46) if directional_stage_art and state == "blueprint" else modulation
 					_set_structure_sprite_metadata(sprite, structure, kind, state, "state", structure_footprint)

@@ -275,3 +275,18 @@ The next responsible move is investigation and architecture hardening around
 that contract. Feature execution should resume only after the gold-standard
 Sanctuary slice proves that the chosen representation can actually scale to
 the requested game.
+
+## Update after the 2026-07-23 construction-reveal checkpoint
+
+The two remaining Sanctuary facilities without dedicated construction image
+families—Livestock Pen and Rain Cistern—now use their measured directional
+operational assets as the construction source. A per-instance shader supplies
+the blueprint outline and ground-up material reveal, while legacy procedural
+construction meshes are hidden only from rendering. Pixel-backed captures and
+the Sanctuary, hitbox, shader, interior, and world-loop contracts pass.
+
+This reduces one presentation inconsistency but does not change the executive
+finding: the Sanctuary still needs a denser authored world, broader authored
+interiors, richer character/NPC animation and audio, and final device evidence
+before the A+C graphics gate is accepted. The five expedition maps and the
+full-game content pass remain outside the completed scope.

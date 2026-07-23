@@ -420,3 +420,17 @@ motion from hidden procedural rig nodes. The Sanctuary gate remains open:
 this improves game feel and observability, but does not replace the remaining
 directional action art, facility interiors, density, audio depth, and device
 capture work required to match the accepted A+C visual target.
+
+## 2026-07-23 construction-reveal checkpoint
+
+Livestock Pen and Rain Cistern now use their own measured directional hero
+assets during blueprint and build states. A per-instance shader renders the
+asset's actual alpha envelope as a mint blueprint/outline and reveals the
+materialized silhouette from the ground upward as construction progress
+advances. The older procedural construction descendants are render-hidden for
+these two facilities only; their collision, occupancy, persistence, and
+material-delivery authorities remain active. Pixel-backed captures were
+verified for both facilities at blueprint and mid-build states. This closes a
+construction presentation gap, not the final Sanctuary gate: the reference
+density, broader interiors, character/NPC action art, audio depth, and device
+acceptance are still open.
