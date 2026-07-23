@@ -19,7 +19,7 @@ refraction, custom post-process, or custom `light()` function.
 | --- | --- | --- |
 | `cozy_toon_surface.gdshader` | Opaque procedural or sourced 3D wood, stone, canvas, metal, construction pieces | Illustrated Sprite3D cutouts, transparent foliage, UI |
 | `ground_depth_edge.gdshader` | Opaque meadow/path CylinderMesh patches; darkens UV edges and vertical sides | Contact shadows, build ghosts, transparent decals |
-| `sanctuary_ground_plate.gdshader` | Authored open Sanctuary ground plate plus a camera-coverage forest skirt | Collision floor, build grid, occupancy, pathing, or facility hitboxes |
+| `sanctuary_ground_plate.gdshader` | Authored open Sanctuary ground plate mapped across the declared camera envelope | Collision floor, build grid, occupancy, pathing, or facility hitboxes |
 | `cozy_water_ripple.gdshader` | Small subdivided pond/pool surface meshes | Whole pond illustration atlases, ocean-scale water, collision geometry |
 | `cozy_foliage_sway.gdshader` | Leaf-only low-poly surfaces or explicitly bound cutout cards | Trunks, buildings, collider meshes, an already CPU-swaying whole tree |
 | `reward_glow_shell.gdshader` | Duplicate visual-only shell around a pickup marker, cache marker, or capstone sigil | Base reward mesh, hit box, collision shape, large environment meshes |

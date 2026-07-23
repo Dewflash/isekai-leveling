@@ -28,6 +28,8 @@ the Godot gameplay/session code.
   `assets/generated/shaders/sanctuary_ground_plate.gdshader`
 - Runtime use: dense illustrated meadow/forest floor, scattered ground detail,
   and pond context beneath the player-directed Sanctuary layout
+- World mapping: authored across the declared 80m × 60m Sanctuary camera
+  envelope so focused camera views do not reveal a fallback boundary
 - Runtime contract: the quad is presentation-only, has no collision body, does
   not occupy build cells, and never replaces the authoritative floor, pathing,
   measured facility shells, or hit boxes

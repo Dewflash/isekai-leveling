@@ -1,12 +1,12 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 
-// The authored plate remains a fixed-scale 64m x 48m composition. The larger
-// quad is only a coverage skirt for camera travel; clamping the forest edge
-// keeps that skirt quiet instead of stretching or visibly repeating the art.
+// The authored plate is mapped across the full 80m x 60m Sanctuary coverage
+// quad. Keeping authored and physical extents equal prevents the focused
+// camera from exposing a procedural fallback boundary at the plate edge.
 uniform sampler2D ground_texture : source_color, filter_linear;
-uniform vec2 authored_size = vec2(44.0, 32.0);
-uniform vec2 plate_size = vec2(64.0, 48.0);
+uniform vec2 authored_size = vec2(80.0, 60.0);
+uniform vec2 plate_size = vec2(80.0, 60.0);
 uniform vec3 forest_skirt_color : source_color = vec3(0.08, 0.16, 0.11);
 
 void fragment() {

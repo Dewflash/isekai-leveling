@@ -17,6 +17,8 @@ Updated: 2026-07-23, Asia/Singapore
 - Persisted A+C evidence set: `docs/evidence/sanctuary-a-plus-c-v27/`
 - Latest authored-ground proof: `docs/evidence/sanctuary-open-ground-v1/`
 - Latest moss-overlay refinement proof: `docs/evidence/sanctuary-open-ground-v2/`
+- Latest camera-envelope refinement proof: `docs/evidence/sanctuary-open-ground-v3/`
+- Reference HUD baseline: `docs/evidence/sanctuary-hud-baseline/`
 - Launch note: restart any Godot editor or export opened before the A+C
   authority checkpoint; stale/committed builds cannot render the new assets.
 
@@ -102,13 +104,19 @@ proofs (`occupied_cell_symmetric_difference=78`, `changed_ratio=0.6242`). The
 persisted images are in `docs/evidence/sanctuary-open-ground-v1/`.
 
 This remains a progress checkpoint, not a full-game completion claim. The
-Sanctuary still needs further seamless boundary/art-density work and the full
+Sanctuary still needs deeper art-density work and the full
 audio, interior, expedition, device, and cross-biome presentation pass.
 
 The next visual refinement reduced the broad opaque procedural moss islands to
 small shader-driven depth accents. The authored ground texture now dominates
 the clean Sanctuary, operational structure, and two player-layout captures;
 the placement, measured shell, and collision contracts are unchanged.
+
+The authored ground is now mapped across the full 80m × 60m Sanctuary camera
+envelope. This removes the previous focused-camera fallback triangle; proof is
+persisted in `docs/evidence/sanctuary-open-ground-v3/`. The remaining visual
+work is still the deeper asset-density, building-construction, interior,
+animation/audio, and cross-biome pass.
 
 ## What exists (current checkpoint)
 

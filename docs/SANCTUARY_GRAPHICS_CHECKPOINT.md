@@ -37,6 +37,14 @@ was reduced to small shader-driven depth accents, so the authored meadow
 texture remains the dominant surface instead of reading as smooth green
 placeholder ovals.
 
+The camera-envelope refinement is saved at
+`docs/evidence/sanctuary-open-ground-v3/`. The authored plate now maps across
+the complete 80m × 60m Sanctuary coverage quad instead of ending inside a
+larger fallback skirt. This removes the dark diagonal boundary in focused
+camera views while preserving the presentation-only contract. The texture is
+not repeated and is not used as collision, pathing, occupancy, or hitbox
+geometry.
+
 ## Implemented in this pass
 
 - Added a dedicated 2.5D presentation layer in `scripts/sanctuary_style.gd`.
@@ -254,6 +262,12 @@ placeholder ovals.
 - Latest display-backed ground proof: pass, full stage harness with motion and
   two player-authored layouts; both layout runs still resolve through the live
   placement/delivery/day-advance path after the ground plate is mounted
+- Latest camera-envelope proof: `docs/evidence/sanctuary-open-ground-v3/`; the
+  authored texture now covers the complete declared world envelope in focused
+  camera views
+- Reference HUD baseline: `docs/evidence/sanctuary-hud-baseline/`; the
+  top status header, stat rail, action belt, and responsive resource/cargo
+  treatment are captured over the live Sanctuary scene
 - `tests/test_workshop_interior_contract.gd`: pass, 87 checks covering room
   composition, measured station alpha bounds, station collision calibration,
   and the authored shell

@@ -37,9 +37,9 @@ func _run() -> void:
 		var ground_material := ground_plate.material_override as ShaderMaterial if ground_plate != null else null
 		_check(ground_material != null and ground_material.shader != null, "open-ground plate must use its live coverage shader")
 		_check(ground_material != null and ground_material.get_shader_parameter("ground_texture") != null, "open-ground plate shader must bind its authored texture")
-		_check(ground_material != null and ground_material.get_shader_parameter("authored_size") == Vector2(64.0, 48.0), "open-ground plate shader must preserve authored world scale")
-		_check(ground_material != null and ground_material.get_shader_parameter("plate_size") == Vector2(80.0, 60.0), "open-ground plate shader must expose the camera coverage skirt")
-		_check(ground_material != null and ground_material.get_shader_parameter("forest_skirt_color") == Color("#173526"), "open-ground plate shader must use a forest-matched camera skirt")
+		_check(ground_material != null and ground_material.get_shader_parameter("authored_size") == Vector2(80.0, 60.0), "open-ground plate shader must preserve authored world scale")
+		_check(ground_material != null and ground_material.get_shader_parameter("plate_size") == Vector2(80.0, 60.0), "open-ground plate shader must expose the full camera coverage size")
+		_check(ground_material != null and ground_material.get_shader_parameter("forest_skirt_color") == Color("#173526"), "open-ground plate shader must retain its matched edge fallback")
 		_check(ground_plate != null and bool(ground_plate.get_meta("presentation_only", false)), "open-ground plate must be presentation-only")
 		_check(ground_plate != null and str(ground_plate.get_meta("collision_authority", "")) == "none", "open-ground plate must not own collision")
 		_check(ground_plate != null and not bool(ground_plate.get_meta("occupies_build_cells", true)), "open-ground plate must not claim build cells")
